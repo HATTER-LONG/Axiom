@@ -106,18 +106,32 @@
       "cacheVariables": {
         "AXIOM_USE_CCACHE": "ON"
       }
+    },
+    {
+      "name": "static-analysis",
+      "displayName": "clang-tidy + cppcheck",
+      "inherits": "clang-dev",
+      "binaryDir": "${sourceDir}/build-static-analysis",
+      "cacheVariables": {
+        "AXIOM_STATIC_ANALYZERS": "clang-tidy;cppcheck"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 8 },
-    { "name": "debug", "configurePreset": "debug", "jobs": 8 },
-    { "name": "tidy", "configurePreset": "tidy", "jobs": 8 },
-    { "name": "asan", "configurePreset": "asan", "jobs": 8 },
-    { "name": "ubsan", "configurePreset": "ubsan", "jobs": 8 },
-    { "name": "asan-ubsan", "configurePreset": "asan-ubsan", "jobs": 8 },
-    { "name": "iwyu", "configurePreset": "iwyu", "jobs": 8 },
-    { "name": "cppcheck", "configurePreset": "cppcheck", "jobs": 8 },
-    { "name": "ccache", "configurePreset": "ccache", "jobs": 8 }
+    { "name": "dev", "configurePreset": "dev", "jobs": 16 },
+    { "name": "debug", "configurePreset": "debug", "jobs": 16 },
+    { "name": "tidy", "configurePreset": "tidy", "jobs": 16 },
+    { "name": "asan", "configurePreset": "asan", "jobs": 16 },
+    { "name": "ubsan", "configurePreset": "ubsan", "jobs": 16 },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan", "jobs": 16 },
+    { "name": "iwyu", "configurePreset": "iwyu", "jobs": 16 },
+    { "name": "cppcheck", "configurePreset": "cppcheck", "jobs": 16 },
+    { "name": "ccache", "configurePreset": "ccache", "jobs": 16 },
+    {
+      "name": "static-analysis",
+      "configurePreset": "static-analysis",
+      "jobs": 16
+    }
   ],
   "workflowPresets": [
     {
@@ -166,6 +180,14 @@
       "steps": [
         { "type": "configure", "name": "tidy" },
         { "type": "build", "name": "tidy" }
+      ]
+    },
+    {
+      "name": "static-analysis",
+      "displayName": "Configure and build clang-tidy & cppcheck",
+      "steps": [
+        { "type": "configure", "name": "static-analysis" },
+        { "type": "build", "name": "static-analysis" }
       ]
     }
   ]

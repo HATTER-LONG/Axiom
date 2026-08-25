@@ -20,13 +20,35 @@ static void runUndefinedBehaviorTest() {
     std::printf("overflowed value: %d\n", overflowed_value);
 }
 
+static void runCppcheckNullPointerTest() {
+    int* value = nullptr;
+
+    // Intentional null-pointer dereference for cppcheck verification.
+    std::printf("null value: %d\n", *value);
+}
+
+static void runCppcheckUninitializedValueTest() {
+    int value;
+
+    // Intentional use of an uninitialized value for cppcheck verification.
+    std::printf("uninitialized value: %d\n", value);
+}
+
 int main(int argc, char* argv[]) {
-    if (argc > 1 && std::string_view(argv[1]) == "--memory-error") {
+    if(argc > 1 && std::string_view(argv[1]) == "--memory-error") {
         runMemoryErrorTest();
         return 0;
     }
-    if (argc > 1 && std::string_view(argv[1]) == "--ubsan-error") {
+    if(argc > 1 && std::string_view(argv[1]) == "--ubsan-error") {
         runUndefinedBehaviorTest();
+        return 0;
+    }
+    if(argc > 1 && std::string_view(argv[1]) == "--cppcheck-null-pointer") {
+        runCppcheckNullPointerTest();
+        return 0;
+    }
+    if(argc > 1 && std::string_view(argv[1]) == "--cppcheck-uninitialized") {
+        runCppcheckUninitializedValueTest();
         return 0;
     }
 
