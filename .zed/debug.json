@@ -1,0 +1,40 @@
+[
+  {
+    "label": "AgentKernel Demo (Debug)",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/build-debug/apps/demo/agentkernel_demo",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "build": {
+      "command": "cmake",
+      "args": ["--workflow", "--preset", "debug"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+  },
+  {
+    "label": "AgentKernel Demo (RelWithDebug)",
+    "adapter": "GDB",
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/build/apps/demo/axiom_demo",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "stopOnEntry": false,
+    "build": {
+      "command": "cmake",
+      "args": ["--build", "--preset", "dev"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+  },
+  {
+    "label": "Axiom Demo (Windows Dev)",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/build/apps/demo/axiom_demo.exe",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "stopOnEntry": false,
+    "build": {
+      "command": "cmake",
+      "args": ["--workflow", "--preset", "dev"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+  },
+]

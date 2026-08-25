@@ -1,0 +1,18 @@
+[
+  {
+    "label": "CMake: Configure Project",
+    "command": "cmake",
+    "args": ["--preset", "dev"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "CMake: Build Project",
+    "command": "cmake",
+    "args": ["--build", "--preset", "dev"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false
+  }
+]

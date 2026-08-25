@@ -1,0 +1,7 @@
+command_case = "lower_case"
+enable_external_cmake_lint = true
+line_max_words = 100
+
+[format]
+program = "cmake-format"
+args = ["--config-files", ".cmake-format.py", "--", "-"]

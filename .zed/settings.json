@@ -1,0 +1,34 @@
+{
+  "languages": {
+    "C++": {
+      "format_on_save": "on",
+      "tab_size": 4
+    },
+    "CMake": {
+      "format_on_save": "on",
+      "formatter": "language_server",
+      "language_servers": ["cmake"],
+      "tab_size": 4,
+      "preferred_line_length": 100
+    }
+  },
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": ["--compile-commands-dir=build", "--background-index"]
+      }
+    },
+    "cmake": {
+      "initialization_options": {
+        "format": {
+          "enable": true
+        },
+        "lint": {
+          "enable": true
+        },
+        "scan_cmake_in_package": false,
+        "semantic_token": false
+      }
+    }
+  }
+}
