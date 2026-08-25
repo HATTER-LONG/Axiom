@@ -7,21 +7,50 @@ project(
     LANGUAGES CXX)
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 option(AXIOM_BUILD_DEMO "Build the minimal demonstration application" ${PROJECT_IS_TOP_LEVEL})
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
-option(AXIOM_ENABLE_CLANG_TIDY "Run clang-tidy while compiling" OFF)
+option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(AXIOM_DISABLE_MSVC_COMPATIBILITY "Disable MSVC compatibility extensions" ON)
+option(AXIOM_STRICT_LANGUAGE_MODE "Enable strict C++ language diagnostics" ON)
+set(AXIOM_SANITIZERS
+    ""
+    CACHE STRING
+          "Sanitizers: Address, Memory, MemoryWithOrigins, Undefined, Thread, Leak, or a list")
+set(AXIOM_STATIC_ANALYZERS
+    ""
+    CACHE STRING "Static analyzers: clang-tidy, iwyu, cppcheck, or a semicolon-separated list")
+option(AXIOM_USE_CCACHE "Enable ccache compiler launcher" OFF)
 
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (NOT CPM_SOURCE_CACHE)
+    set(CPM_SOURCE_CACHE
+        "${PROJECT_SOURCE_DIR}/.cache/CPM"
+        CACHE PATH "Persistent CPM package source cache" FORCE)
+endif ()
 
 include(cmake/tools.cmake)
-axiom_configure_developer_tools()
+axiom_configure_tools()
 
 add_subdirectory(src/core)
 
 if (AXIOM_BUILD_DEMO)
     add_subdirectory(apps/demo)
+endif ()
+
+if (PROJECT_IS_TOP_LEVEL)
+    include(CTest)
+    if (BUILD_TESTING)
+        add_test(
+            NAME axiom.install
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+                -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
+                -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
+                -DAXIOM_INSTALL_CONFIG=$<CONFIG>
+                -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+    endif ()
 endif ()
 
 install(
@@ -31,7 +60,16 @@ install(
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY src/core/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+configure_package_config_file(cmake/AxiomConfig.cmake.in "${PROJECT_BINARY_DIR}/AxiomConfig.cmake"
+                              INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Axiom")
+write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/AxiomConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion)
 install(
     EXPORT AxiomTargets
     NAMESPACE Axiom::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Axiom)
+install(FILES "${PROJECT_BINARY_DIR}/AxiomConfig.cmake"
+              "${PROJECT_BINARY_DIR}/AxiomConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Axiom)

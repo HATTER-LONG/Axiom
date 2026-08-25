@@ -3,44 +3,126 @@
   "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "configurePresets": [
     {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
       "name": "dev",
       "displayName": "Developer build",
-      "generator": "Ninja",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
       "name": "debug",
       "displayName": "Debug build",
-      "generator": "Ninja",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build-debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "clang-dev",
+      "hidden": true,
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "clang-debug",
+      "hidden": true,
+      "inherits": "debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
       }
     },
     {
       "name": "tidy",
-      "inherits": "dev",
+      "displayName": "clang-tidy build",
+      "inherits": "clang-dev",
       "binaryDir": "${sourceDir}/build-tidy-clang",
       "cacheVariables": {
-        "AXIOM_ENABLE_CLANG_TIDY": "ON",
-        "CMAKE_CXX_COMPILER": "clang++"
+        "AXIOM_STATIC_ANALYZERS": "clang-tidy"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer build",
+      "inherits": "clang-debug",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "AXIOM_SANITIZERS": "Address"
+      }
+    },
+    {
+      "name": "ubsan",
+      "displayName": "UndefinedBehaviorSanitizer build",
+      "inherits": "clang-debug",
+      "binaryDir": "${sourceDir}/build-ubsan",
+      "cacheVariables": {
+        "AXIOM_SANITIZERS": "Undefined"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "AddressSanitizer and UBSan build",
+      "inherits": "clang-debug",
+      "binaryDir": "${sourceDir}/build-asan-ubsan",
+      "cacheVariables": {
+        "AXIOM_SANITIZERS": "Address;Undefined"
+      }
+    },
+    {
+      "name": "iwyu",
+      "displayName": "Include-What-You-Use build",
+      "inherits": "clang-dev",
+      "binaryDir": "${sourceDir}/build-iwyu",
+      "cacheVariables": {
+        "AXIOM_STATIC_ANALYZERS": "iwyu"
+      }
+    },
+    {
+      "name": "cppcheck",
+      "displayName": "Cppcheck build",
+      "inherits": "clang-dev",
+      "binaryDir": "${sourceDir}/build-cppcheck",
+      "cacheVariables": {
+        "AXIOM_STATIC_ANALYZERS": "cppcheck"
+      }
+    },
+    {
+      "name": "ccache",
+      "displayName": "ccache build",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build-ccache",
+      "cacheVariables": {
+        "AXIOM_USE_CCACHE": "ON"
       }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev", "jobs": 8 },
     { "name": "debug", "configurePreset": "debug", "jobs": 8 },
-    { "name": "tidy", "configurePreset": "tidy", "jobs": 8 }
+    { "name": "tidy", "configurePreset": "tidy", "jobs": 8 },
+    { "name": "asan", "configurePreset": "asan", "jobs": 8 },
+    { "name": "ubsan", "configurePreset": "ubsan", "jobs": 8 },
+    { "name": "asan-ubsan", "configurePreset": "asan-ubsan", "jobs": 8 },
+    { "name": "iwyu", "configurePreset": "iwyu", "jobs": 8 },
+    { "name": "cppcheck", "configurePreset": "cppcheck", "jobs": 8 },
+    { "name": "ccache", "configurePreset": "ccache", "jobs": 8 }
   ],
   "workflowPresets": [
     {
       "name": "dev",
-      "displayName": "Configure and build RelWithDebub",
+      "displayName": "Configure and build RelWithDebInfo",
       "steps": [
         { "type": "configure", "name": "dev" },
         { "type": "build", "name": "dev" }
@@ -52,6 +134,38 @@
       "steps": [
         { "type": "configure", "name": "debug" },
         { "type": "build", "name": "debug" }
+      ]
+    },
+    {
+      "name": "asan",
+      "displayName": "Configure and build ASan",
+      "steps": [
+        { "type": "configure", "name": "asan" },
+        { "type": "build", "name": "asan" }
+      ]
+    },
+    {
+      "name": "ubsan",
+      "displayName": "Configure and build UBSan",
+      "steps": [
+        { "type": "configure", "name": "ubsan" },
+        { "type": "build", "name": "ubsan" }
+      ]
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "Configure and build ASan and UBSan",
+      "steps": [
+        { "type": "configure", "name": "asan-ubsan" },
+        { "type": "build", "name": "asan-ubsan" }
+      ]
+    },
+    {
+      "name": "tidy",
+      "displayName": "Configure and build clang-tidy",
+      "steps": [
+        { "type": "configure", "name": "tidy" },
+        { "type": "build", "name": "tidy" }
       ]
     }
   ]
