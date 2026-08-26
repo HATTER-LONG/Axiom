@@ -57,7 +57,10 @@ function (axiom_configure_static_analyzers target_name)
     endif ()
     if ("cppcheck" IN_LIST AXIOM_STATIC_ANALYZERS)
         find_program(AXIOM_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
-        set_property(TARGET "${target_name}" PROPERTY CXX_CPPCHECK "${AXIOM_CPPCHECK_EXECUTABLE}")
+        # CMake otherwise prints cppcheck diagnostics but lets compilation succeed.
+        # A quality gate must propagate any analyzer finding as a build failure.
+        set_property(TARGET "${target_name}" PROPERTY CXX_CPPCHECK
+                                                   "${AXIOM_CPPCHECK_EXECUTABLE};--error-exitcode=1")
     endif ()
 endfunction ()
 

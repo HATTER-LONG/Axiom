@@ -1,0 +1,10 @@
+{
+  "schema": "axiom-architecture-rules/v1",
+  "forbidden_include_prefixes": [
+    {
+      "id": "core-must-not-depend-on-app-or-test",
+      "from": ["src/core/"],
+      "forbidden": ["apps/", "tests/"]
+    }
+  ]
+}

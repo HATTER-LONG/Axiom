@@ -13,35 +13,73 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
+## Quality gates
+
+Run gates through uv so agents get one compact JSON result rather than compiler
+logs. A non-zero exit code always means the selected gate failed.
+
+```sh
+uv run --quiet python tools/check.py fast
+uv run --quiet python tools/check.py full
+uv run --quiet python tools/check.py hardening
+```
+
+Add `-v` or `--verbose` before or after the gate name to print each executed
+command, its combined output, and its exit code to stderr. The JSON report stays
+on stdout for machine consumption.
+
+Use `--report <path>` when a later agent needs the same immutable report file.
+`fast` applies complexity, cppcheck, and clang-tidy only to source files
+recompiled by its incremental build. Its inexpensive architecture rule scan
+remains whole-project so header-only violations are not missed. Formatting is
+intentionally deferred to `full`, which also runs cppcheck, clang-tidy, and
+Include-What-You-Use over every project compilation unit. `hardening` builds and
+runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled.
+
+For diagnosis only, without claiming a gate passed:
+
+```sh
+uv run --quiet python tools/check.py inspect format
+uv run --quiet python tools/check.py inspect tests --preset quality-fast
+uv run --quiet python tools/check.py inspect cppcheck
+uv run --quiet python tools/check.py inspect clang-tidy
+uv run --quiet python tools/check.py inspect iwyu
+uv run --quiet python tools/check.py --list
+```
+
+The two analyzer inspections and the full gate scan every project compilation
+unit from CMake's compilation database.
+
 ## Developer tools
 
-Install the following tools yourself before using the matching preset or feature.
+Install the following tools yourself before using the matching gate or feature.
 They are not downloaded by CPM.
 
-| Tool                        | Used for                                                                                          | When required                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| CMake 3.25+ and Ninja       | Configure and build                                                                               | Always                                                                    |
-| A C++20 compiler            | Build the project                                                                                 | Always                                                                    |
-| LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | Recommended toolchain; required by the Clang, tidy, and sanitizer presets |
-| cppcheck                    | Static analysis                                                                                   | `cppcheck` preset                                                         |
-| Include-What-You-Use (IWYU) | Include analysis                                                                                  | `iwyu` and `static-analysis` presets                                     |
-| Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                                                   |
-| ccache                      | Compiler cache                                                                                    | `ccache` preset                                                           |
-| Lizard and Python 3.8+      | Cyclomatic-complexity analysis                                                                    | Run manually                                                              |
+| Tool                        | Used for                                                                                          | When required                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| uv and Python 3.10+         | Run the quality-check script                                                                      | Quality gates                                    |
+| CMake 3.25+ and Ninja       | Configure and build                                                                               | Builds and quality gates                         |
+| A C++20 compiler            | Build the project                                                                                 | Builds                                            |
+| LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
+| cppcheck                    | Static analysis                                                                                   | `fast`, `full`, and its inspection               |
+| Include-What-You-Use (IWYU) | Include analysis                                                                                  | `full` and its inspection                        |
+| Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                          |
+| ccache                      | Compiler cache                                                                                    | Optional: `-DAXIOM_USE_CCACHE=ON`                |
+| Lizard                      | Cyclomatic-complexity analysis                                                                    | `fast`, `full`, and its inspection               |
 
 `clang-tidy` and `clang-format` are distributed as part of LLVM. `clang-format`
 is an editor/command-line formatting tool and is not run automatically by a
 CMake preset.
 
-The sanitizer presets use LLVM's compiler and runtime. On Windows, the build
+The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windows, the build
 copies the AddressSanitizer runtime DLL next to the executable when available.
 
 ### IWYU and LLVM compatibility
 
 IWYU is tightly coupled to LLVM/Clang internals. Use an IWYU release or branch
 that matches the installed Clang version. For example, Clang 22 requires IWYU
-0.26 or the `clang_22` branch. The `iwyu` and `static-analysis` presets expect
-`include-what-you-use` to be available on `PATH`.
+0.26 or the `clang_22` branch. The `full` gate and `inspect iwyu` expect
+`include-what-you-use` and `iwyu_tool.py` to be available on `PATH`.
 
 Official IWYU releases are source releases. Building it standalone requires an
 LLVM development installation that exports `LLVMConfig.cmake`, in addition to
@@ -70,26 +108,21 @@ cmake --install <llvm-build-dir>
 ### Lizard complexity analysis
 
 Lizard is a Python-based complexity analyzer for C/C++ that does not require a
-complete include graph. Install it with Python 3.8 or later:
+complete include graph. Install it with Python 3.10 or later:
 
 ```sh
 python -m pip install lizard
 ```
 
-Analyze the project sources and tests, using Lizard's default CCN threshold of
-15:
+Analyze the project sources and tests with the same thresholds used by the
+quality gates:
 
 ```sh
-lizard -l cpp src apps tests
+lizard -l cpp -C 10 -L 80 src apps tests
 ```
 
-Use `-C <limit>` to set a cyclomatic-complexity threshold. Functions above the
-limit produce warnings and a non-zero exit status, making the command suitable
-for local checks or CI:
-
-```sh
-lizard -l cpp -C 15 src apps tests
-```
+Use `-C <limit>` to set the cyclomatic-complexity threshold and `-L <limit>`
+to set the function-length threshold. Violations produce a non-zero exit status.
 
 ### CPM-managed dependencies
 
@@ -97,33 +130,34 @@ CPM downloads only project dependencies and CMake integrations into `.cache/`:
 
 - GoogleTest 1.18.0, when `BUILD_TESTING=ON`;
 - CPM.cmake itself when a CPM-managed feature is configured;
-- the `cmake-scripts` sanitizer integration when a sanitizer preset is used;
-- the `Ccache.cmake` integration when the `ccache` preset is used.
+- the `cmake-scripts` sanitizer integration when `AXIOM_SANITIZERS` is enabled;
+- the `Ccache.cmake` integration when `AXIOM_USE_CCACHE=ON`.
 
 These downloads do not install the compiler, analysis tools, Doxygen, or the
 `ccache` executable.
 
-### Presets
+### CMake presets
 
 ```sh
-cmake --workflow --preset test
-cmake --workflow --preset tidy
-cmake --build --preset iwyu
-cmake --build --preset cppcheck
-cmake --workflow --preset asan-ubsan
+cmake --preset quality-fast
+cmake --build --preset quality-fast
+ctest --preset quality-fast
 ```
 
-The `tidy` preset treats all clang-tidy diagnostics as errors.
+The quality script is the preferred entry point because it combines these
+commands with the architecture, complexity, formatting, and analyzer checks.
 
-The demo contains an intentional heap-use-after-free test path for sanitizer
-validation:
+### Sanitizer demo paths
+
+The demo contains intentional failure paths for validating an already-built
+`quality-hardening` configuration:
 
 ```sh
-cmake --workflow --preset asan-ubsan
-./build-asan-ubsan/apps/demo/axiom_demo --memory-error
+uv run --quiet python tools/check.py hardening
+./build-quality/hardening/apps/demo/axiom_demo --memory-error
 ```
 
-On Windows, run `build-asan-ubsan/apps/demo/axiom_demo.exe` instead. The
+On Windows, run `build-quality/hardening/apps/demo/axiom_demo.exe` instead. The
 `--memory-error` argument is required; the default demo path is unaffected.
 
 To test UBSan specifically:
