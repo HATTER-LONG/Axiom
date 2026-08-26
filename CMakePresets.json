@@ -29,6 +29,16 @@
       }
     },
     {
+      "name": "test",
+      "displayName": "Test build",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build-test",
+      "cacheVariables": {
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
       "name": "clang-dev",
       "hidden": true,
       "inherits": "dev",
@@ -109,17 +119,18 @@
     },
     {
       "name": "static-analysis",
-      "displayName": "clang-tidy + cppcheck",
+      "displayName": "clang-tidy + cppcheck + iwyu",
       "inherits": "clang-dev",
       "binaryDir": "${sourceDir}/build-static-analysis",
       "cacheVariables": {
-        "AXIOM_STATIC_ANALYZERS": "clang-tidy;cppcheck"
+        "AXIOM_STATIC_ANALYZERS": "clang-tidy;cppcheck;iwyu"
       }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev", "jobs": 16 },
     { "name": "debug", "configurePreset": "debug", "jobs": 16 },
+    { "name": "test", "configurePreset": "test", "jobs": 16 },
     { "name": "tidy", "configurePreset": "tidy", "jobs": 16 },
     { "name": "asan", "configurePreset": "asan", "jobs": 16 },
     { "name": "ubsan", "configurePreset": "ubsan", "jobs": 16 },
@@ -131,6 +142,15 @@
       "name": "static-analysis",
       "configurePreset": "static-analysis",
       "jobs": 16
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "configurePreset": "test",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ],
   "workflowPresets": [
@@ -148,6 +168,15 @@
       "steps": [
         { "type": "configure", "name": "debug" },
         { "type": "build", "name": "debug" }
+      ]
+    },
+    {
+      "name": "test",
+      "displayName": "Configure, build, and test",
+      "steps": [
+        { "type": "configure", "name": "test" },
+        { "type": "build", "name": "test" },
+        { "type": "test", "name": "test" }
       ]
     },
     {
@@ -184,7 +213,7 @@
     },
     {
       "name": "static-analysis",
-      "displayName": "Configure and build clang-tidy & cppcheck",
+      "displayName": "Configure and build clang-tidy, cppcheck, and IWYU",
       "steps": [
         { "type": "configure", "name": "static-analysis" },
         { "type": "build", "name": "static-analysis" }

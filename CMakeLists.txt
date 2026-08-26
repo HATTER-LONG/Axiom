@@ -10,6 +10,7 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(AXIOM_BUILD_DEMO "Build the minimal demonstration application" ${PROJECT_IS_TOP_LEVEL})
+option(AXIOM_BUILD_TESTS "Build Axiom unit and integration tests" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
 option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(AXIOM_DISABLE_MSVC_COMPATIBILITY "Disable MSVC compatibility extensions" ON)
@@ -40,7 +41,10 @@ endif ()
 
 if (PROJECT_IS_TOP_LEVEL)
     include(CTest)
-    if (BUILD_TESTING)
+
+    if (AXIOM_BUILD_TESTS AND BUILD_TESTING)
+        add_subdirectory(tests)
+
         add_test(
             NAME axiom.install
             COMMAND
@@ -48,6 +52,9 @@ if (PROJECT_IS_TOP_LEVEL)
                 -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
                 -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
                 -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
+                -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
                 -DAXIOM_INSTALL_CONFIG=$<CONFIG>
                 -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
     endif ()
