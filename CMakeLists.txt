@@ -14,6 +14,8 @@ option(AXIOM_BUILD_TESTS "Build Axiom unit and integration tests" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
 option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(AXIOM_COVERAGE "Enable LLVM source-based coverage instrumentation" OFF)
+option(AXIOM_MUTATION_TESTING "Instrument project targets for Mull mutation testing" OFF)
+set(AXIOM_MULL_IR_FRONTEND "" CACHE FILEPATH "Path to the Mull LLVM IR frontend plugin")
 option(AXIOM_DISABLE_MSVC_COMPATIBILITY "Disable MSVC compatibility extensions" ON)
 option(AXIOM_STRICT_LANGUAGE_MODE "Enable strict C++ language diagnostics" ON)
 set(AXIOM_SANITIZERS
@@ -58,6 +60,10 @@ if (PROJECT_IS_TOP_LEVEL)
                 -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
                 -DAXIOM_INSTALL_CONFIG=$<CONFIG>
                 -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+        if (AXIOM_SANITIZERS)
+            # The install consumer intentionally does not inherit private sanitizer link flags.
+            set_tests_properties(axiom.install PROPERTIES DISABLED TRUE)
+        endif ()
     endif ()
 endif ()
 

@@ -36,4 +36,15 @@ QualitySummary summarizeScores(std::span<const int> scores) noexcept {
     return summary;
 }
 
+int combineQualityScores(int primary, int secondary) noexcept {
+    const int combined = primary + secondary;
+    if(combined < 0) {
+        return 0;
+    }
+    if(combined > 100) {
+        return 100;
+    }
+    return combined;
+}
+
 } // namespace axiom::core

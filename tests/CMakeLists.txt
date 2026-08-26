@@ -20,6 +20,7 @@ set_property(TARGET axiom_core_test PROPERTY CXX_EXTENSIONS OFF)
 axiom_configure_static_analyzers(axiom_core_test)
 axiom_configure_sanitizers(axiom_core_test)
 axiom_configure_coverage(axiom_core_test)
+axiom_configure_mutation_testing(axiom_core_test)
 target_compile_features(axiom_core_test PRIVATE cxx_std_20)
 target_link_libraries(axiom_core_test PRIVATE Axiom::Core GTest::gtest_main)
 
@@ -29,6 +30,10 @@ if (AXIOM_COVERAGE)
     # %p and %m keep profiles of concurrent test processes and binaries distinct.
     set(axiom_discovery_options PROPERTIES ENVIRONMENT
                                    "LLVM_PROFILE_FILE=axiom-%p-%m.profraw")
+endif ()
+if (AXIOM_SANITIZERS)
+    # Sanitizer runtimes may not be usable in the linker/build process environment.
+    list(APPEND axiom_discovery_options DISCOVERY_MODE PRE_TEST)
 endif ()
 gtest_discover_tests(axiom_core_test ${axiom_discovery_options})
 axiom_configure_sanitizer_runtime(axiom_core_test)

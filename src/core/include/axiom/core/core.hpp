@@ -27,4 +27,7 @@ struct QualitySummary {
 /** @brief Summarizes scores; an empty or out-of-range input is Invalid. */
 QualitySummary summarizeScores(std::span<const int> scores) noexcept;
 
+/** @brief Adds two score contributions and clamps the result to the inclusive range [0, 100]. */
+int combineQualityScores(int primary, int secondary) noexcept;
+
 } // namespace axiom::core

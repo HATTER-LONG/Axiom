@@ -77,3 +77,9 @@ TEST(Core, SummarizeScoresBoundaryAverageOf90IsExcellent) {
     EXPECT_DOUBLE_EQ(summary.m_average, 90.0);
     EXPECT_EQ(summary.m_grade, axiom::core::QualityGrade::Excellent);
 }
+
+TEST(Core, CombineQualityScoresProducesPositiveResult) {
+    // Intentionally weak: this passes normally but does not verify the arithmetic or boundaries,
+    // leaving several mutants alive so the Mull gate can demonstrate a mutation-test failure.
+    EXPECT_GT(axiom::core::combineQualityScores(40, 20), 0);
+}

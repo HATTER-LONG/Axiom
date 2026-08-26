@@ -64,7 +64,23 @@
         "AXIOM_BUILD_TESTS": "ON",
         "BUILD_TESTING": "ON",
         "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_MUTATION_TESTING": "OFF",
         "AXIOM_SANITIZERS": "Address;Undefined"
+      }
+    },
+    {
+      "name": "quality-mutation",
+      "displayName": "Quality gate: mutation testing",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-quality/mutation",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_DEMO": "OFF",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON",
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_MUTATION_TESTING": "ON"
       }
     }
   ],
@@ -76,6 +92,11 @@
     {
       "name": "quality-hardening",
       "configurePreset": "quality-hardening",
+      "jobs": 16
+    },
+    {
+      "name": "quality-mutation",
+      "configurePreset": "quality-mutation",
       "jobs": 16
     }
   ],
@@ -93,6 +114,11 @@
     {
       "name": "quality-hardening",
       "configurePreset": "quality-hardening",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "quality-mutation",
+      "configurePreset": "quality-mutation",
       "output": { "outputOnFailure": true }
     }
   ],

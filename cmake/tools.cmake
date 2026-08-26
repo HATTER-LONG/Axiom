@@ -116,6 +116,27 @@ function (axiom_configure_coverage target_name)
     target_link_options("${target_name}" PRIVATE -fprofile-instr-generate -fcoverage-mapping)
 endfunction ()
 
+#[[Instrument an Axiom-owned target with the Mull LLVM frontend.]]
+function (axiom_configure_mutation_testing target_name)
+    if (NOT TARGET "${target_name}")
+        message(FATAL_ERROR "Cannot configure mutation testing for unknown target '${target_name}'")
+    endif ()
+    if (NOT AXIOM_MUTATION_TESTING)
+        return()
+    endif ()
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        message(FATAL_ERROR "AXIOM_MUTATION_TESTING requires Clang with the GNU driver frontend")
+    endif ()
+    if (NOT AXIOM_MULL_IR_FRONTEND OR NOT EXISTS "${AXIOM_MULL_IR_FRONTEND}")
+        message(FATAL_ERROR "AXIOM_MULL_IR_FRONTEND must name an installed Mull frontend plugin")
+    endif ()
+
+    target_compile_options(
+        "${target_name}" PRIVATE "-fpass-plugin=${AXIOM_MULL_IR_FRONTEND}" -g
+                                 -grecord-command-line)
+endfunction ()
+
 #[[Configure project-level optional developer tools and integrations.]]
 function (axiom_configure_tools)
     # Do not let the legacy cmake-scripts integration restore global sanitizer flags from a build

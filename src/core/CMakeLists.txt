@@ -5,6 +5,7 @@ axiom_configure_language_diagnostics(axiom_core)
 axiom_configure_static_analyzers(axiom_core)
 axiom_configure_sanitizers(axiom_core)
 axiom_configure_coverage(axiom_core)
+axiom_configure_mutation_testing(axiom_core)
 target_compile_features(axiom_core PUBLIC cxx_std_20)
 target_include_directories(
     axiom_core

@@ -34,7 +34,10 @@ recompiled by its incremental build. Its inexpensive architecture rule scan
 remains whole-project so header-only violations are not missed. Formatting is
 intentionally deferred to `full`, which also runs cppcheck, clang-tidy, and
 Include-What-You-Use over every project compilation unit. `hardening` builds and
-runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled.
+runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled,
+then uses a separate instrumented build and requires a Mull mutation score of at
+least 90 for project source code. Mull's Mutation Testing Elements report is
+written under `build-quality/mutation/mull/`.
 
 `fast` and `full` build with LLVM source-based coverage instrumentation and fail
 when the test suite's line coverage drops below 90%; the report also records
@@ -71,6 +74,7 @@ They are not downloaded by CPM.
 | `llvm-profdata`, `llvm-cov` | Test coverage measurement                                                                         | `fast`, `full`, and the coverage inspection      |
 | cppcheck                    | Static analysis                                                                                   | `fast`, `full`, and its inspection               |
 | Include-What-You-Use (IWYU) | Include analysis                                                                                  | `full` and its inspection                        |
+| Mull                        | C++ mutation testing                                                                              | `hardening`                                      |
 | Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                          |
 | ccache                      | Compiler cache                                                                                    | Optional: `-DAXIOM_USE_CCACHE=ON`                |
 | Lizard                      | Cyclomatic-complexity analysis                                                                    | `fast`, `full`, and its inspection               |
@@ -80,7 +84,9 @@ part of LLVM. `clang-format` is an editor/command-line formatting tool and is no
 run automatically by a CMake preset.
 
 The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windows, the build
-copies the AddressSanitizer runtime DLL next to the executable when available.
+copies the AddressSanitizer runtime DLL next to the executable when available. The separate
+`quality-mutation` configuration uses Mull's LLVM IR frontend. Matching unversioned tools or pairs such
+as `mull-runner-22` and `mull-ir-frontend-22` are detected from `PATH`; Mull must match the LLVM toolchain.
 
 ### IWYU and LLVM compatibility
 
