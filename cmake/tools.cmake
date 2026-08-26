@@ -99,6 +99,23 @@ function (axiom_configure_sanitizers target_name)
     target_link_options("${target_name}" PRIVATE ${axiom_sanitizer_link_options})
 endfunction ()
 
+#[[Apply LLVM source-based coverage instrumentation to an Axiom-owned target.]]
+function (axiom_configure_coverage target_name)
+    if (NOT TARGET "${target_name}")
+        message(FATAL_ERROR "Cannot configure coverage for unknown target '${target_name}'")
+    endif ()
+    if (NOT AXIOM_COVERAGE)
+        return()
+    endif ()
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        message(FATAL_ERROR "AXIOM_COVERAGE requires Clang with the GNU driver frontend")
+    endif ()
+
+    target_compile_options("${target_name}" PRIVATE -fprofile-instr-generate -fcoverage-mapping)
+    target_link_options("${target_name}" PRIVATE -fprofile-instr-generate -fcoverage-mapping)
+endfunction ()
+
 #[[Configure project-level optional developer tools and integrations.]]
 function (axiom_configure_tools)
     # Do not let the legacy cmake-scripts integration restore global sanitizer flags from a build

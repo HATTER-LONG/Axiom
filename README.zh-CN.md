@@ -26,11 +26,14 @@ uv run --quiet python tools/check.py hardening
 
 使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 还会对所有项目编译单元执行格式、cppcheck、clang-tidy 和 Include-What-You-Use（IWYU）检查。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件。
 
+`fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成 `coverage-export.json`。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
+
 仅用于诊断、不会宣称门禁通过的命令：
 
 ```sh
 uv run --quiet python tools/check.py inspect format
 uv run --quiet python tools/check.py inspect tests --preset quality-fast
+uv run --quiet python tools/check.py inspect coverage
 uv run --quiet python tools/check.py inspect cppcheck
 uv run --quiet python tools/check.py inspect clang-tidy
 uv run --quiet python tools/check.py inspect iwyu
@@ -49,13 +52,14 @@ uv run --quiet python tools/check.py --list
 | CMake 3.25+ 与 Ninja | 配置和构建 | 构建和质量门禁 |
 | 支持 C++20 的编译器 | 构建项目 | 构建 |
 | LLVM/Clang | `clang++`、`clang-tidy`、`clang-format`、clangd、AddressSanitizer、UndefinedBehaviorSanitizer | 所有质量门禁 |
+| `llvm-profdata`、`llvm-cov` | 测试覆盖率度量 | `fast`、`full` 及覆盖率诊断命令 |
 | cppcheck | 静态分析 | `fast`、`full` 及其诊断命令 |
 | Include-What-You-Use（IWYU） | 头文件依赖分析 | `full` 及其诊断命令 |
 | Doxygen | API 文档 | `-DAXIOM_BUILD_DOCS=ON` |
 | ccache | 编译缓存 | 可选：`-DAXIOM_USE_CCACHE=ON` |
 | Lizard | 圈复杂度分析 | `fast`、`full` 及其诊断命令 |
 
-`clang-tidy` 和 `clang-format` 随 LLVM 一同提供。`clang-format` 是编辑器或命令行格式化工具，不会由 CMake 预设自动执行。
+`clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`clang-format` 是编辑器或命令行格式化工具，不会由 CMake 预设自动执行。
 
 `quality-hardening` 配置使用 LLVM 的编译器与运行时。在 Windows 上，构建在可用时会把 AddressSanitizer 的运行时 DLL 复制到可执行文件旁。
 

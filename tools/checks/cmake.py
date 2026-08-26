@@ -14,9 +14,7 @@ def configure(gate: Gate, preset: str) -> bool:
 
 
 def build(gate: Gate, preset: str) -> bool:
-    return gate.command(
-        "build", 20, ["cmake", "--build", "--preset", preset, "--", "-k", "0"]
-    )
+    return gate.command("build", 20, ["cmake", "--build", "--preset", preset, "--", "-k", "0"])
 
 
 def incremental_build(gate: Gate, preset: str) -> tuple[bool, tuple[Path, ...]]:

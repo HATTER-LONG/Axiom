@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
@@ -48,10 +49,18 @@ CommandDetail = Callable[[subprocess.CompletedProcess[str]], dict[str, object]]
 
 
 class Gate:
-    def __init__(self, mode: str, *, is_gate: bool, verbose: bool = False) -> None:
+    def __init__(
+        self,
+        mode: str,
+        *,
+        is_gate: bool,
+        verbose: bool = False,
+        options: Mapping[str, bool] | None = None,
+    ) -> None:
         self.mode = mode
         self.is_gate = is_gate
         self.verbose = verbose
+        self.options = dict(options or {})
         self.checks: list[Check] = []
 
     def command(
@@ -67,9 +76,7 @@ class Gate:
                     check_id,
                     f"required system tool '{command[0]}' was not found on PATH",
                 )
-                return check.finish(
-                    False, "required system tool is unavailable", tool=command[0]
-                )
+                return check.finish(False, "required system tool is unavailable", tool=command[0])
             if self.verbose:
                 show_command(check_id, command)
             try:

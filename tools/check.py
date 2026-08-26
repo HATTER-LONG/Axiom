@@ -19,21 +19,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--list", action="store_true", help="list commands as JSON")
     parser.add_argument("--report", type=Path, help="override the default JSON artifact path")
     parser.add_argument("-v", "--verbose", action="store_true", help="print commands and output")
+    parser.add_argument(
+        "--coverage-html", action="store_true", help="generate the LLVM coverage HTML report"
+    )
     subparsers = parser.add_subparsers(dest="command")
     for mode in GATES:
         command = subparsers.add_parser(mode, help=f"run the complete {mode} gate")
         command.add_argument("--report", type=Path, default=argparse.SUPPRESS)
         command.add_argument(
-            "-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+            "-v",
+            "--verbose",
+            action="store_true",
+            default=argparse.SUPPRESS,
             help="print commands and output",
+        )
+        command.add_argument(
+            "--coverage-html",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="generate the LLVM coverage HTML report",
         )
     inspect_parser = subparsers.add_parser("inspect", help="run one diagnostic; not a merge gate")
     inspect_parser.add_argument("tool", choices=INSPECTIONS)
     inspect_parser.add_argument("--preset", choices=PRESETS, default="quality-fast")
     inspect_parser.add_argument("--report", type=Path, default=argparse.SUPPRESS)
     inspect_parser.add_argument(
-        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=argparse.SUPPRESS,
         help="print commands and output",
+    )
+    inspect_parser.add_argument(
+        "--coverage-html",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="generate the LLVM coverage HTML report",
     )
     return parser.parse_args()
 
@@ -57,7 +78,9 @@ def main() -> int:
     started = time.monotonic()
     is_gate = args.command != "inspect"
     mode = args.command if is_gate else f"inspect.{args.tool}"
-    gate = Gate(mode, is_gate=is_gate, verbose=args.verbose)
+    gate = Gate(
+        mode, is_gate=is_gate, verbose=args.verbose, options={"coverage-html": args.coverage_html}
+    )
     if is_gate:
         GATES[args.command](gate)
     else:

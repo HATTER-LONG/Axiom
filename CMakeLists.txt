@@ -13,6 +13,7 @@ option(AXIOM_BUILD_DEMO "Build the minimal demonstration application" ${PROJECT_
 option(AXIOM_BUILD_TESTS "Build Axiom unit and integration tests" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
 option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(AXIOM_COVERAGE "Enable LLVM source-based coverage instrumentation" OFF)
 option(AXIOM_DISABLE_MSVC_COMPATIBILITY "Disable MSVC compatibility extensions" ON)
 option(AXIOM_STRICT_LANGUAGE_MODE "Enable strict C++ language diagnostics" ON)
 set(AXIOM_SANITIZERS

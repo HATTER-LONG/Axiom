@@ -58,7 +58,9 @@ def tracked_files() -> list[Path]:
         check=False,
     )
     if result.returncode == 0:
-        return [ROOT / item for item in result.stdout.splitlines() if item and (ROOT / item).is_file()]
+        return [
+            ROOT / item for item in result.stdout.splitlines() if item and (ROOT / item).is_file()
+        ]
     return [
         item
         for item in ROOT.rglob("*")

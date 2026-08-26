@@ -18,6 +18,11 @@ set(axiom_consumer_configure_command
 if (AXIOM_RC_COMPILER)
     list(APPEND axiom_consumer_configure_command "-DCMAKE_RC_COMPILER=${AXIOM_RC_COMPILER}")
 endif ()
+if (AXIOM_INSTALL_CONFIG)
+    # Keep the consumer's runtime library and iterator debug level consistent with the
+    # installed Axiom library; CMake otherwise defaults single-config builds to Debug.
+    list(APPEND axiom_consumer_configure_command "-DCMAKE_BUILD_TYPE=${AXIOM_INSTALL_CONFIG}")
+endif ()
 
 set(axiom_install_command ${CMAKE_COMMAND} --install "${AXIOM_BINARY_DIR}" --prefix "${axiom_install_prefix}")
 if (AXIOM_INSTALL_CONFIG)

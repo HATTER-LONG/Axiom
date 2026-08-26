@@ -36,11 +36,18 @@ intentionally deferred to `full`, which also runs cppcheck, clang-tidy, and
 Include-What-You-Use over every project compilation unit. `hardening` builds and
 runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled.
 
+`fast` and `full` build with LLVM source-based coverage instrumentation and fail
+when the test suite's line coverage drops below 90%; the report also records
+region and branch coverage and writes `coverage-export.json` into the build
+directory. Add `--coverage-html` to additionally render the browsable
+`llvm-cov` HTML report into `coverage-html/` next to it.
+
 For diagnosis only, without claiming a gate passed:
 
 ```sh
 uv run --quiet python tools/check.py inspect format
 uv run --quiet python tools/check.py inspect tests --preset quality-fast
+uv run --quiet python tools/check.py inspect coverage
 uv run --quiet python tools/check.py inspect cppcheck
 uv run --quiet python tools/check.py inspect clang-tidy
 uv run --quiet python tools/check.py inspect iwyu
@@ -61,15 +68,16 @@ They are not downloaded by CPM.
 | CMake 3.25+ and Ninja       | Configure and build                                                                               | Builds and quality gates                         |
 | A C++20 compiler            | Build the project                                                                                 | Builds                                            |
 | LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
+| `llvm-profdata`, `llvm-cov` | Test coverage measurement                                                                         | `fast`, `full`, and the coverage inspection      |
 | cppcheck                    | Static analysis                                                                                   | `fast`, `full`, and its inspection               |
 | Include-What-You-Use (IWYU) | Include analysis                                                                                  | `full` and its inspection                        |
 | Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                          |
 | ccache                      | Compiler cache                                                                                    | Optional: `-DAXIOM_USE_CCACHE=ON`                |
 | Lizard                      | Cyclomatic-complexity analysis                                                                    | `fast`, `full`, and its inspection               |
 
-`clang-tidy` and `clang-format` are distributed as part of LLVM. `clang-format`
-is an editor/command-line formatting tool and is not run automatically by a
-CMake preset.
+`clang-tidy`, `clang-format`, `llvm-profdata`, and `llvm-cov` are distributed as
+part of LLVM. `clang-format` is an editor/command-line formatting tool and is not
+run automatically by a CMake preset.
 
 The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windows, the build
 copies the AddressSanitizer runtime DLL next to the executable when available.

@@ -35,7 +35,8 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "AXIOM_BUILD_TESTS": "ON",
         "BUILD_TESTING": "ON",
-        "AXIOM_STATIC_ANALYZERS": ""
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_COVERAGE": "ON"
       }
     },
     {
@@ -48,7 +49,8 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "AXIOM_BUILD_TESTS": "ON",
         "BUILD_TESTING": "ON",
-        "AXIOM_STATIC_ANALYZERS": ""
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_COVERAGE": "ON"
       }
     },
     {

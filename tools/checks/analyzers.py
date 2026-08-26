@@ -18,9 +18,7 @@ from .project import (
     relative,
 )
 
-TIDY_DIAGNOSTIC = re.compile(
-    r"^(.*?):(\d+):(\d+):\s+(warning|error):\s+(.*?)\s+\[([^]]+)\]$"
-)
+TIDY_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(\d+):\s+(warning|error):\s+(.*?)\s+\[([^]]+)\]$")
 IWYU_SECTION = re.compile(r"^(.*?) should (add|remove) these lines:$")
 
 
@@ -169,9 +167,7 @@ def _run_analyzer(
                 "-Xiwyu",
                 "--error=1",
             ]
-        result = command_output(
-            command, verbose=verbose, check_id=f"{name}:{relative(unit)}"
-        )
+        result = command_output(command, verbose=verbose, check_id=f"{name}:{relative(unit)}")
         all_output.extend(result.stdout.splitlines())
         exit_codes.append(result.returncode)
 
@@ -189,6 +185,4 @@ def _run_analyzer(
     if failed and not findings:
         detail["log_tail"] = all_output[-LOG_LINE_LIMIT:]
         detail["returncodes"] = exit_codes
-    return check.finish(
-        not failed, "passed" if not failed else "findings detected", **detail
-    )
+    return check.finish(not failed, "passed" if not failed else "findings detected", **detail)
