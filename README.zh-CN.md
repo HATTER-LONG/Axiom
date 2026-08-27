@@ -47,7 +47,7 @@ ASan 与 UBSan。最终报告会分别列出工具支持状态、成功检出的
 
 使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 还会对所有项目编译单元执行格式、cppcheck、clang-tidy 和 Include-What-You-Use（IWYU）检查。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
 
-`fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成 `coverage-export.json`。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
+`fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成面向 agent 的紧凑 `coverage-export.json`。该文件使用仓库相对路径、按命中次数合并的连续行区间、分组后的分支命中次数，并内置数组字段图例；所有有效统计项均达到 100% 的文件会被省略，只记录省略数量。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
 
 仅用于诊断、不会宣称门禁通过的命令：
 

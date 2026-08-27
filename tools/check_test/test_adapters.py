@@ -9,7 +9,7 @@ from unittest.mock import patch
 from support import gate, isolated_project
 
 from checks.analyzers import _run_analyzer, parse_cppcheck, parse_iwyu, parse_tidy
-from checks.coverage import coverage
+from checks.coverage import _compact_export, coverage
 from checks.mutation import mutation_test
 
 
@@ -86,10 +86,53 @@ class CoverageInterceptionTests(unittest.TestCase):
             with self.subTest(percent=percent), isolated_project() as project:
                 _build, binary = self._prepared(project)
                 export = json.dumps({"data": [{"totals": {"lines": {"percent": percent}, "regions": {"percent": 94.0}}}]})
-                with patch("checks.coverage._llvm_tool", side_effect=lambda name: name), patch("checks.coverage._instrumented_binaries", return_value=[binary]), patch("checks.coverage.command_output", side_effect=[completed(), completed(0, export)]):
+                with patch("checks.coverage._llvm_tool", side_effect=lambda name: name), patch("checks.coverage._instrumented_binaries", return_value=[binary]), patch("checks.coverage.command_output", side_effect=[completed(), completed(0, export), completed(0, "")]):
                     value = gate()
                     self.assertEqual(coverage(value, "fixture-fast"), expected)
                     self.assertEqual(value.checks[0].status, "pass" if expected else "fail")
+
+    def test_compact_export_groups_lines_and_branches(self) -> None:
+        data = {
+            "totals": {"lines": {"count": 4, "covered": 3, "percent": 75.0}},
+            "files": [
+                {
+                    "filename": "library/answer.cpp",
+                    "summary": {"lines": {"count": 4, "covered": 3, "percent": 75.0}},
+                },
+                {
+                    "filename": "library/covered.cpp",
+                    "summary": {
+                        "lines": {"count": 2, "covered": 2, "percent": 100.0},
+                        "branches": {"count": 0, "covered": 0, "percent": 0.0},
+                    },
+                },
+            ],
+        }
+        lcov = "\n".join(
+            (
+                "SF:library/answer.cpp",
+                "DA:2,3",
+                "DA:3,3",
+                "DA:5,0",
+                "BRDA:3,0,0,3",
+                "BRDA:3,0,1,0",
+                "end_of_record",
+                "SF:library/covered.cpp",
+                "DA:1,1",
+                "DA:2,1",
+                "end_of_record",
+            )
+        )
+        compact = _compact_export(data, lcov)
+        self.assertEqual(
+            compact["legend"]["line_runs"]["layout"],
+            ["first_line", "last_line", "hits"],
+        )
+        self.assertIn("hits=0 means uncovered", compact["legend"]["line_runs"]["meaning"])
+        self.assertEqual(compact["omitted_fully_covered_files"], 1)
+        self.assertEqual(len(compact["files"]), 1)
+        self.assertEqual(compact["files"][0]["line_runs"], [[2, 3, 3], [5, 5, 0]])
+        self.assertEqual(compact["files"][0]["branch_groups"], [[3, 0, 0, [3, 0]]])
 
     def test_unparseable_coverage_export_is_rejected(self) -> None:
         with isolated_project() as project:

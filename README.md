@@ -66,8 +66,12 @@ written under `build-quality/mutation/mull/`.
 
 `fast` and `full` build with LLVM source-based coverage instrumentation and fail
 when the test suite's line coverage drops below 90%; the report also records
-region and branch coverage and writes `coverage-export.json` into the build
-directory. Add `--coverage-html` to additionally render the browsable
+region and branch coverage and writes a compact, agent-oriented
+`coverage-export.json` into the build directory. It uses repository-relative
+source paths, run-length encoded line hit counts, grouped branch hit counts,
+an inline legend for the array fields, and omits fully covered files while
+recording their count. Add `--coverage-html` to additionally
+render the browsable
 `llvm-cov` HTML report into `coverage-html/` next to it.
 
 For diagnosis only, without claiming a gate passed:

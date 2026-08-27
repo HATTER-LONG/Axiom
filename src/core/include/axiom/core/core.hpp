@@ -11,7 +11,7 @@ namespace axiom::core {
 
 /** @brief Returns the framework name. */
 const char* frameworkName() noexcept;
-
+const char* frameworkName2() noexcept;
 /** @brief Quality classification derived from a set of scores. */
 enum class QualityGrade { Invalid, Failing, Passing, Excellent };
 
