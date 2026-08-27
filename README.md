@@ -24,6 +24,31 @@ uv run --quiet python tools/check.py full
 uv run --quiet python tools/check.py hardening
 ```
 
+### Reusable check fixture
+
+[`tools/check_test`](tools/check_test/README.md) is a standalone C++20/CMake
+demo project that exercises the public `check.py` contract.  It has its own
+source, tests, CMake presets, and architecture policy; it does not link to
+Axiom.  Use it to verify the Python report parsers and interception semantics
+without changing Axiom sources:
+
+```sh
+uv run --quiet python tools/check_test/verify.py \
+  --report build-quality/reports/check-test-integration.json
+uv run --quiet python tools/check.py --project-root tools/check_test fast
+```
+
+`--project-root` makes command execution, source discovery, build artifacts,
+and reports relative to the selected CMake project. Each project owns a
+`quality/check_profile.json` that declares its source roots, preset names,
+build directories, policy path, cache options, schemas, and quality thresholds.
+The fixture intentionally uses names different from Axiom. It runs clean
+`full` and `hardening` baselines, then compiles isolated real failure sources
+for every supported tool, including ASan and UBSan. The final report separates
+supported tools, detected failures, clean passes, unsupported capabilities, and
+unexpected failures. Use `--quick` when only the dependency-free contract suite
+is needed.
+
 Add `-v` or `--verbose` before or after the gate name to print each executed
 command, its combined output, and its exit code to stderr. The JSON report stays
 on stdout for machine consumption.
@@ -216,24 +241,9 @@ ctest --preset quality-fast
 The quality script is the preferred entry point because it combines these
 commands with the architecture, complexity, formatting, and analyzer checks.
 
-### Sanitizer demo paths
+### Gate regression tests
 
-The demo contains intentional failure paths for validating an already-built
-`quality-hardening` configuration:
-
-```sh
-uv run --quiet python tools/check.py hardening
-./build-quality/hardening/apps/demo/axiom_demo --memory-error
-```
-
-On Windows, run `build-quality/hardening/apps/demo/axiom_demo.exe` instead. The
-`--memory-error` argument is required; the default demo path is unaffected.
-
-To test UBSan specifically:
-
-```sh
-./build-asan-ubsan/apps/demo/axiom_demo --ubsan-error
-```
-
-This triggers a signed integer overflow. On Windows, append `.exe` to the
-executable path.
+Intentional analyzer and orchestration failures live in `tools/check_test`, not
+in production demo sources. Run `python tools/check_test/verify.py` to validate
+the negative cases, then run `python tools/check.py full` for the real-project
+baseline.

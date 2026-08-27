@@ -7,11 +7,12 @@ from ..cmake import configure, incremental_build, tests
 from ..coverage import clean_coverage_profiles, coverage
 from ..model import Gate
 from ..pipeline import run_analyzers
+from ..profile import load as load_profile
 
 
 def run(gate: Gate) -> None:
     architecture_check(gate)
-    preset = "quality-fast"
+    preset = load_profile().preset("fast")
     if not configure(gate, preset):
         gate.blocked("build", 20, "configure failed")
         gate.blocked("complexity", 10, "configure failed")
@@ -54,5 +55,11 @@ def run(gate: Gate) -> None:
     complexity_check(gate, compiled)
     run_analyzers(gate, preset, units=compiled)
     clean_coverage_profiles(preset)
-    tests(gate, preset, "tests.fast")
+    if not tests(gate, preset, "tests.fast"):
+        gate.blocked("coverage.fast", 10, "tests failed")
+        return
+    test_reason = gate.skip_reason("tests.fast")
+    if test_reason:
+        gate.skipped("coverage.fast", 10, f"tests skipped: {test_reason}")
+        return
     coverage(gate, preset, "coverage.fast")

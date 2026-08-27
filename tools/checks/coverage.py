@@ -8,10 +8,8 @@ from pathlib import Path
 
 from .console import show_skip
 from .model import Check, Gate
+from .profile import load as load_profile
 from .project import LOG_LINE_LIMIT, build_directory, command_output, relative
-
-COVERAGE_THRESHOLD = 90.0
-IGNORE_FILENAME_REGEX = r"[/\\]tests[/\\]"
 
 
 def clean_coverage_profiles(preset: str) -> None:
@@ -34,8 +32,10 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
         return check.skip(reason, tool=missing)
 
     build_dir = build_directory(preset)
-    if not _cache_option_enabled(build_dir / "CMakeCache.txt", "AXIOM_COVERAGE"):
-        return check.finish(False, f"preset '{preset}' is not configured with AXIOM_COVERAGE=ON")
+    profile = load_profile()
+    option = profile.coverage_cache_option
+    if not _cache_option_enabled(build_dir / "CMakeCache.txt", option):
+        return check.finish(False, f"preset '{preset}' is not configured with {option}=ON")
 
     profiles = sorted(build_dir.rglob("*.profraw"))
     if not profiles:
@@ -73,7 +73,7 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
             str(binaries[0]),
             *[f"-object={binary}" for binary in binaries[1:]],
             f"--instr-profile={profdata}",
-            f"--ignore-filename-regex={IGNORE_FILENAME_REGEX}",
+            f"--ignore-filename-regex={profile.coverage_ignore_regex}",
             "--format=text",
         ],
         verbose=gate.verbose,
@@ -109,7 +109,7 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
                 str(binaries[0]),
                 *[f"-object={binary}" for binary in binaries[1:]],
                 f"--instr-profile={profdata}",
-                f"--ignore-filename-regex={IGNORE_FILENAME_REGEX}",
+                f"--ignore-filename-regex={profile.coverage_ignore_regex}",
                 "--format=html",
                 f"--output-dir={html_dir}",
             ],
@@ -119,11 +119,10 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
         if html.returncode == 0:
             html_report = html_dir / "index.html"
 
-    passed = line_percent >= COVERAGE_THRESHOLD
+    threshold = profile.coverage_threshold
+    passed = line_percent >= threshold
     summary = (
-        "passed"
-        if passed
-        else f"line coverage {line_percent}% is below the {COVERAGE_THRESHOLD}% threshold"
+        "passed" if passed else f"line coverage {line_percent}% is below the {threshold}% threshold"
     )
     return check.finish(
         passed,
@@ -131,7 +130,7 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
         line_coverage=line_percent,
         region_coverage=region_percent,
         branch_coverage=branch_percent,
-        threshold=COVERAGE_THRESHOLD,
+        threshold=threshold,
         profile_count=len(profiles),
         binaries=[relative(binary) for binary in binaries],
         export=relative(export_path),

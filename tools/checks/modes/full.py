@@ -6,11 +6,12 @@ from ..cmake import build, configure, tests
 from ..coverage import clean_coverage_profiles, coverage
 from ..model import Gate
 from ..pipeline import run_analyzers, source_checks
+from ..profile import load as load_profile
 
 
 def run(gate: Gate) -> None:
     source_checks(gate)
-    preset = "quality-full"
+    preset = load_profile().preset("full")
     if not configure(gate, preset):
         gate.blocked("build", 20, "configure failed")
         gate.blocked("tests.full", 15, "configure failed")
@@ -50,6 +51,10 @@ def run(gate: Gate) -> None:
             gate.skipped(check_id, maximum, f"build skipped: {build_reason}")
         return
     clean_coverage_profiles(preset)
-    tests(gate, preset, "tests.full")
-    coverage(gate, preset, "coverage.full")
+    if not tests(gate, preset, "tests.full"):
+        gate.blocked("coverage.full", 10, "tests failed")
+    elif test_reason := gate.skip_reason("tests.full"):
+        gate.skipped("coverage.full", 10, f"tests skipped: {test_reason}")
+    else:
+        coverage(gate, preset, "coverage.full")
     run_analyzers(gate, preset, analyzers=("cppcheck", "clang-tidy", "iwyu"))

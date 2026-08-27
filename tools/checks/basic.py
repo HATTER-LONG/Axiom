@@ -8,9 +8,8 @@ from pathlib import Path
 from typing import Sequence
 
 from .model import Check, Gate
-from .project import FINDING_LIMIT, ROOT, relative, source_files
-
-ARCHITECTURE_RULES_SCHEMA = "axiom-architecture-rules/v1"
+from .profile import load as load_profile
+from .project import FINDING_LIMIT, relative, root, source_files
 
 
 def format_check(gate: Gate) -> bool:
@@ -32,7 +31,7 @@ def complexity_check(gate: Gate, files: Sequence[Path] | None = None) -> bool:
     paths = (
         [relative(file) for file in files]
         if files is not None
-        else [name for name in ("src", "apps", "tests") if (ROOT / name).is_dir()]
+        else [name for name in load_profile().source_roots if (root() / name).is_dir()]
     )
     return gate.command("complexity", 10, ["lizard", "-l", "cpp", "-C", "10", "-L", "80", *paths])
 
@@ -42,15 +41,16 @@ def architecture_check(gate: Gate) -> bool:
 
 
 def _architecture(check: Check) -> bool:
-    rules_path = ROOT / "quality" / "architecture_rules.json"
+    profile = load_profile()
+    rules_path = profile.architecture_rules
     if not rules_path.is_file():
         return check.finish(False, "architecture rules are missing", expected=relative(rules_path))
     rules = json.loads(rules_path.read_text(encoding="utf-8"))
-    if rules.get("schema") != ARCHITECTURE_RULES_SCHEMA:
+    if rules.get("schema") != profile.architecture_rules_schema:
         return check.finish(
             False,
             "unsupported architecture rules schema",
-            expected=ARCHITECTURE_RULES_SCHEMA,
+            expected=profile.architecture_rules_schema,
             actual=rules.get("schema"),
         )
     violations: list[dict[str, object]] = []

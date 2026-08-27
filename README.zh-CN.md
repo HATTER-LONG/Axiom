@@ -22,6 +22,27 @@ uv run --quiet python tools/check.py full
 uv run --quiet python tools/check.py hardening
 ```
 
+### 可复用的 check fixture
+
+[`tools/check_test`](tools/check_test/README.md) 是一个独立的 C++20/CMake
+demo 工程，用于验证 `check.py` 的公共契约。它拥有自己的源码、测试、CMake
+预设和架构策略，不链接 Axiom。可在不修改 Axiom 源码的情况下验证 Python
+报告解析器和拦截语义：
+
+```sh
+uv run --quiet python tools/check_test/verify.py \
+  --report build-quality/reports/check-test-integration.json
+uv run --quiet python tools/check.py --project-root tools/check_test fast
+```
+
+`--project-root` 会让命令执行、源码发现、构建产物和报告目录都相对于所选
+CMake 项目。各项目通过自己的 `quality/check_profile.json` 声明源码目录、
+预设名、构建目录、策略路径、缓存选项、报告 schema 与质量阈值。fixture
+刻意使用了不同于 Axiom 的命名。测试会先运行干净工程的 `full` 与
+`hardening` 基准，再为当前系统支持的每个工具编译隔离的真实错误源码，包括
+ASan 与 UBSan。最终报告会分别列出工具支持状态、成功检出的错误、干净基准、
+不支持的能力和意外失败。仅需无依赖的快速契约测试时使用 `--quick`。
+
 在门禁名称前或后添加 `-v` / `--verbose`，可将执行的命令、合并后的输出及退出码打印到 stderr；JSON 报告始终输出到 stdout。
 
 使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 还会对所有项目编译单元执行格式、cppcheck、clang-tidy 和 Include-What-You-Use（IWYU）检查。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
@@ -146,21 +167,8 @@ ctest --preset quality-fast
 
 质量检查脚本是推荐入口：它会将上述命令与架构、复杂度、格式及分析器检查组合起来。
 
-## 使用 Sanitizer 验证 demo
+## 门禁回归测试
 
-demo 包含用于验证已构建 `quality-hardening` 配置的预期失败路径：
-
-```sh
-uv run --quiet python tools/check.py hardening
-./build-quality/hardening/apps/demo/axiom_demo --memory-error
-```
-
-Windows 下运行 `build-quality/hardening/apps/demo/axiom_demo.exe --memory-error`。默认 demo 路径不会触发该问题。
-
-也可单独验证 UBSan：
-
-```sh
-./build-asan-ubsan/apps/demo/axiom_demo --ubsan-error
-```
-
-该命令会触发有符号整数溢出；Windows 下请为可执行文件追加 `.exe`。
+分析器与编排的故意失败场景统一放在 `tools/check_test`，不再污染生产 demo
+源码。先运行 `python tools/check_test/verify.py` 验证反向用例，再运行
+`python tools/check.py full` 验证真实工程的全绿基准。

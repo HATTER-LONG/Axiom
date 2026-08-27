@@ -4,18 +4,31 @@ from __future__ import annotations
 
 import json
 import subprocess
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
 from .console import show_command, show_output, show_result
 
-ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ROOT = Path(__file__).resolve().parents[2]
+_root: ContextVar[Path] = ContextVar("check_project_root", default=DEFAULT_ROOT)
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
 COMPILE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx"}
 EXCLUDED_DIRS = {".git", ".cache"}
 FINDING_LIMIT = 20
 LOG_LINE_LIMIT = 12
+
+
+def root() -> Path:
+    """Return the project root selected by the CLI or embedding application."""
+    return _root.get()
+
+
+def set_root(path: Path) -> None:
+    """Select a project root for the current process."""
+    _root.set(path.resolve())
+    compile_entries.cache_clear()
 
 
 def command_output(
@@ -25,7 +38,7 @@ def command_output(
         show_command(check_id, command)
     result = subprocess.run(
         command,
-        cwd=ROOT,
+        cwd=root(),
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -41,15 +54,19 @@ def command_output(
 
 def relative(path: Path) -> str:
     try:
-        return path.resolve().relative_to(ROOT).as_posix()
+        return path.resolve().relative_to(root()).as_posix()
     except ValueError:
         return str(path)
 
 
 def tracked_files() -> list[Path]:
+    # A reusable fixture/project is not necessarily the root of this repository.
+    # Do not let a parent repository's index leak paths into its scan.
+    if not (root() / ".git").exists():
+        return _walk_files()
     result = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-        cwd=ROOT,
+        cwd=root(),
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -59,25 +76,41 @@ def tracked_files() -> list[Path]:
     )
     if result.returncode == 0:
         return [
-            ROOT / item for item in result.stdout.splitlines() if item and (ROOT / item).is_file()
+            root() / item
+            for item in result.stdout.splitlines()
+            if item and (root() / item).is_file()
         ]
+    return _walk_files()
+
+
+def _walk_files() -> list[Path]:
     return [
         item
-        for item in ROOT.rglob("*")
+        for item in root().rglob("*")
         if item.is_file()
         and not any(
             part in EXCLUDED_DIRS or part.startswith("build")
-            for part in item.relative_to(ROOT).parts
+            for part in item.relative_to(root()).parts
         )
     ]
 
 
 def source_files() -> list[Path]:
-    return sorted(item for item in tracked_files() if item.suffix.lower() in SOURCE_SUFFIXES)
+    from .profile import load as load_profile
+
+    roots = tuple(Path(value).as_posix().rstrip("/") + "/" for value in load_profile().source_roots)
+    return sorted(
+        item
+        for item in tracked_files()
+        if item.suffix.lower() in SOURCE_SUFFIXES
+        and relative(item).startswith(roots)
+    )
 
 
 def build_directory(preset: str) -> Path:
-    return ROOT / "build-quality" / preset.removeprefix("quality-")
+    from .profile import load as load_profile
+
+    return load_profile().build_directory(preset)
 
 
 @lru_cache(maxsize=None)

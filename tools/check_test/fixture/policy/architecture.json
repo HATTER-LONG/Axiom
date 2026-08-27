@@ -1,0 +1,6 @@
+{
+  "schema": "check-test-architecture/v1",
+  "forbidden_include_prefixes": [
+    {"id": "library-must-not-depend-on-spec", "from": ["library/"], "forbidden": ["spec/"]}
+  ]
+}

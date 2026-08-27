@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
 from .console import show_command, show_error, show_output, show_result, show_skip
-from .project import LOG_LINE_LIMIT, ROOT
+from .project import LOG_LINE_LIMIT, root
 
 
 @dataclass
@@ -61,11 +61,13 @@ class Gate:
         mode: str,
         *,
         is_gate: bool,
+        report_schema: str,
         verbose: bool = False,
         options: Mapping[str, bool] | None = None,
     ) -> None:
         self.mode = mode
         self.is_gate = is_gate
+        self.report_schema = report_schema
         self.verbose = verbose
         self.options = dict(options or {})
         self.checks: list[Check] = []
@@ -87,7 +89,7 @@ class Gate:
             try:
                 result = subprocess.run(
                     command,
-                    cwd=ROOT,
+                    cwd=root(),
                     text=True,
                     encoding="utf-8",
                     errors="replace",
@@ -146,12 +148,11 @@ class Gate:
         maximum = sum(item.maximum for item in scored_checks)
         score = sum(item.maximum for item in self.checks if item.status == "pass")
         return {
-            "schema": "axiom-quality/v2",
+            "schema": self.report_schema,
             "mode": self.mode,
             "gate": self.is_gate,
-            "passed": bool(self.checks) and all(
-                item.status in ("pass", "skipped") for item in self.checks
-            ),
+            "passed": bool(self.checks)
+            and all(item.status in ("pass", "skipped") for item in self.checks),
             "score": {
                 "value": score,
                 "maximum": maximum,

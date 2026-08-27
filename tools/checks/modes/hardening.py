@@ -7,24 +7,26 @@ import platform
 from ..cmake import build, configure, tests
 from ..model import Gate
 from ..mutation import find_mull_tools, mutation_test
+from ..profile import load as load_profile
 
 
 def run(gate: Gate) -> None:
-    sanitizer_preset = "quality-hardening"
+    profile = load_profile()
+    sanitizer_preset = profile.preset("hardening")
     if not configure(gate, sanitizer_preset):
         gate.blocked("build", 20, "configure failed")
         gate.blocked("tests.asan-ubsan", 15, "configure failed")
-    elif (configure_reason := gate.skip_reason("configure")):
+    elif configure_reason := gate.skip_reason("configure"):
         gate.skipped("build", 20, f"configure skipped: {configure_reason}")
         gate.skipped("tests.asan-ubsan", 15, f"configure skipped: {configure_reason}")
     elif not build(gate, sanitizer_preset):
         gate.blocked("tests.asan-ubsan", 15, "build failed")
-    elif (build_reason := gate.skip_reason("build")):
+    elif build_reason := gate.skip_reason("build"):
         gate.skipped("tests.asan-ubsan", 15, f"build skipped: {build_reason}")
     else:
         tests(gate, sanitizer_preset, "tests.asan-ubsan")
 
-    mutation_preset = "quality-mutation"
+    mutation_preset = profile.preset("mutation")
     # Mull 0.34 publishes and tests Linux/macOS builds only.  In particular, its
     # JIT runner and LLVM frontend are not a native Windows toolchain, so do not
     # misreport this as an arbitrary missing executable on Windows.
@@ -52,7 +54,7 @@ def run(gate: Gate) -> None:
         "cmake",
         "--preset",
         mutation_preset,
-        f"-DAXIOM_MULL_IR_FRONTEND={frontend}",
+        f"-D{profile.mutation_frontend_option}={frontend}",
     ]
     if not gate.command("configure.mull", 10, configure_command):
         gate.blocked("build.mull", 20, "mutation configure failed")

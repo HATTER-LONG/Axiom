@@ -10,15 +10,13 @@ from pathlib import Path
 
 from .console import show_skip
 from .model import Check, Gate
+from .profile import load as load_profile
 from .project import FINDING_LIMIT, LOG_LINE_LIMIT, build_directory, command_output, relative
 
 MULL_RUNNER = re.compile(r"^mull-runner(?:-(\d+))?$")
 MUTATION_SCORE = re.compile(r"Mutation score:\s*([0-9]+(?:\.[0-9]+)?)%")
 MUTANT_COUNTS = re.compile(r"(?:Killed|Survived) mutants \((\d+)/(\d+)\)")
-SURVIVOR = re.compile(
-    r"^(.*?):(\d+):(\d+):\s+warning:\s+Survived:\s+(.*?)\s+\[([^]]+)\]$"
-)
-MUTATION_SCORE_THRESHOLD = 90
+SURVIVOR = re.compile(r"^(.*?):(\d+):(\d+):\s+warning:\s+Survived:\s+(.*?)\s+\[([^]]+)\]$")
 
 
 def find_mull_tools() -> tuple[str, str] | None:
@@ -62,24 +60,21 @@ def _run_mull(check: Check, gate: Gate, preset: str, runner: str | None) -> bool
             tool="matching mull-runner and mull-ir-frontend",
         )
 
-    executable = build_directory(preset) / "tests" / "axiom_core_test"
-    if os.name == "nt":
-        executable = executable.with_suffix(".exe")
-    if not executable.is_file():
-        return check.finish(
-            False, "test executable is unavailable", executable=relative(executable)
-        )
+    executable = _test_executable(gate, preset)
+    if executable is None:
+        return check.finish(False, "no instrumented test executable was found")
 
     report_directory = build_directory(preset) / "mull"
     report_directory.mkdir(parents=True, exist_ok=True)
     elements_report = report_directory / "mutations.json"
     elements_report.unlink(missing_ok=True)
+    threshold = load_profile().mutation_score_threshold
     command = [
         runner,
         "--strict",
         "--no-output",
         "--mutation-score-threshold",
-        str(MUTATION_SCORE_THRESHOLD),
+        str(threshold),
         "--reporters",
         "IDE",
         "--reporters",
@@ -143,10 +138,12 @@ def _run_mull(check: Check, gate: Gate, preset: str, runner: str | None) -> bool
         "executable": relative(executable),
         "report_directory": relative(report_directory),
         "elements_report": relative(elements_report),
-        "threshold": MUTATION_SCORE_THRESHOLD,
+        "threshold": threshold,
     }
-    score = elements_score if elements_score is not None else (
-        float(score_match.group(1)) if score_match else None
+    score = (
+        elements_score
+        if elements_score is not None
+        else (float(score_match.group(1)) if score_match else None)
     )
     if score is not None:
         detail["mutation_score"] = score
@@ -161,22 +158,45 @@ def _run_mull(check: Check, gate: Gate, preset: str, runner: str | None) -> bool
         detail["suppressed_survivor_count"] = max(0, len(survivors) - FINDING_LIMIT)
 
     no_mutants = any("No mutants found" in line for line in lines)
-    passed = (
-        result.returncode == 0
-        and score is not None
-        and score >= MUTATION_SCORE_THRESHOLD
-        and not no_mutants
-    )
+    passed = result.returncode == 0 and score is not None and score >= threshold and not no_mutants
     if not passed:
         detail["returncode"] = result.returncode
         detail["command"] = command
         detail["log_tail"] = lines[-LOG_LINE_LIMIT:]
     if no_mutants:
         summary = "no mutants found"
-    elif score is not None and score < MUTATION_SCORE_THRESHOLD:
+    elif score is not None and score < threshold:
         summary = "mutation score is below threshold"
     elif score is None:
         summary = "mutation result is unavailable"
     else:
         summary = "passed"
     return check.finish(passed, summary, **detail)
+
+
+def _test_executable(gate: Gate, preset: str) -> Path | None:
+    """Find a test binary through CTest instead of assuming a project-specific name."""
+    build_dir = build_directory(preset).resolve()
+    result = command_output(
+        ["ctest", "--preset", preset, "--show-only=json-v1"],
+        verbose=gate.verbose,
+        check_id="mull:enumerate",
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        tests = json.loads(result.stdout).get("tests", [])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    for test in tests:
+        command = test.get("command") or []
+        if not command:
+            continue
+        executable = Path(command[0]).resolve()
+        try:
+            executable.relative_to(build_dir)
+        except ValueError:
+            continue
+        if executable.is_file():
+            return executable
+    return None

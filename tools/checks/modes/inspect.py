@@ -11,7 +11,6 @@ from ..coverage import coverage as coverage_check
 from ..model import Gate
 from ..pipeline import run_analyzers
 
-PRESETS = ("quality-fast", "quality-full", "quality-hardening")
 INSPECTIONS = (
     "format",
     "complexity",
