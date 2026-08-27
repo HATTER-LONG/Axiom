@@ -1,3 +1,3 @@
 #include "answer.hpp"
 
-int answer() { return 42; }
+int answer() { return 6 * 7; }

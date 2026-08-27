@@ -16,6 +16,7 @@ from .project import (
     build_directory,
     command_output,
     relative,
+    root,
 )
 
 TIDY_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(\d+):\s+(warning|error):\s+(.*?)\s+\[([^]]+)\]$")
@@ -32,6 +33,12 @@ def iwyu_driver() -> str | None:
         if sibling.is_file():
             return str(sibling)
     return None
+
+
+def iwyu_mapping_file() -> Path | None:
+    """Return the optional repository-owned mapping used by IWYU."""
+    path = root() / "quality" / "iwyu.imp"
+    return path if path.is_file() else None
 
 
 def missing_analyzer_tool(name: str) -> str | None:
@@ -168,6 +175,9 @@ def _run_analyzer(
                 "-Xiwyu",
                 "--error=1",
             ]
+            mapping = iwyu_mapping_file()
+            if mapping is not None:
+                command.extend(("-Xiwyu", f"--mapping_file={mapping}"))
         result = command_output(command, verbose=verbose, check_id=f"{name}:{relative(unit)}")
         all_output.extend(result.stdout.splitlines())
         exit_codes.append(result.returncode)

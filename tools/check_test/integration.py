@@ -15,6 +15,8 @@ from typing import Sequence
 
 from support import FIXTURE, TOOLS
 
+from checks.mutation import find_mull_tools
+
 CASES = Path(__file__).resolve().parent / "cases"
 
 
@@ -71,6 +73,13 @@ def _version(name: str, path: str, verbose: bool) -> str | None:
 
 
 def probe_tools(verbose: bool = False) -> dict[str, Tool]:
+    system = platform.system()
+    mull_tools = None if system == "Windows" else find_mull_tools()
+    mull_paths = (
+        {}
+        if mull_tools is None
+        else {"mull-runner": mull_tools[0], "mull-ir-frontend": mull_tools[1]}
+    )
     names = (
         "cmake",
         "ctest",
@@ -90,7 +99,7 @@ def probe_tools(verbose: bool = False) -> dict[str, Tool]:
     tools: dict[str, Tool] = {}
     total = len(names)
     for index, name in enumerate(names, start=1):
-        path = shutil.which(name)
+        path = mull_paths.get(name) or shutil.which(name)
         tool = Tool(
             name=name,
             supported=path is not None,
@@ -102,7 +111,7 @@ def probe_tools(verbose: bool = False) -> dict[str, Tool]:
             sibling = Path(tools["include-what-you-use"].path).with_name("iwyu_tool.py")
             if sibling.is_file():
                 tool = Tool("iwyu_tool.py", True, str(sibling), None)
-        if platform.system() == "Windows" and name in ("mull-runner", "mull-ir-frontend"):
+        if system == "Windows" and name in ("mull-runner", "mull-ir-frontend"):
             tool.supported = False
             tool.reason = "Mull is unsupported on native Windows"
         tools[name] = tool

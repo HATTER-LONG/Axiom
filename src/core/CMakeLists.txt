@@ -1,4 +1,4 @@
-add_library(axiom_core STATIC src/core.cpp src/quality.cpp)
+add_library(axiom_core STATIC src/core.cpp)
 add_library(Axiom::Core ALIAS axiom_core)
 
 axiom_configure_language_diagnostics(axiom_core)

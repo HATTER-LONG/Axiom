@@ -37,6 +37,25 @@ class AnalyzerInterceptionTests(unittest.TestCase):
             self.assertEqual(failed.checks[0].status, "fail")
             self.assertEqual(failed.checks[0].detail["returncodes"], [2])
 
+    def test_iwyu_uses_repository_mapping_when_present(self) -> None:
+        with isolated_project() as project:
+            mapping = project / "quality" / "iwyu.imp"
+            mapping.write_text("[]\n", encoding="utf-8")
+            unit = project / "library" / "answer.cpp"
+            value = gate()
+            with patch("checks.analyzers.missing_analyzer_tool", return_value=None), patch(
+                "checks.analyzers.iwyu_driver", return_value="iwyu_tool.py"
+            ), patch("checks.analyzers.command_output", return_value=completed()) as output:
+                self.assertTrue(
+                    value.custom(
+                        "iwyu",
+                        10,
+                        lambda check: _run_analyzer(check, "iwyu", [unit], "fixture-fast", False),
+                    )
+                )
+            command = output.call_args.args[0]
+            self.assertIn(f"--mapping_file={mapping}", command)
+
 
 class CoverageInterceptionTests(unittest.TestCase):
     def _prepared(self, project: Path) -> tuple[Path, Path]:
@@ -174,6 +193,54 @@ class MutationInterceptionTests(unittest.TestCase):
                     value = gate()
                     self.assertEqual(mutation_test(value, "fixture-mutation", runner="mull"), expected)
                     self.assertEqual(value.checks[0].summary, summary)
+
+    def test_integral_score_threshold_is_passed_without_decimal_suffix(self) -> None:
+        with isolated_project() as project:
+            executable = project / "out" / "mutation" / "fixture_test"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            with patch("checks.mutation._test_executable", return_value=executable), patch(
+                "checks.mutation.command_output", return_value=completed(0, "Mutation score: 95%")
+            ) as command:
+                value = gate()
+                self.assertTrue(mutation_test(value, "fixture-mutation", runner="mull"))
+
+            arguments = command.call_args.args[0]
+            timeout_position = arguments.index("--minimum-timeout")
+            self.assertEqual(arguments[timeout_position + 1], "250")
+            threshold_position = arguments.index("--mutation-score-threshold")
+            self.assertEqual(arguments[threshold_position + 1], "90")
+
+    def test_elements_score_with_timeout_takes_precedence_over_cli_score(self) -> None:
+        with isolated_project() as project:
+            executable = project / "out" / "mutation" / "fixture_test"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            report = project / "out" / "mutation" / "mull" / "mutations.json"
+            report.parent.mkdir(parents=True)
+
+            def write_elements_report(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+                report.write_text(
+                    json.dumps(
+                        {
+                            "mutationScore": 89.0,
+                            "files": {
+                                "library/answer.cpp": {"mutants": [{"status": "Timeout"}]}
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return completed(0, "Mutation score: 91%")
+
+            with patch("checks.mutation._test_executable", return_value=executable), patch(
+                "checks.mutation.command_output", side_effect=write_elements_report
+            ):
+                value = gate()
+                self.assertFalse(mutation_test(value, "fixture-mutation", runner="mull"))
+
+            self.assertEqual(value.checks[0].summary, "mutation score is below threshold")
+            self.assertEqual(value.checks[0].detail["mutation_score"], 89.0)
 
 
 if __name__ == "__main__":

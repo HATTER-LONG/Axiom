@@ -81,6 +81,24 @@ The authoritative definitions of checks, thresholds, and tool parameters live in
 
 Do not duplicate those details in this document.
 
+### IWYU Findings
+
+Treat an IWYU finding as a diagnosis, not an automatic edit. First determine whether
+the reported include is required by the file's public contract or direct use, inspect
+the affected call sites, and prefer a minimal real include fix when the finding is
+valid.
+
+If the finding is a confirmed IWYU false positive, a narrowly scoped repository-owned
+mapping may be added or updated at `quality/iwyu.imp`. The mapping must be wired into
+the IWYU invocation when first introduced, document the concrete header relationship
+or tool limitation it models, and suppress only that relationship. Never use broad
+mappings, global suppression, skipped checks, or removed diagnostics to hide a real
+include dependency.
+
+After either an include change or mapping change, run the applicable quality gate and
+confirm that the affected translation units still compile and that the IWYU finding is
+resolved without introducing a new architectural dependency.
+
 ## 5. Testing Principles
 
 - Every new behavior must have corresponding tests.
@@ -121,6 +139,9 @@ Cleanup / Review
    ↓
 Hardening
 ```
+
+When the user explicitly requests the Sol planning/review and Terra delivery loop,
+follow the repository-local [`agile-delivery` skill](skills/agile-delivery/SKILL.md).
 
 Different agents should preferably operate with separate, clean contexts.
 

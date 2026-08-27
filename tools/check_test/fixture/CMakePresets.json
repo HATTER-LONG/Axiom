@@ -15,6 +15,7 @@
   "testPresets": [
     {"name":"fixture-fast","configurePreset":"fixture-fast","output":{"outputOnFailure":true}},
     {"name":"fixture-full","configurePreset":"fixture-full","output":{"outputOnFailure":true}},
-    {"name":"fixture-hardening","configurePreset":"fixture-hardening","output":{"outputOnFailure":true}}
+    {"name":"fixture-hardening","configurePreset":"fixture-hardening","output":{"outputOnFailure":true}},
+    {"name":"fixture-mutation","configurePreset":"fixture-mutation","output":{"outputOnFailure":true}}
   ]
 }

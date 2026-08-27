@@ -1,5 +1,8 @@
 #include <axiom/core/core.hpp>
 
-#include <string_view>
+#include <cstdlib>
+#include <string>
 
-int main() { return std::string_view{axiom::core::frameworkName()} == "Axiom" ? 0 : 1; }
+int main() {
+    return std::string{axiom::core::frameworkName()} == "Axiom" ? EXIT_SUCCESS : EXIT_FAILURE;
+}

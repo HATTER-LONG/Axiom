@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(check_test_fixture LANGUAGES CXX)
 
 set(FIXTURE_SANITIZERS "" CACHE STRING "Comma-separated sanitizer list")
+set(FIXTURE_MULL_FRONTEND "" CACHE FILEPATH "Path to the Mull LLVM frontend plugin")
 option(FIXTURE_COVERAGE "Enable LLVM source coverage" OFF)
 
 add_library(answer library/answer.cpp)
@@ -28,6 +29,9 @@ foreach(fixture_target IN LISTS fixture_targets)
   if(FIXTURE_SANITIZERS)
     target_compile_options(${fixture_target} PRIVATE -fsanitize=${FIXTURE_SANITIZERS} -fno-omit-frame-pointer)
     target_link_options(${fixture_target} PRIVATE -fsanitize=${FIXTURE_SANITIZERS})
+  endif()
+  if(FIXTURE_MULL_FRONTEND)
+    target_compile_options(${fixture_target} PRIVATE "-fpass-plugin=${FIXTURE_MULL_FRONTEND}" -g -grecord-command-line)
   endif()
 endforeach()
 
