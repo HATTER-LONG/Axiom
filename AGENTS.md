@@ -77,9 +77,19 @@ Before merging or declaring the overall task complete, run:
 uv run --quiet python tools/check.py full
 ```
 
-The authoritative definitions of checks, thresholds, and tool parameters live in `tools/check.py` and the configuration under `quality/`.
+The authoritative definitions of checks, thresholds, and tool parameters live in
+`tools/check.py` and the configuration under `quality/`. Treat the quality
+runner as a black-box contract during normal feature work: run the required
+gate and use its JSON report to decide the next repair. Do not proactively read
+`tools/check.py`, `tools/checks/`, `tools/check_test/`, or `quality/` merely to
+learn how a gate works or to predict whether it will pass.
 
-Do not duplicate those details in this document.
+Read the implementation only when it is necessary to (1) change the quality
+system or its policy, (2) diagnose a gate failure that the JSON report and
+relevant compiler/test output do not make actionable, or (3) investigate
+concrete evidence of a defect in the check itself. In those cases, inspect only
+the files needed for that diagnosis. Do not duplicate quality-system details in
+this document.
 
 ### IWYU Findings
 

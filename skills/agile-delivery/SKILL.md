@@ -14,6 +14,17 @@ Use it for a focused implementation request that benefits from independent plann
 task-scoped development, hardening, and review. Treat the repository's `AGENTS.md`
 as the source of truth for architecture, tests, and quality gates.
 
+## Quality-gate interaction
+
+For normal implementation work, treat the repository quality runner as a
+black-box contract. Task and hardening roles run the required gate and use its
+JSON report plus relevant compiler/test output to repair the product code. Do
+not assign or perform exploratory reading of `tools/check.py`, `tools/checks/`,
+`tools/check_test/`, or `quality/` just to understand a gate or predict a pass.
+Read those files only when the assigned work changes the quality system or
+policy, a failed report is not actionable, or there is concrete evidence that a
+check is defective; keep that inspection scoped to the diagnosis.
+
 ## Runtime selection
 
 Inspect the available runtime capabilities before delegation.
