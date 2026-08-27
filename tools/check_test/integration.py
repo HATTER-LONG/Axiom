@@ -37,10 +37,21 @@ class Result:
     elapsed_ms: int
 
 
-def _version(path: str) -> str | None:
+def _log(message: str) -> None:
+    print(message, flush=True)
+
+
+def _step(index: int, total: int, name: str, message: str) -> None:
+    _log(f"  [{index:>2}/{total}] {name:<18} {message}")
+
+
+def _version(name: str, path: str, verbose: bool) -> str | None:
+    command = [path, "--version"]
+    if verbose:
+        _log(f"  [probe:{name}] $ {subprocess.list2cmdline(command)}")
     try:
         result = subprocess.run(
-            [path, "--version"],
+            command,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -49,12 +60,17 @@ def _version(path: str) -> str | None:
             check=False,
             timeout=10,
         )
-        return next((line.strip() for line in result.stdout.splitlines() if line.strip()), None)
-    except (OSError, subprocess.TimeoutExpired):
+        version = next((line.strip() for line in result.stdout.splitlines() if line.strip()), None)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        if verbose:
+            _log(f"  [probe:{name}] ERROR: {error}")
         return None
+    if verbose:
+        _log(f"  [probe:{name}] exit {result.returncode}: {version or 'no output'}")
+    return version
 
 
-def probe_tools() -> dict[str, Tool]:
+def probe_tools(verbose: bool = False) -> dict[str, Tool]:
     names = (
         "cmake",
         "ctest",
@@ -72,23 +88,27 @@ def probe_tools() -> dict[str, Tool]:
         "mull-ir-frontend",
     )
     tools: dict[str, Tool] = {}
-    for name in names:
+    total = len(names)
+    for index, name in enumerate(names, start=1):
         path = shutil.which(name)
-        tools[name] = Tool(
+        tool = Tool(
             name=name,
             supported=path is not None,
             path=path,
-            version=_version(path) if path else None,
+            version=_version(name, path, verbose) if path else None,
             reason=None if path else "not found on PATH",
         )
-    if not tools["iwyu_tool.py"].supported and tools["include-what-you-use"].path:
-        sibling = Path(tools["include-what-you-use"].path).with_name("iwyu_tool.py")
-        if sibling.is_file():
-            tools["iwyu_tool.py"] = Tool("iwyu_tool.py", True, str(sibling), None)
-    if platform.system() == "Windows":
-        for name in ("mull-runner", "mull-ir-frontend"):
-            tools[name].supported = False
-            tools[name].reason = "Mull is unsupported on native Windows"
+        if not tool.supported and name == "iwyu_tool.py" and tools["include-what-you-use"].path:
+            sibling = Path(tools["include-what-you-use"].path).with_name("iwyu_tool.py")
+            if sibling.is_file():
+                tool = Tool("iwyu_tool.py", True, str(sibling), None)
+        if platform.system() == "Windows" and name in ("mull-runner", "mull-ir-frontend"):
+            tool.supported = False
+            tool.reason = "Mull is unsupported on native Windows"
+        tools[name] = tool
+        mark = "SUPPORTED" if tool.supported else "UNSUPPORTED"
+        detail = tool.version or tool.reason or tool.path or ""
+        _log(f"  [{index:>2}/{total}] {name:<22} {mark:<11} {detail}")
     return tools
 
 
@@ -98,10 +118,16 @@ def _capability(tools: dict[str, Tool], *required: str) -> tuple[bool, str]:
 
 
 def _run_check(
-    project: Path, *arguments: str
+    project: Path, *arguments: str, verbose: bool = False
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, object] | None]:
+    command = [sys.executable, str(TOOLS / "check.py"), "--project-root", str(project)]
+    if verbose:
+        command.append("-v")
+    command.extend(arguments)
+    if verbose:
+        _log(f"    $ {subprocess.list2cmdline(command)}")
     result = subprocess.run(
-        [sys.executable, str(TOOLS / "check.py"), "--project-root", str(project), *arguments],
+        command,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -113,6 +139,13 @@ def _run_check(
         report = json.loads(result.stdout)
     except (TypeError, ValueError, json.JSONDecodeError):
         report = None
+    if verbose:
+        _log(f"    exit {result.returncode}")
+        if report is None and result.stdout.strip():
+            _log(f"    stdout: {result.stdout.strip()[:1000]}")
+        if result.stderr.strip():
+            for line in result.stderr.strip().splitlines()[-50:]:
+                _log(f"    | {line}")
     return result, report
 
 
@@ -134,10 +167,21 @@ def _negative(
     arguments: Sequence[str],
     check_id: str,
     evidence: str | None = None,
+    *,
+    index: int,
+    total: int,
+    verbose: bool,
 ) -> Result:
     supported, reason = _capability(tools, *required)
     if not supported:
+        _step(index, total, name, f"UNSUPPORTED: {reason}")
         return Result(name, "negative", "UNSUPPORTED", check_id, reason, 0)
+    _step(
+        index,
+        total,
+        name,
+        f"running check.py {' '.join(arguments)}; expect '{check_id}' to fail",
+    )
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix=f"check-test-{name}-") as directory:
         project = Path(directory) / "project"
@@ -145,7 +189,7 @@ def _negative(
             FIXTURE, project, ignore=shutil.ignore_patterns("out", "build-quality", "__pycache__")
         )
         _copy_case(project, name, destination)
-        process, report = _run_check(project, *arguments)
+        process, report = _run_check(project, *arguments, verbose=verbose)
         item = _check(report, check_id)
         evidence_found = True
         if evidence is not None:
@@ -161,35 +205,52 @@ def _negative(
         and item.get("status") == "fail"
         and evidence_found
     ):
-        return Result(
+        result = Result(
             name, "negative", "DETECTED", check_id, str(item.get("summary", "failed")), elapsed
         )
-    detail = (
-        process.stderr.strip().splitlines()[-1]
-        if process.stderr.strip()
-        else "expected failure was not reported"
-    )
+        _step(index, total, name, f"{result.status:<11} {result.summary} ({elapsed} ms)")
+        return result
+    stderr_lines = [
+        line
+        for line in process.stderr.strip().splitlines()
+        if line and not line.startswith("[check:")
+    ]
+    detail = stderr_lines[-1] if stderr_lines else "expected failure was not reported"
     if item is not None:
         detail = f"status={item.get('status')}: {item.get('summary')}"
     if not evidence_found:
         detail = f"failure lacked expected runtime evidence: {evidence}"
-    return Result(name, "negative", "FAIL", check_id, detail, elapsed)
+    result = Result(name, "negative", "FAIL", check_id, detail, elapsed)
+    _step(index, total, name, f"{result.status:<11} {result.summary} ({elapsed} ms)")
+    return result
 
 
-def _baseline(tools: dict[str, Tool], name: str, arguments: Sequence[str]) -> Result:
+def _baseline(
+    tools: dict[str, Tool],
+    name: str,
+    arguments: Sequence[str],
+    *,
+    index: int,
+    total: int,
+    verbose: bool,
+) -> Result:
     supported, reason = _capability(tools, "cmake", "ctest", "ninja", "clang++")
     if not supported:
+        _step(index, total, name, f"UNSUPPORTED: {reason}")
         return Result(name, "baseline", "UNSUPPORTED", name, reason, 0)
+    _step(index, total, name, f"running check.py {' '.join(arguments)}; expect a clean pass")
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix=f"check-test-{name}-") as directory:
         project = Path(directory) / "project"
         shutil.copytree(
             FIXTURE, project, ignore=shutil.ignore_patterns("out", "build-quality", "__pycache__")
         )
-        process, report = _run_check(project, *arguments)
+        process, report = _run_check(project, *arguments, verbose=verbose)
     elapsed = round((time.monotonic() - started) * 1000)
     if process.returncode == 0 and report is not None and report.get("passed") is True:
-        return Result(name, "baseline", "PASS", name, "clean project passed", elapsed)
+        result = Result(name, "baseline", "PASS", name, "clean project passed", elapsed)
+        _step(index, total, name, f"{result.status:<11} {result.summary} ({elapsed} ms)")
+        return result
     failing = (
         []
         if report is None
@@ -200,19 +261,29 @@ def _baseline(tools: dict[str, Tool], name: str, arguments: Sequence[str]) -> Re
             if item.get("status") not in ("pass", "skipped")
         ]
     )
+    stderr_lines = [
+        line
+        for line in process.stderr.strip().splitlines()
+        if line and not line.startswith("[check:")
+    ]
     if failing:
         detail = ", ".join(failing)
-    elif process.stderr.strip():
-        detail = f"exit={process.returncode}: {process.stderr.strip().splitlines()[-1]}"
+    elif stderr_lines:
+        detail = f"exit={process.returncode}: {stderr_lines[-1]}"
     elif process.stdout.strip():
         detail = f"exit={process.returncode}: invalid JSON: {process.stdout.strip()[-160:]}"
     else:
         detail = f"exit={process.returncode}: no output or valid report"
-    return Result(name, "baseline", "FAIL", name, detail, elapsed)
+    result = Result(name, "baseline", "FAIL", name, detail, elapsed)
+    _step(index, total, name, f"{result.status:<11} {result.summary} ({elapsed} ms)")
+    return result
 
 
-def run(report_path: Path | None = None) -> tuple[bool, dict[str, object]]:
-    tools = probe_tools()
+def run(report_path: Path | None = None, verbose: bool = False) -> tuple[bool, dict[str, object]]:
+    _log("=== SYSTEM TOOL STATUS ===")
+    tools = probe_tools(verbose)
+    _log("")
+    _log("=== REAL PROJECT VERIFICATION ===")
     build = ("cmake", "ctest", "ninja", "clang++")
     cases = (
         (
@@ -282,11 +353,15 @@ def run(report_path: Path | None = None) -> tuple[bool, dict[str, object]]:
             "runtime error",
         ),
     )
+    total = 2 + len(cases)
     results = [
-        _baseline(tools, "clean-full", ("full",)),
-        _baseline(tools, "clean-hardening", ("hardening",)),
+        _baseline(tools, "clean-full", ("full",), index=1, total=total, verbose=verbose),
+        _baseline(tools, "clean-hardening", ("hardening",), index=2, total=total, verbose=verbose),
     ]
-    results.extend(_negative(tools, *case) for case in cases)
+    results.extend(
+        _negative(tools, *case, index=offset + 3, total=total, verbose=verbose)
+        for offset, case in enumerate(cases)
+    )
     failed = [result for result in results if result.status == "FAIL"]
     payload: dict[str, object] = {
         "schema": "check-test-integration/v1",
@@ -315,16 +390,6 @@ def run(report_path: Path | None = None) -> tuple[bool, dict[str, object]]:
 
 
 def print_report(payload: dict[str, object]) -> None:
-    print("\n=== SYSTEM TOOL STATUS ===")
-    for tool in payload["tools"]:
-        mark = "SUPPORTED" if tool["supported"] else "UNSUPPORTED"
-        detail = tool["version"] or tool["reason"] or tool["path"] or ""
-        print(f"{mark:11} {tool['name']:<24} {detail}")
-    print("\n=== REAL PROJECT VERIFICATION ===")
-    for result in payload["results"]:
-        print(
-            f"{result['status']:11} {result['name']:<18} {result['check']:<18} {result['summary']} ({result['elapsed_ms']} ms)"
-        )
     summary = payload["summary"]
     print("\n=== FINAL RESULT ===")
     print(

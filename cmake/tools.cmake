@@ -57,10 +57,10 @@ function (axiom_configure_static_analyzers target_name)
     endif ()
     if ("cppcheck" IN_LIST AXIOM_STATIC_ANALYZERS)
         find_program(AXIOM_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)
-        # CMake otherwise prints cppcheck diagnostics but lets compilation succeed.
-        # A quality gate must propagate any analyzer finding as a build failure.
-        set_property(TARGET "${target_name}" PROPERTY CXX_CPPCHECK
-                                                   "${AXIOM_CPPCHECK_EXECUTABLE};--error-exitcode=1")
+        # CMake otherwise prints cppcheck diagnostics but lets compilation succeed. A quality gate
+        # must propagate any analyzer finding as a build failure.
+        set_property(TARGET "${target_name}"
+                     PROPERTY CXX_CPPCHECK "${AXIOM_CPPCHECK_EXECUTABLE};--error-exitcode=1")
     endif ()
 endfunction ()
 
@@ -107,8 +107,8 @@ function (axiom_configure_coverage target_name)
     if (NOT AXIOM_COVERAGE)
         return()
     endif ()
-    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang"
-        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL
+                                                     "MSVC")
         message(FATAL_ERROR "AXIOM_COVERAGE requires Clang with the GNU driver frontend")
     endif ()
 
@@ -124,17 +124,16 @@ function (axiom_configure_mutation_testing target_name)
     if (NOT AXIOM_MUTATION_TESTING)
         return()
     endif ()
-    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang"
-        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL
+                                                     "MSVC")
         message(FATAL_ERROR "AXIOM_MUTATION_TESTING requires Clang with the GNU driver frontend")
     endif ()
     if (NOT AXIOM_MULL_IR_FRONTEND OR NOT EXISTS "${AXIOM_MULL_IR_FRONTEND}")
         message(FATAL_ERROR "AXIOM_MULL_IR_FRONTEND must name an installed Mull frontend plugin")
     endif ()
 
-    target_compile_options(
-        "${target_name}" PRIVATE "-fpass-plugin=${AXIOM_MULL_IR_FRONTEND}" -g
-                                 -grecord-command-line)
+    target_compile_options("${target_name}" PRIVATE "-fpass-plugin=${AXIOM_MULL_IR_FRONTEND}" -g
+                                                    -grecord-command-line)
 endfunction ()
 
 #[[Configure project-level optional developer tools and integrations.]]

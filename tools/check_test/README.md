@@ -18,6 +18,8 @@ The default run has three clearly separated sections:
 
 Use `--quick` for the sub-second mocked contract suite, or
 `--integration-only` when only the compiler/toolchain verification is needed.
+Add `-v` to print every executed command, its output, and per-step details,
+the same way `check.py -v` does.
 
 The real negative sources under `cases/` cover architecture, formatting,
 complexity, cppcheck, clang-tidy, IWYU, failing tests, low coverage, ASan
