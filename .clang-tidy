@@ -1,6 +1,8 @@
 #https://clang.llvm.org/extra/clang-tidy/checks/list.html
 Checks: "-*,clang-diagnostic-*,llvm-*,misc-*,google-*,
   -llvm-header-guard,
+  -llvm-prefer-static-over-anonymous-namespace,
+  -llvm-prefer-*,
   -misc-include-cleaner,
   -misc-non-private-member-variables-in-classes,
   -misc-use-anonymous-namespace,
