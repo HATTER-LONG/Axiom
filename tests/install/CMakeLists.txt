@@ -7,6 +7,6 @@ include(CTest)
 find_package(Axiom CONFIG REQUIRED)
 
 add_executable(axiom_install_consumer main.cpp)
-target_link_libraries(axiom_install_consumer PRIVATE Axiom::Core)
+target_link_libraries(axiom_install_consumer PRIVATE Axiom::Core Axiom::Runtime)
 
 add_test(NAME axiom.install.consumer COMMAND axiom_install_consumer)

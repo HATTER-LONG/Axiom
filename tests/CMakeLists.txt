@@ -12,3 +12,24 @@ if (AXIOM_COVERAGE)
     set_tests_properties(axiom.core PROPERTIES ENVIRONMENT "LLVM_PROFILE_FILE=axiom-%p-%m.profraw")
 endif ()
 axiom_configure_sanitizer_runtime(axiom_core_test)
+
+include(${PROJECT_SOURCE_DIR}/cmake/CPM.cmake)
+CPMAddPackage(NAME googletest GIT_REPOSITORY https://github.com/google/googletest.git GIT_TAG
+              v1.18.0 OPTIONS "EXCLUDE_FROM_ALL ON" "SYSTEM ON")
+
+add_executable(axiom_runtime_test runtime_test.cpp)
+axiom_configure_language_diagnostics(axiom_runtime_test)
+axiom_configure_static_analyzers(axiom_runtime_test)
+axiom_configure_sanitizers(axiom_runtime_test)
+axiom_configure_coverage(axiom_runtime_test)
+axiom_configure_mutation_testing(axiom_runtime_test)
+target_compile_features(axiom_runtime_test PRIVATE cxx_std_20)
+target_include_directories(axiom_runtime_test PRIVATE ${PROJECT_SOURCE_DIR}/src/runtime/src)
+target_link_libraries(axiom_runtime_test PRIVATE Axiom::Runtime GTest::gtest)
+
+add_test(NAME axiom.runtime COMMAND axiom_runtime_test)
+if (AXIOM_COVERAGE)
+    set_tests_properties(axiom.runtime PROPERTIES ENVIRONMENT
+                                                  "LLVM_PROFILE_FILE=axiom-%p-%m.profraw")
+endif ()
+axiom_configure_sanitizer_runtime(axiom_runtime_test)

@@ -1,5 +1,9 @@
 [
   # IWYU 0.26 attributes std::char_traits used by std::string_view comparison
   # to <string>; <string_view> is the specific public header that provides it.
-  { "symbol": ["std::char_traits<char>", "full", "<string_view>", "public"] }
+  { "symbol": ["std::char_traits<char>", "full", "<string_view>", "public"] },
+  # GCC 16's <variant> contains a forward declaration of std::tuple, so IWYU
+  # attributes forward-decl uses in type-identity checks (e.g. std::is_same_v)
+  # to <variant>; <tuple> is the specific public header that provides it.
+  { "symbol": ["std::tuple", "full", "<tuple>", "public"] }
 ]

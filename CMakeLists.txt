@@ -37,6 +37,7 @@ include(cmake/tools.cmake)
 axiom_configure_tools()
 
 add_subdirectory(src/core)
+add_subdirectory(src/runtime)
 
 if (AXIOM_BUILD_DEMO)
     add_subdirectory(apps/demo)
@@ -68,12 +69,13 @@ if (PROJECT_IS_TOP_LEVEL)
 endif ()
 
 install(
-    TARGETS axiom_core
+    TARGETS axiom_core axiom_runtime
     EXPORT AxiomTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY src/core/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY src/runtime/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 configure_package_config_file(cmake/AxiomConfig.cmake.in "${PROJECT_BINARY_DIR}/AxiomConfig.cmake"
                               INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Axiom")
 write_basic_package_version_file(

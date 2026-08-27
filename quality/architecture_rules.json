@@ -5,6 +5,16 @@
       "id": "core-must-not-depend-on-app-or-test",
       "from": ["src/core/"],
       "forbidden": ["apps/", "tests/"]
+    },
+    {
+      "id": "runtime-must-not-depend-on-app-or-test",
+      "from": ["src/runtime/"],
+      "forbidden": ["apps/", "tests/"]
+    },
+    {
+      "id": "runtime-must-not-depend-on-other-modules",
+      "from": ["src/runtime/"],
+      "forbidden": ["src/core/"]
     }
   ]
 }
