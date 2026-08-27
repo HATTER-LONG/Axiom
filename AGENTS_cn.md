@@ -85,7 +85,9 @@ uv run --quiet python tools/check.py full
 
 将 IWYU finding 视为诊断信息，而不是自动修改指令。先判断报告的 include 是否由文件的 Public API、直接使用或调用点真正需要；若 finding 有效，优先进行最小且真实的 include 修复。
 
-若 finding 已被确认是 IWYU 误报，可以在 `quality/iwyu.imp` 新增或更新一个范围严格受限、由仓库维护的 mapping。首次引入时必须将该 mapping 接入 IWYU 调用，记录它所表达的具体头文件关系或工具限制，并且只抑制这一关系。不得用宽泛 mapping、全局抑制、跳过检查或移除诊断来隐藏真实 include 依赖。
+优先移除已证实冗余的 include。只有在确认文件直接使用的符号没有被有意的直接 include 提供其公开声明时，才新增 include。当符号已由更具体的公开头文件提供时，不得仅因 IWYU 建议就添加更宽泛的标准库头文件。
+
+若 finding 已被确认是 IWYU 误报，可以在 `quality/iwyu.imp` 新增或更新一个范围严格受限、由仓库维护的 mapping。首次引入时必须将该 mapping 接入 IWYU 调用，记录它所表达的具体头文件关系或工具限制，并且只抑制这一关系。例如，应将错误归属的标准库符号映射至其具体的公开头文件，而不是添加无关的聚合头文件。不得用宽泛 mapping、全局抑制、跳过检查或移除诊断来隐藏真实 include 依赖。
 
 无论修改 include 还是 mapping，都必须运行适用的质量门禁，并确认受影响的翻译单元仍能编译，且 finding 被解决而没有引入新的架构依赖。
 

@@ -85,15 +85,19 @@ Do not duplicate those details in this document.
 
 Treat an IWYU finding as a diagnosis, not an automatic edit. First determine whether
 the reported include is required by the file's public contract or direct use, inspect
-the affected call sites, and prefer a minimal real include fix when the finding is
-valid.
+the affected call sites, and prefer removing a demonstrably redundant include. Add
+an include only after confirming that the file directly uses a symbol whose public
+declaration is not already provided by an intentional direct include. Do not add a
+broader standard-library header merely because IWYU suggests it when the symbol is
+provided by a more specific public header.
 
 If the finding is a confirmed IWYU false positive, a narrowly scoped repository-owned
 mapping may be added or updated at `quality/iwyu.imp`. The mapping must be wired into
 the IWYU invocation when first introduced, document the concrete header relationship
-or tool limitation it models, and suppress only that relationship. Never use broad
-mappings, global suppression, skipped checks, or removed diagnostics to hide a real
-include dependency.
+or tool limitation it models, and suppress only that relationship. For example, map
+an incorrectly attributed standard-library symbol to its specific public header rather
+than adding an unrelated umbrella header. Never use broad mappings, global
+suppression, skipped checks, or removed diagnostics to hide a real include dependency.
 
 After either an include change or mapping change, run the applicable quality gate and
 confirm that the affected translation units still compile and that the IWYU finding is
