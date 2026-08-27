@@ -11,6 +11,15 @@ CPMAddPackage(
     VERSION 1.18.0
     OPTIONS ${axiom_gtest_options})
 
+# Clang records sanitizer configuration in every object file.  Compile the
+# GoogleTest libraries with the same configuration as the test binary so the
+# Windows linker does not reject their otherwise incompatible annotations.
+if (AXIOM_SANITIZERS)
+    foreach (axiom_gtest_target gtest gtest_main)
+        axiom_configure_sanitizers(${axiom_gtest_target})
+    endforeach ()
+endif ()
+
 add_executable(axiom_core_test core_test.cpp)
 # Tests compile with warnings-as-errors as well.  Do not apply
 # -fno-ms-compatibility here: GoogleTest's Windows portability layer depends on

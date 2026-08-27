@@ -59,7 +59,7 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build-quality/hardening",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_COMPILER": "clang++",
         "AXIOM_BUILD_TESTS": "ON",
         "BUILD_TESTING": "ON",

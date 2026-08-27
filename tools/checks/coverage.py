@@ -6,7 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
-from .console import show_error
+from .console import show_skip
 from .model import Check, Gate
 from .project import LOG_LINE_LIMIT, build_directory, command_output, relative
 
@@ -29,8 +29,9 @@ def _coverage(check: Check, gate: Gate, preset: str) -> bool:
     available = {"llvm-profdata": profdata_tool, "llvm-cov": coverage_tool}
     missing = [name for name, path in available.items() if path is None]
     if missing:
-        show_error(check.id, f"required system tools were not found: {', '.join(missing)}")
-        return check.finish(False, "required system tools are unavailable", tool=missing)
+        reason = f"required system tools were not found: {', '.join(missing)}; skipped"
+        show_skip(check.id, reason)
+        return check.skip(reason, tool=missing)
 
     build_dir = build_directory(preset)
     if not _cache_option_enabled(build_dir / "CMakeCache.txt", "AXIOM_COVERAGE"):

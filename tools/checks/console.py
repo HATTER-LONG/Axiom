@@ -22,3 +22,7 @@ def show_result(check_id: str, returncode: int) -> None:
 
 def show_error(check_id: str, message: str) -> None:
     print(f"[check:{check_id}] ERROR: {message}", file=sys.stderr)
+
+
+def show_skip(check_id: str, message: str) -> None:
+    print(f"[check:{check_id}] SKIPPED: {message}", file=sys.stderr)

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .console import show_error
+from .console import show_skip
 from .model import Check, Gate
 from .project import (
     FINDING_LIMIT,
@@ -130,8 +130,9 @@ def _run_analyzer(
 ) -> bool:
     missing = missing_analyzer_tool(name)
     if missing:
-        show_error(name, f"required system tool was not found on PATH: {missing}")
-        return check.finish(False, "required system tool is unavailable", tool=missing)
+        reason = f"required system tool was not found on PATH: {missing}; skipped"
+        show_skip(check.id, reason)
+        return check.skip(reason, tool=missing)
     if not units:
         return check.finish(False, "compilation database contains no project units")
 

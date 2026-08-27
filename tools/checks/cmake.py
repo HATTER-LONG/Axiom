@@ -58,7 +58,16 @@ def build_and_test(gate: Gate, preset: str, test_id: str) -> bool:
         gate.blocked("build", 20, "configure failed")
         gate.blocked(test_id, 15, "configure failed")
         return False
+    configure_reason = gate.skip_reason("configure")
+    if configure_reason:
+        gate.skipped("build", 20, f"configure skipped: {configure_reason}")
+        gate.skipped(test_id, 15, f"configure skipped: {configure_reason}")
+        return True
     if not build(gate, preset):
         gate.blocked(test_id, 15, "build failed")
         return False
+    build_reason = gate.skip_reason("build")
+    if build_reason:
+        gate.skipped(test_id, 15, f"build skipped: {build_reason}")
+        return True
     return tests(gate, preset, test_id)

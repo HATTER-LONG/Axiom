@@ -8,7 +8,6 @@ from typing import Sequence
 
 from .analyzers import analyzer, missing_analyzer_tool
 from .basic import architecture_check, complexity_check, format_check
-from .console import show_error
 from .model import Gate
 from .project import compile_units
 
@@ -31,13 +30,11 @@ def run_analyzers(
     for name in names:
         missing = missing_analyzer_tool(name)
         if missing:
-            show_error(name, f"required system tool was not found on PATH: {missing}")
-            gate.custom(
+            gate.skipped(
                 name,
                 10,
-                lambda check, missing_tool=missing: check.finish(
-                    False, "required system tool is unavailable", tool=missing_tool
-                ),
+                f"required system tool was not found on PATH: {missing}; skipped",
+                tool=missing,
             )
         else:
             available.append(name)

@@ -20,6 +20,18 @@ def run(gate: Gate) -> None:
         gate.blocked("tests.fast", 15, "configure failed")
         gate.blocked("coverage.fast", 10, "configure failed")
         return
+    configure_reason = gate.skip_reason("configure")
+    if configure_reason:
+        for check_id, maximum in (
+            ("build", 20),
+            ("complexity", 10),
+            ("cppcheck", 10),
+            ("clang-tidy", 10),
+            ("tests.fast", 15),
+            ("coverage.fast", 10),
+        ):
+            gate.skipped(check_id, maximum, f"configure skipped: {configure_reason}")
+        return
     build_passed, compiled = incremental_build(gate, preset)
     if not build_passed:
         gate.blocked("complexity", 10, "build failed")
@@ -27,6 +39,17 @@ def run(gate: Gate) -> None:
         gate.blocked("clang-tidy", 10, "build failed")
         gate.blocked("tests.fast", 15, "build failed")
         gate.blocked("coverage.fast", 10, "build failed")
+        return
+    build_reason = gate.skip_reason("build")
+    if build_reason:
+        for check_id, maximum in (
+            ("complexity", 10),
+            ("cppcheck", 10),
+            ("clang-tidy", 10),
+            ("tests.fast", 15),
+            ("coverage.fast", 10),
+        ):
+            gate.skipped(check_id, maximum, f"build skipped: {build_reason}")
         return
     complexity_check(gate, compiled)
     run_analyzers(gate, preset, units=compiled)

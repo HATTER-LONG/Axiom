@@ -60,6 +60,57 @@ uv run --quiet python tools/check.py --list
 The two analyzer inspections and the full gate scan every project compilation
 unit from CMake's compilation database.
 
+### Gate results, score, and blocking
+
+Each invocation writes one `axiom-quality/v2` JSON report. Every check has a
+maximum score and one of four statuses:
+
+| Status | Meaning | Effect on gate and score |
+| ------ | ------- | ------------------------ |
+| `pass` | The check ran and met its criterion. | Contributes its full score. |
+| `fail` | The check ran but its command, threshold, or validation failed. | Fails the gate and contributes zero. |
+| `blocked` | A prerequisite check failed, so this check was not run. | Fails the gate and contributes zero. |
+| `skipped` | A required external tool is absent or unsupported on this platform. | Is reported to stderr, does not fail the gate, and is excluded from the score denominator. |
+
+Thus `passed` is true only when every recorded check is `pass` or `skipped`.
+The total score is the sum of passed checks divided by the sum of all checks
+except skipped checks. A gate can therefore pass with a reduced maximum score:
+this means an optional capability was not verified, not that it passed. A tool
+that starts but returns a non-zero exit code is always a `fail`; it is never
+converted into a skip.
+
+The gates are sequential where later checks depend on earlier build artifacts.
+A failed configure step blocks the build, tests, coverage, and compilation-
+database analyzers; a failed build similarly blocks its dependents. If the
+required executable for such a prerequisite is unavailable, both it and its
+dependents are instead skipped to avoid running against stale build artifacts.
+Independent tools (formatting, complexity, and individual analyzers) are
+skipped only for their own missing tools.
+
+The nominal point totals, before skips, are 95 for `fast`, 125 for `full`, and
+90 for `hardening`. `fast` checks architecture (10), configure (10), build
+(20), complexity (10), cppcheck (10), clang-tidy (10), tests (15), and coverage
+(10). `full` additionally performs whole-project formatting and IWYU. `hardening`
+contains a 45-point ASan/UBSan configure-build-test path and a separate 45-point
+Mull configure-build-mutation path.
+
+### Architecture rules
+
+[`quality/architecture_rules.json`](quality/architecture_rules.json) is a small,
+versioned policy file consumed by the `architecture` check. Its current rule
+forbids files below `src/core/` from directly including headers below `apps/` or
+`tests/`. This preserves the intended dependency direction: reusable production
+code may be used by the demo and tests, but cannot depend on either of them.
+
+For this small project, the rule is a sensible, cheap guard: it is declarative,
+runs without a compiler database, scans headers as well as implementation files,
+and reports the offending file, line, include, and rule ID. It deliberately
+checks only direct textual `#include` directives, however; it does not prove a
+complete dependency graph, detect transitive dependencies, or validate every
+possible module boundary. As the project grows, add similarly narrow rules for
+each stable layer, and use the compilation database or a dedicated dependency
+analysis tool when transitive architectural enforcement becomes necessary.
+
 ## Developer tools
 
 Install the following tools yourself before using the matching gate or feature.
@@ -87,6 +138,10 @@ The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windo
 copies the AddressSanitizer runtime DLL next to the executable when available. The separate
 `quality-mutation` configuration uses Mull's LLVM IR frontend. Matching unversioned tools or pairs such
 as `mull-runner-22` and `mull-ir-frontend-22` are detected from `PATH`; Mull must match the LLVM toolchain.
+Mull 0.34 does not support native Windows: run the `hardening` gate in WSL, Linux, or macOS. For
+this machine, install a Linux distribution for WSL first, then build/install the Mull source there
+and run `uv run --quiet python tools/check.py hardening` from the Linux checkout of Axiom. The
+versioned executable and frontend plugin must use the same LLVM major version as `clang++`.
 
 ### IWYU and LLVM compatibility
 

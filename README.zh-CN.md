@@ -42,6 +42,29 @@ uv run --quiet python tools/check.py --list
 
 两个分析器诊断以及 `full` 门禁都会从 CMake 编译数据库中扫描所有项目编译单元。
 
+### 门禁结果、评分与卡点
+
+每次执行都会写入一份 `axiom-quality/v2` JSON 报告。每个检查都有最高分，并处于以下四种状态之一：
+
+| 状态 | 含义 | 对门禁和评分的影响 |
+| --- | --- | --- |
+| `pass` | 检查已执行且满足判定条件。 | 计入全部分值。 |
+| `fail` | 检查已执行，但命令、阈值或校验失败。 | 门禁失败，计 0 分。 |
+| `blocked` | 前置检查失败，因此未执行此检查。 | 门禁失败，计 0 分。 |
+| `skipped` | 所需外部工具未安装，或当前平台不支持该工具。 | 将原因打印到 stderr；不使门禁失败，也不计入总分分母。 |
+
+因此，只有所有记录的检查均为 `pass` 或 `skipped` 时，`passed` 才为 true。总分为通过检查的分值之和，除以除 `skipped` 外所有检查的最高分之和。门禁可能在最高分减少的情况下通过：这表示某项可选能力没有被验证，并不表示它通过了验证。工具已经启动但以非零退出码结束时始终是 `fail`，不会被转换为跳过。
+
+存在构建产物依赖关系的检查会顺序执行。configure 失败会阻断 build、测试、覆盖率和依赖编译数据库的分析器；build 失败也会阻断其下游检查。如果这些前置步骤所需的可执行文件不存在，则前置步骤和下游步骤都会跳过，避免误用旧的构建产物。格式化、复杂度和各个独立分析器则只在自身所需工具缺失时跳过。
+
+在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 95、125 和 90。`fast` 包含架构（10）、configure（10）、build（20）、复杂度（10）、cppcheck（10）、clang-tidy（10）、测试（15）和覆盖率（10）。`full` 还会对整个项目执行格式检查和 IWYU。`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull configure-build-mutation 路径组成。
+
+### 架构规则
+
+[`quality/architecture_rules.json`](quality/architecture_rules.json) 是由 `architecture` 检查读取的小型版本化策略文件。当前规则禁止 `src/core/` 下的文件直接包含 `apps/` 或 `tests/` 下的头文件。这保证了预期的依赖方向：可复用的生产核心代码可以被 demo 和测试使用，但不能反向依赖它们。
+
+对于这个小型项目，这条规则是合理且低成本的护栏：规则采用声明式配置，无需编译数据库，扫描实现文件和头文件，并报告违规文件、行号、include 和规则 ID。不过，它只检查直接文本 `#include`，不构建完整依赖图、不检测传递依赖，也不能覆盖所有可能的模块边界。项目变大后，应为每个稳定层级添加同样明确的规则；当需要强制约束传递依赖时，再使用编译数据库或专门的依赖分析工具。
+
 ## 开发工具
 
 下列工具需要自行安装；CPM 不会下载或安装它们。
@@ -63,6 +86,7 @@ uv run --quiet python tools/check.py --list
 `clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`clang-format` 是编辑器或命令行格式化工具，不会由 CMake 预设自动执行。
 
 `quality-hardening` 配置使用 LLVM 的编译器与运行时。在 Windows 上，构建在可用时会把 AddressSanitizer 的运行时 DLL 复制到可执行文件旁。独立的 `quality-mutation` 配置会启用 Mull 的 LLVM IR frontend。检查脚本会从 `PATH` 中自动配对无后缀工具，或 `mull-runner-22` 与 `mull-ir-frontend-22` 这类带 LLVM 版本后缀的工具；Mull 版本必须与所用 LLVM 工具链匹配。
+Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `uv run --quiet python tools/check.py hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
 
 ### IWYU 与 LLVM 版本兼容
 

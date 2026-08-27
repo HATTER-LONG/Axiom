@@ -8,6 +8,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .console import show_skip
 from .model import Check, Gate
 from .project import FINDING_LIMIT, LOG_LINE_LIMIT, build_directory, command_output, relative
 
@@ -54,9 +55,10 @@ def _run_mull(check: Check, gate: Gate, preset: str, runner: str | None) -> bool
     tools = find_mull_tools() if runner is None else None
     runner = runner or (tools[0] if tools else None)
     if runner is None:
-        return check.finish(
-            False,
-            "required system tool is unavailable",
+        reason = "matching mull-runner and mull-ir-frontend are unavailable; skipped"
+        show_skip(check.id, reason)
+        return check.skip(
+            reason,
             tool="matching mull-runner and mull-ir-frontend",
         )
 

@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
-from .console import show_command, show_error, show_output, show_result
+from .console import show_command, show_error, show_output, show_result, show_skip
 from .project import LOG_LINE_LIMIT, ROOT
 
 
@@ -29,6 +29,13 @@ class Check:
         self.detail = detail
         self.elapsed_ms = round((time.monotonic() - self.started) * 1000)
         return passed
+
+    def skip(self, summary: str, **detail: object) -> bool:
+        self.status = "skipped"
+        self.summary = summary
+        self.detail = detail
+        self.elapsed_ms = round((time.monotonic() - self.started) * 1000)
+        return True
 
     def as_json(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -72,11 +79,9 @@ class Gate:
     ) -> bool:
         def run(check: Check) -> bool:
             if shutil.which(command[0]) is None:
-                show_error(
-                    check_id,
-                    f"required system tool '{command[0]}' was not found on PATH",
-                )
-                return check.finish(False, "required system tool is unavailable", tool=command[0])
+                reason = f"required system tool '{command[0]}' was not found on PATH; skipped"
+                show_skip(check_id, reason)
+                return check.skip(reason, tool=command[0])
             if self.verbose:
                 show_command(check_id, command)
             try:
@@ -124,14 +129,29 @@ class Gate:
         check.detail = {"reason": reason}
         self.checks.append(check)
 
+    def skipped(self, check_id: str, maximum: int, reason: str, **detail: object) -> None:
+        show_skip(check_id, reason)
+        check = Check(check_id, maximum)
+        check.skip(reason, **detail)
+        self.checks.append(check)
+
+    def skip_reason(self, check_id: str) -> str | None:
+        for check in reversed(self.checks):
+            if check.id == check_id and check.status == "skipped":
+                return check.summary
+        return None
+
     def report(self) -> dict[str, object]:
-        maximum = sum(item.maximum for item in self.checks)
+        scored_checks = [item for item in self.checks if item.status != "skipped"]
+        maximum = sum(item.maximum for item in scored_checks)
         score = sum(item.maximum for item in self.checks if item.status == "pass")
         return {
             "schema": "axiom-quality/v2",
             "mode": self.mode,
             "gate": self.is_gate,
-            "passed": bool(self.checks) and all(item.status == "pass" for item in self.checks),
+            "passed": bool(self.checks) and all(
+                item.status in ("pass", "skipped") for item in self.checks
+            ),
             "score": {
                 "value": score,
                 "maximum": maximum,
