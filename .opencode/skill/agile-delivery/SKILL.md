@@ -18,16 +18,17 @@ as the source of truth for architecture, tests, and quality gates.
 
 Inspect the available runtime capabilities before delegation.
 
-- If fresh child agents and model assignment are available, prefer Sol for read-only
+- When fresh child agents and model assignment are available, prefer Sol for read-only
   planning and review, and Terra for implementation and hardening.
-- If fresh child agents are available but model assignment is not, use the same role
-  sequence with the runtime's default model; do not require or pretend to switch
-  models.
-- If child agents are unavailable, the primary executes the stages sequentially.
-  State that planning or review was not independent; retain all applicable gates.
+- When fresh child agents are available without model assignment, use the same role
+  sequence with the default model; do not require or pretend to switch models.
+- When child agents are unavailable, the primary executes stages sequentially and
+  states that planning or review was not independent.
 
-Never claim a model assignment, independent review, or gate result that did not
-actually occur. Do not start a separate child solely to run tests.
+In OpenCode, launch every child through `task` with a fresh session. Use
+`subagent_type: "explore"` for read-only planning and review, and
+`subagent_type: "general"` for task implementation and hardening. Never reuse a
+`task_id`, and do not start a separate child solely to run tests.
 
 ## Roles
 
@@ -44,16 +45,16 @@ actually occur. Do not start a separate child solely to run tests.
 
 ## Delivery loop
 
-1. The primary confirms the owning module and scope. Ask only if unresolved ambiguity
-   would materially change ownership or outcome.
-2. Run one fresh, read-only planning role. Do not delegate implementation before its
+1. Confirm the owning module and scope. Ask only if unresolved ambiguity would
+   materially change ownership or outcome.
+2. Start one fresh, read-only planning role. Do not delegate implementation before its
    dependency-ordered plan is available.
-3. Run one fresh task role per planned task. Use the plan's dependency order and
+3. Start one fresh task role per planned task. Use the plan's dependency order and
    parallelize only tasks it explicitly identifies as independent. Each task owns its
    tests and `fast` repair loop.
-4. After all task roles report passing `fast`, run one fresh hardening role. Repair
+4. After all task roles report passing `fast`, start one fresh hardening role. Repair
    and repeat until `hardening` passes.
-5. Run one fresh, read-only review role after hardening passes. If review identifies
+5. Start one fresh, read-only review role after hardening passes. If review identifies
    findings, create fresh task roles to repair them, then repeat hardening and review;
    all prior gates and reviews are stale after a code change.
 6. Run `full` only after review is clean. If it fails, repair the root cause with a

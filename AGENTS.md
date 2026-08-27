@@ -132,21 +132,6 @@ Never bypass or disable architecture checks.
 
 ## 7. Multi-Agent Collaboration
 
-For complex tasks, prefer staged execution:
-
-```text
-Planner
-   ↓
-Implementation
-   ↓
-Cleanup / Review
-   ↓
-Hardening
-```
-
-When the user explicitly requests the Sol planning/review and Terra delivery loop,
-follow the repository-local [`agile-delivery` skill](skills/agile-delivery/SKILL.md).
-
 Different agents should preferably operate with separate, clean contexts.
 
 When handing work from one agent to another, transfer only the information necessary to continue effectively:

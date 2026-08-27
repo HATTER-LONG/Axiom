@@ -120,20 +120,6 @@ quality/architecture_rules.json
 
 ## 7. 多 Agent 协作
 
-复杂任务优先采用阶段化执行：
-
-```text
-规划
-   ↓
-实现
-   ↓
-清理 / 审查
-   ↓
-强化
-```
-
-当用户明确要求 Sol 规划/审查与 Terra 开发交付循环时，遵循仓库本地的 [`agile-delivery` skill](skills/agile-delivery/SKILL.md)。
-
 不同 Agent 应尽量使用独立且干净的上下文。
 
 Agent 交接时，只传递继续工作所需的信息：
