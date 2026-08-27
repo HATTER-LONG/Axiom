@@ -1,7 +1,8 @@
 # Axiom
 
-一个最小化的 CMake 项目骨架，包含可复用的 `core` 库和 `demo` 可执行程序。
-框架保持轻量，便于逐步增加模块。
+一个基于 CMake 的紧凑 C++20 应用框架，提供可安装的 `Axiom::Core` 库、简洁的
+demo 可执行程序、集成测试和可复现的质量门禁。核心公开 API 保持精简，以便逐步
+增加模块而不过早扩大框架接口。
 
 [English README](README.md)
 
@@ -11,6 +12,45 @@
 cmake --preset dev
 cmake --build --preset dev
 ```
+
+demo 会输出 `Axiom`。需要未优化的调试构建时，使用 `debug` 预设：
+
+```sh
+cmake --preset debug
+cmake --build --preset debug
+```
+
+## 作为 CMake 包使用
+
+从已配置的构建目录安装库：
+
+```sh
+cmake --install build --prefix <install-prefix>
+```
+
+使用方可以通过 CMake 3.25 或更高版本发现并链接导出的目标：
+
+```cmake
+find_package(Axiom CONFIG REQUIRED)
+
+target_link_libraries(my_target PRIVATE Axiom::Core)
+```
+
+公开头文件如下：
+
+```cpp
+#include <axiom/core/core.hpp>
+```
+
+## 项目结构
+
+| 路径 | 用途 |
+| --- | --- |
+| `src/core` | 可安装的 `Axiom::Core` 库及其公开头文件。 |
+| `apps/demo` | 使用核心库的最小可执行程序。 |
+| `tests` | 单元测试和已安装包的集成测试。 |
+| `tools/check.py` | 输出 JSON 报告的质量门禁入口。 |
+| `quality` | 版本化质量配置、架构策略和 IWYU 映射。 |
 
 ## 质量门禁
 

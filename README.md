@@ -1,8 +1,10 @@
 # Axiom
 
-A minimal CMake project skeleton with a reusable `core` library and a `demo`
-executable. The framework is intentionally empty so new modules can be added
-incrementally.
+A compact C++20 application framework built with CMake. It provides an
+installable `Axiom::Core` library, a small demo executable, integration tests,
+and reproducible quality gates. The public core API is deliberately small so
+new modules can be added incrementally without expanding the framework surface
+prematurely.
 
 [中文文档](README.zh-CN.md)
 
@@ -12,6 +14,46 @@ incrementally.
 cmake --preset dev
 cmake --build --preset dev
 ```
+
+The demo prints `Axiom`. Use the `debug` preset when you need an unoptimized
+debug build:
+
+```sh
+cmake --preset debug
+cmake --build --preset debug
+```
+
+## Use as a CMake package
+
+Install the library from a configured build directory:
+
+```sh
+cmake --install build --prefix <install-prefix>
+```
+
+Consumers can discover and link the exported target with CMake 3.25 or newer:
+
+```cmake
+find_package(Axiom CONFIG REQUIRED)
+
+target_link_libraries(my_target PRIVATE Axiom::Core)
+```
+
+The public header is available as:
+
+```cpp
+#include <axiom/core/core.hpp>
+```
+
+## Project layout
+
+| Path | Purpose |
+| ---- | ------- |
+| `src/core` | Installable `Axiom::Core` library and its public headers. |
+| `apps/demo` | Minimal executable that consumes the core library. |
+| `tests` | Unit and installed-package integration tests. |
+| `tools/check.py` | JSON-reporting quality-gate entry point. |
+| `quality` | Versioned quality profile, architecture policy, and IWYU mapping. |
 
 ## Quality gates
 
