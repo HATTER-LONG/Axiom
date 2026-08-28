@@ -1,0 +1,23 @@
+{
+  "report_schema": "axiom-quality/v2",
+  "architecture_rules": "quality/architecture_rules.json",
+  "architecture_rules_schema": "axiom-architecture-rules/v1",
+  "coverage_cache_option": "AXIOM_COVERAGE",
+  "mutation_frontend_option": "AXIOM_MULL_IR_FRONTEND",
+  "source_roots": ["src", "apps", "tests"],
+  "build_directories": {
+    "quality-fast": "build-quality/fast",
+    "quality-full": "build-quality/full",
+    "quality-hardening": "build-quality/hardening",
+    "quality-mutation": "build-quality/mutation"
+  },
+  "coverage_threshold": 90.0,
+  "coverage_ignore_regex": "[/\\\\]tests[/\\\\]",
+  "mutation_score_threshold": 90.0,
+  "presets": {
+    "fast": "quality-fast",
+    "full": "quality-full",
+    "hardening": "quality-hardening",
+    "mutation": "quality-mutation"
+  }
+}

@@ -1,0 +1,65 @@
+"""Fast local feedback over source files rebuilt in this invocation."""
+
+from __future__ import annotations
+
+from ..basic import architecture_check, complexity_check
+from ..cmake import configure, incremental_build, tests
+from ..coverage import clean_coverage_profiles, coverage
+from ..model import Gate
+from ..pipeline import run_analyzers
+from ..profile import load as load_profile
+
+
+def run(gate: Gate) -> None:
+    architecture_check(gate)
+    preset = load_profile().preset("fast")
+    if not configure(gate, preset):
+        gate.blocked("build", 20, "configure failed")
+        gate.blocked("complexity", 10, "configure failed")
+        gate.blocked("cppcheck", 10, "configure failed")
+        gate.blocked("clang-tidy", 10, "configure failed")
+        gate.blocked("tests.fast", 15, "configure failed")
+        gate.blocked("coverage.fast", 10, "configure failed")
+        return
+    configure_reason = gate.skip_reason("configure")
+    if configure_reason:
+        for check_id, maximum in (
+            ("build", 20),
+            ("complexity", 10),
+            ("cppcheck", 10),
+            ("clang-tidy", 10),
+            ("tests.fast", 15),
+            ("coverage.fast", 10),
+        ):
+            gate.skipped(check_id, maximum, f"configure skipped: {configure_reason}")
+        return
+    build_passed, compiled = incremental_build(gate, preset)
+    if not build_passed:
+        gate.blocked("complexity", 10, "build failed")
+        gate.blocked("cppcheck", 10, "build failed")
+        gate.blocked("clang-tidy", 10, "build failed")
+        gate.blocked("tests.fast", 15, "build failed")
+        gate.blocked("coverage.fast", 10, "build failed")
+        return
+    build_reason = gate.skip_reason("build")
+    if build_reason:
+        for check_id, maximum in (
+            ("complexity", 10),
+            ("cppcheck", 10),
+            ("clang-tidy", 10),
+            ("tests.fast", 15),
+            ("coverage.fast", 10),
+        ):
+            gate.skipped(check_id, maximum, f"build skipped: {build_reason}")
+        return
+    complexity_check(gate, compiled)
+    run_analyzers(gate, preset, units=compiled)
+    clean_coverage_profiles(preset)
+    if not tests(gate, preset, "tests.fast"):
+        gate.blocked("coverage.fast", 10, "tests failed")
+        return
+    test_reason = gate.skip_reason("tests.fast")
+    if test_reason:
+        gate.skipped("coverage.fast", 10, f"tests skipped: {test_reason}")
+        return
+    coverage(gate, preset, "coverage.fast")

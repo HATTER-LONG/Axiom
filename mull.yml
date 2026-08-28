@@ -1,0 +1,5 @@
+mutators:
+  - cxx_all
+includePaths:
+  - .*/src/.*
+compilationDatabasePath: compile_commands.json

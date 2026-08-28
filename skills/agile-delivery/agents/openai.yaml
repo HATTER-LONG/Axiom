@@ -1,0 +1,3 @@
+interface:
+  display_name: "Agile Delivery"
+  short_description: "Coordinate staged multi-agent repository delivery."

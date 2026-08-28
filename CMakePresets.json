@@ -3,44 +3,129 @@
   "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "configurePresets": [
     {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "AXIOM_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
       "name": "dev",
       "displayName": "Developer build",
-      "generator": "Ninja",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
     },
     {
       "name": "debug",
       "displayName": "Debug build",
-      "generator": "Ninja",
+      "inherits": "base",
       "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "quality-fast",
+      "displayName": "Quality gate: fast",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-quality/fast",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON",
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_COVERAGE": "ON"
       }
     },
     {
-      "name": "tidy",
-      "inherits": "dev",
-      "binaryDir": "${sourceDir}/build-tidy-clang",
+      "name": "quality-full",
+      "displayName": "Quality gate: full",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-quality/full",
       "cacheVariables": {
-        "AXIOM_ENABLE_CLANG_TIDY": "ON",
-        "CMAKE_CXX_COMPILER": "clang++"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON",
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "quality-hardening",
+      "displayName": "Quality gate: hardening",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-quality/hardening",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON",
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_MUTATION_TESTING": "OFF",
+        "AXIOM_SANITIZERS": "Address;Undefined"
+      }
+    },
+    {
+      "name": "quality-mutation",
+      "displayName": "Quality gate: mutation testing",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-quality/mutation",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_DEMO": "OFF",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON",
+        "AXIOM_STATIC_ANALYZERS": "",
+        "AXIOM_MUTATION_TESTING": "ON"
       }
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 8 },
-    { "name": "debug", "configurePreset": "debug", "jobs": 8 },
-    { "name": "tidy", "configurePreset": "tidy", "jobs": 8 }
+    { "name": "dev", "configurePreset": "dev", "jobs": 16 },
+    { "name": "debug", "configurePreset": "debug", "jobs": 16 },
+    { "name": "quality-fast", "configurePreset": "quality-fast", "jobs": 16 },
+    { "name": "quality-full", "configurePreset": "quality-full", "jobs": 16 },
+    {
+      "name": "quality-hardening",
+      "configurePreset": "quality-hardening",
+      "jobs": 16
+    },
+    {
+      "name": "quality-mutation",
+      "configurePreset": "quality-mutation",
+      "jobs": 16
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "quality-fast",
+      "configurePreset": "quality-fast",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "quality-full",
+      "configurePreset": "quality-full",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "quality-hardening",
+      "configurePreset": "quality-hardening",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "quality-mutation",
+      "configurePreset": "quality-mutation",
+      "output": { "outputOnFailure": true }
+    }
   ],
   "workflowPresets": [
     {
       "name": "dev",
-      "displayName": "Configure and build RelWithDebub",
+      "displayName": "Configure and build developer configuration",
       "steps": [
         { "type": "configure", "name": "dev" },
         { "type": "build", "name": "dev" }
@@ -48,7 +133,7 @@
     },
     {
       "name": "debug",
-      "displayName": "Configure and build Debug",
+      "displayName": "Configure and build debug configuration",
       "steps": [
         { "type": "configure", "name": "debug" },
         { "type": "build", "name": "debug" }

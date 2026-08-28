@@ -1,5 +1,8 @@
 /build/
 /build-*/
+/build-quality/
 /cmake-build-*/
 /.cache/
 compile_commands.json
+__pycache__
+.ruff_cache
