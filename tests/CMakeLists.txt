@@ -20,7 +20,7 @@ if (AXIOM_SANITIZERS)
     endforeach ()
 endif ()
 
-add_executable(axiom_core_test core_test.cpp)
+add_executable(axiom_core_test core_test.cpp descriptor_test.cpp dispatcher_test.cpp registry_test.cpp runtime_test.cpp value_converter_test.cpp)
 axiom_configure_language_diagnostics(axiom_core_test)
 axiom_configure_static_analyzers(axiom_core_test)
 axiom_configure_sanitizers(axiom_core_test)

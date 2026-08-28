@@ -1,5 +1,16 @@
 #pragma once
 
+#include <axiom/core/action/action_id.hpp>
+#include <axiom/core/action/descriptor.hpp>
+#include <axiom/core/action/invocation_context.hpp>
+#include <axiom/core/action/module.hpp>
+#include <axiom/core/action/module_builder.hpp>
+#include <axiom/core/action/runtime.hpp>
+#include <axiom/core/base/error.hpp>
+#include <axiom/core/base/result.hpp>
+#include <axiom/core/base/type_descriptor.hpp>
+#include <axiom/core/base/value.hpp>
+
 #include <string_view>
 
 namespace axiom::core {

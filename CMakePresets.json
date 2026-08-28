@@ -16,7 +16,11 @@
       "displayName": "Developer build",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AXIOM_BUILD_TESTS": "ON",
+        "BUILD_TESTING": "ON"
+      }
     },
     {
       "name": "debug",

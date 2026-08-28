@@ -4,3 +4,9 @@ CompileFlags:
 Diagnostics:
   ClangTidy:
     FastCheckFilter: None
+
+If:
+  PathMatch: .*[/\\]\.cache[/\\]CPM[/\\].*
+
+Index:
+  Background: Skip

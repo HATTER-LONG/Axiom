@@ -5,6 +5,11 @@
       "id": "core-must-not-depend-on-app-or-test",
       "from": ["src/core/"],
       "forbidden": ["apps/", "tests/"]
+    },
+    {
+      "id": "core-base-must-not-depend-on-action",
+      "from": ["src/core/include/axiom/core/base/", "src/core/src/base/"],
+      "forbidden": ["axiom/core/action/"]
     }
   ]
 }
