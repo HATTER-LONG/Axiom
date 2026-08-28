@@ -1,5 +1,0 @@
-[
-  # IWYU 0.26 attributes std::char_traits used by std::string_view comparison
-  # to <string>; <string_view> is the specific public header that provides it.
-  { "symbol": ["std::char_traits<char>", "full", "<string_view>", "public"] }
-]

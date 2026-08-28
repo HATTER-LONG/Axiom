@@ -1,10 +1,10 @@
 #include <axiom/core/core.hpp>
 
 #include <cstdlib>
-#include <string>
+#include <string_view>
 
 int main() {
-    if(std::string{axiom::core::frameworkName()} != "Axiom") {
+    if(std::string_view{axiom::core::frameworkName()} != "Axiom") {
         return EXIT_FAILURE;
     }
     if(!axiom::core::isFrameworkName("Axiom")) {

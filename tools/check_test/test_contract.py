@@ -79,6 +79,36 @@ class PublicContractTests(unittest.TestCase):
             self.assertFalse(format_check(value))
             self.assertEqual(value.checks[0].summary, "no source files found")
 
+    def test_format_check_reports_only_files_requiring_formatting(self) -> None:
+        violation = "warning: code should be clang-formatted [-Wclang-format-violations]"
+
+        def format_result(command, **_kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                1 if command[-1].endswith("answer.cpp") else 0,
+                violation if command[-1].endswith("answer.cpp") else "",
+            )
+
+        with isolated_project(), patch("checks.basic.shutil.which", return_value="clang-format"), patch(
+            "checks.basic.command_output", side_effect=format_result
+        ):
+            value = gate()
+            self.assertFalse(format_check(value))
+
+        check = value.report()["checks"][0]
+        self.assertEqual(check["summary"], "source files require formatting")
+        self.assertEqual(check["detail"], {"files": ["library/answer.cpp"], "count": 1})
+        self.assertNotIn("command", check["detail"])
+        self.assertNotIn("log_tail", check["detail"])
+
+    def test_complexity_enforces_ccn_length_and_parameter_limits(self) -> None:
+        with isolated_project(), patch.object(type(gate()), "command", return_value=True) as command:
+            self.assertTrue(complexity_check(gate()))
+            arguments = command.call_args.args[2]
+            self.assertEqual(arguments[arguments.index("-C") + 1], "10")
+            self.assertEqual(arguments[arguments.index("-L") + 1], "80")
+            self.assertEqual(arguments[arguments.index("-a") + 1], "5")
+
     def test_complexity_empty_increment_is_a_valid_noop(self) -> None:
         value = gate()
         self.assertTrue(complexity_check(value, []))

@@ -24,7 +24,7 @@ set(AXIOM_SANITIZERS
           "Sanitizers: Address, Memory, MemoryWithOrigins, Undefined, Thread, Leak, or a list")
 set(AXIOM_STATIC_ANALYZERS
     ""
-    CACHE STRING "Static analyzers: clang-tidy, iwyu, cppcheck, or a semicolon-separated list")
+    CACHE STRING "Static analyzers: clang-tidy, cppcheck, or a semicolon-separated list")
 option(AXIOM_USE_CCACHE "Enable ccache compiler launcher" OFF)
 
 if (NOT CPM_SOURCE_CACHE)

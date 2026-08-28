@@ -35,7 +35,7 @@ function (axiom_configure_static_analyzers target_name)
         return()
     endif ()
 
-    set(axiom_supported_analyzers clang-tidy iwyu cppcheck)
+    set(axiom_supported_analyzers clang-tidy cppcheck)
     foreach (axiom_analyzer IN LISTS AXIOM_STATIC_ANALYZERS)
         if (NOT axiom_analyzer IN_LIST axiom_supported_analyzers)
             message(FATAL_ERROR "Unsupported static analyzer '${axiom_analyzer}'")
@@ -49,11 +49,6 @@ function (axiom_configure_static_analyzers target_name)
             PROPERTY
                 CXX_CLANG_TIDY
                 "${AXIOM_CLANG_TIDY_EXECUTABLE};--config-file=${PROJECT_SOURCE_DIR}/.clang-tidy")
-    endif ()
-    if ("iwyu" IN_LIST AXIOM_STATIC_ANALYZERS)
-        find_program(AXIOM_IWYU_EXECUTABLE NAMES include-what-you-use REQUIRED)
-        set_property(TARGET "${target_name}" PROPERTY CXX_INCLUDE_WHAT_YOU_USE
-                                                      "${AXIOM_IWYU_EXECUTABLE}")
     endif ()
     if ("cppcheck" IN_LIST AXIOM_STATIC_ANALYZERS)
         find_program(AXIOM_CPPCHECK_EXECUTABLE NAMES cppcheck REQUIRED)

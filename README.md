@@ -53,7 +53,7 @@ The public header is available as:
 | `apps/demo` | Minimal executable that consumes the core library. |
 | `tests` | Unit and installed-package integration tests. |
 | `tools/check.py` | JSON-reporting quality-gate entry point. |
-| `quality` | Versioned quality profile, architecture policy, and IWYU mapping. |
+| `quality` | Versioned quality profile and architecture policy. |
 
 ## Quality gates
 
@@ -99,8 +99,9 @@ Use `--report <path>` when a later agent needs the same immutable report file.
 `fast` applies complexity, cppcheck, and clang-tidy only to source files
 recompiled by its incremental build. Its inexpensive architecture rule scan
 remains whole-project so header-only violations are not missed. Formatting is
-intentionally deferred to `full`, which also runs cppcheck, clang-tidy, and
-Include-What-You-Use over every project compilation unit. `hardening` builds and
+intentionally deferred to `full`, which reports only the source files requiring
+clang-format without modifying them. `full` also runs cppcheck and clang-tidy over
+every project compilation unit. `hardening` builds and
 runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled,
 then uses a separate instrumented build and requires a Mull mutation score of at
 least 90 for project source code. Mull's Mutation Testing Elements report is
@@ -124,11 +125,10 @@ uv run --quiet python tools/check.py inspect tests --preset quality-fast
 uv run --quiet python tools/check.py inspect coverage
 uv run --quiet python tools/check.py inspect cppcheck
 uv run --quiet python tools/check.py inspect clang-tidy
-uv run --quiet python tools/check.py inspect iwyu
 uv run --quiet python tools/check.py --list
 ```
 
-The two analyzer inspections and the full gate scan every project compilation
+The analyzer inspections and the full gate scan every project compilation
 unit from CMake's compilation database.
 
 ### Gate results, score, and blocking
@@ -158,10 +158,10 @@ dependents are instead skipped to avoid running against stale build artifacts.
 Independent tools (formatting, complexity, and individual analyzers) are
 skipped only for their own missing tools.
 
-The nominal point totals, before skips, are 95 for `fast`, 125 for `full`, and
+The nominal point totals, before skips, are 95 for `fast`, 105 for `full`, and
 90 for `hardening`. `fast` checks architecture (10), configure (10), build
 (20), complexity (10), cppcheck (10), clang-tidy (10), tests (15), and coverage
-(10). `full` additionally performs whole-project formatting and IWYU. `hardening`
+(10). `full` additionally checks whole-project formatting. `hardening`
 contains a 45-point ASan/UBSan configure-build-test path and a separate 45-point
 Mull configure-build-mutation path.
 
@@ -195,15 +195,15 @@ They are not downloaded by CPM.
 | LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
 | `llvm-profdata`, `llvm-cov` | Test coverage measurement                                                                         | `fast`, `full`, and the coverage inspection      |
 | cppcheck                    | Static analysis                                                                                   | `fast`, `full`, and its inspection               |
-| Include-What-You-Use (IWYU) | Include analysis                                                                                  | `full` and its inspection                        |
 | Mull                        | C++ mutation testing                                                                              | `hardening`                                      |
 | Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                          |
 | ccache                      | Compiler cache                                                                                    | Optional: `-DAXIOM_USE_CCACHE=ON`                |
-| Lizard                      | Cyclomatic-complexity analysis                                                                    | `fast`, `full`, and its inspection               |
+| Lizard                      | Function complexity, length, and parameter-count thresholds                                       | `fast`, `full`, and its inspection               |
 
 `clang-tidy`, `clang-format`, `llvm-profdata`, and `llvm-cov` are distributed as
-part of LLVM. `clang-format` is an editor/command-line formatting tool and is not
-run automatically by a CMake preset.
+part of LLVM. `full` and `inspect format` run non-mutating `--dry-run --Werror`
+diagnostics. Their JSON result lists files requiring formatting without embedding
+clang-format's line-by-line diagnostic output.
 
 The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windows, the build
 copies the AddressSanitizer runtime DLL next to the executable when available. The separate
@@ -213,37 +213,6 @@ Mull 0.34 does not support native Windows: run the `hardening` gate in WSL, Linu
 this machine, install a Linux distribution for WSL first, then build/install the Mull source there
 and run `uv run --quiet python tools/check.py hardening` from the Linux checkout of Axiom. The
 versioned executable and frontend plugin must use the same LLVM major version as `clang++`.
-
-### IWYU and LLVM compatibility
-
-IWYU is tightly coupled to LLVM/Clang internals. Use an IWYU release or branch
-that matches the installed Clang version. For example, Clang 22 requires IWYU
-0.26 or the `clang_22` branch. The `full` gate and `inspect iwyu` expect
-`include-what-you-use` and `iwyu_tool.py` to be available on `PATH`.
-
-Official IWYU releases are source releases. Building it standalone requires an
-LLVM development installation that exports `LLVMConfig.cmake`, in addition to
-the Clang libraries and headers. The standard Windows LLVM installer used by
-this project provides the compiler tools but not that CMake package, so it
-cannot build IWYU standalone by itself. Use a full LLVM build/development
-package, then build IWYU against it:
-
-```sh
-git clone --branch clang_21 https://github.com/include-what-you-use/include-what-you-use.git
-cmake -S include-what-you-use -B iwyu-build -G Ninja -DCMAKE_PREFIX_PATH=<llvm-development-prefix> -DCMAKE_INSTALL_PREFIX=<iwyu-install-prefix>
-cmake --build iwyu-build
-cmake --install iwyu-build
-```
-
-Alternatively, build LLVM, Clang, compiler-rt, and IWYU in one tree. The
-following reference configuration targets LLVM/Clang 22 and IWYU 0.26; replace
-the source and install paths with local paths:
-
-```sh
-cmake -S <llvm-source-dir>/llvm -B <llvm-build-dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=<llvm-install-prefix> -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld" -DLLVM_ENABLE_RUNTIMES=compiler-rt -DLLVM_EXTERNAL_PROJECTS=iwyu -DLLVM_EXTERNAL_IWYU_SOURCE_DIR=<iwyu-source-dir> -DLLVM_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
-cmake --build <llvm-build-dir>
-cmake --install <llvm-build-dir>
-```
 
 ### Lizard complexity analysis
 
@@ -258,11 +227,15 @@ Analyze the project sources and tests with the same thresholds used by the
 quality gates:
 
 ```sh
-lizard -l cpp -C 10 -L 80 src apps tests
+lizard -l cpp -C 10 -L 80 -a 5 src apps tests
 ```
 
 Use `-C <limit>` to set the cyclomatic-complexity threshold and `-L <limit>`
-to set the function-length threshold. Violations produce a non-zero exit status.
+to set the function-length threshold; `-a <limit>` controls parameter count.
+Violations produce a non-zero exit status. These syntax-level quantitative limits
+complement clang-tidy: `readability-function-size` retains only nesting depth,
+`readability-function-cognitive-complexity` measures human-oriented control-flow
+difficulty, and `misc-include-cleaner` performs semantic include diagnostics.
 
 ### CPM-managed dependencies
 

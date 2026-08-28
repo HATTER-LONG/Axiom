@@ -22,7 +22,7 @@ Add `-v` to print every executed command, its output, and per-step details,
 the same way `check.py -v` does.
 
 The real negative sources under `cases/` cover architecture, formatting,
-complexity, cppcheck, clang-tidy, IWYU, failing tests, low coverage, ASan
+complexity, cppcheck, clang-tidy, failing tests, low coverage, ASan
 heap-use-after-free, and UBSan signed overflow. A negative case passes only when
 the expected check ID reports `fail`; sanitizer cases additionally require the
 actual runtime diagnostic in CTest's log. Unsupported tools are reported rather

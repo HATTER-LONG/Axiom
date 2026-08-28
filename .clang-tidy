@@ -1,35 +1,120 @@
-#https://clang.llvm.org/extra/clang-tidy/checks/list.html
-Checks: "-*,clang-diagnostic-*,llvm-*,misc-*,google-*,
-  -llvm-header-guard,
-  -misc-include-cleaner,
-  -misc-non-private-member-variables-in-classes,
-  -misc-use-anonymous-namespace,
-  readability-identifier-naming,
-  readability-function-size"
+# https://clang.llvm.org/extra/clang-tidy/checks/list.html
+Checks: "-*,
+    clang-diagnostic-*,
+    misc-*,
+    bugprone-*,
+    performance-*,
+    modernize-*,
+    readability-*,
+    -misc-non-private-member-variables-in-classes,
+    -misc-use-anonymous-namespace,
+    -modernize-use-trailing-return-type,
+    -readability-magic-numbers,
+    -readability-identifier-length"
+HeaderFilterRegex: '.*[/\\](src|apps|tests)[/\\].*'
+SystemHeaders: false
 CheckOptions:
+  # =========================
+  # Types
+  # =========================
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
-  - key: readability-identifier-naming.NamespaceCase
-    value: lower_case
-  - key: readability-identifier-naming.EnumCase
+
+  - key: readability-identifier-naming.StructCase
     value: CamelCase
+
   - key: readability-identifier-naming.UnionCase
     value: CamelCase
-  - key: readability-identifier-naming.GlobalConstantCase
-    value: UPPER_CASE
+
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+
+  # =========================
+  # Namespace
+  # =========================
+
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+  # =========================
+  # Functions / Methods
+  # =========================
+
   - key: readability-identifier-naming.FunctionCase
     value: camelBack
-  - key: readability-identifier-naming.MemberCase
+
+  - key: readability-identifier-naming.MethodCase
     value: camelBack
-  - key: readability-identifier-naming.MemberPrefix
-    value: m_
-  - key: readability-identifier-naming.ParameterCase
-    value: lower_case
+
+  # =========================
+  # Variables
+  # =========================
+
   - key: readability-identifier-naming.VariableCase
     value: lower_case
+
   - key: readability-identifier-naming.LocalVariableCase
     value: lower_case
-  - key: readability-function-size.StatementThreshold
-    value: 80
-  - key: readability-function-size.ParameterThreshold
-    value: 5
+
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+
+  # =========================
+  # Class members
+  #
+  # class:
+  #   int count_;
+  #
+  # struct:
+  #   int count;
+  # =========================
+
+  - key: readability-identifier-naming.ClassMemberCase
+    value: lower_case
+
+  - key: readability-identifier-naming.ClassMemberSuffix
+    value: _
+
+  # Struct / generic member names remain without suffix.
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+
+  # =========================
+  # Constants
+  # =========================
+
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+
+  - key: readability-identifier-naming.StaticConstantCase
+    value: UPPER_CASE
+
+  - key: readability-identifier-naming.LocalConstantCase
+    value: lower_case
+
+  # =========================
+  # Function complexity / size
+  # =========================
+
+  # Keep nesting shallow.
+  # Lizard owns function NLOC, parameter count, and cyclomatic complexity.
+  # clang-tidy complements those metrics with nesting and cognitive complexity.
+  - key: readability-function-size.NestingThreshold
+    value: 4
+
+  # Human-oriented complexity:
+  # penalizes branches, loops and deeply nested control flow.
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 15

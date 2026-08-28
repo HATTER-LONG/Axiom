@@ -50,7 +50,7 @@ target_link_libraries(my_target PRIVATE Axiom::Core)
 | `apps/demo` | 使用核心库的最小可执行程序。 |
 | `tests` | 单元测试和已安装包的集成测试。 |
 | `tools/check.py` | 输出 JSON 报告的质量门禁入口。 |
-| `quality` | 版本化质量配置、架构策略和 IWYU 映射。 |
+| `quality` | 版本化质量配置和架构策略。 |
 
 ## 质量门禁
 
@@ -85,7 +85,7 @@ ASan 与 UBSan。最终报告会分别列出工具支持状态、成功检出的
 
 在门禁名称前或后添加 `-v` / `--verbose`，可将执行的命令、合并后的输出及退出码打印到 stderr；JSON 报告始终输出到 stdout。
 
-使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 还会对所有项目编译单元执行格式、cppcheck、clang-tidy 和 Include-What-You-Use（IWYU）检查。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
+使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 会只读检查全部项目源码的格式，仅报告需要 clang-format 的文件列表而不修改源码，再对所有项目编译单元执行 cppcheck 和 clang-tidy。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
 
 `fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成面向 agent 的紧凑 `coverage-export.json`。该文件使用仓库相对路径、按命中次数合并的连续行区间、分组后的分支命中次数，并内置数组字段图例；所有有效统计项均达到 100% 的文件会被省略，只记录省略数量。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
 
@@ -97,11 +97,10 @@ uv run --quiet python tools/check.py inspect tests --preset quality-fast
 uv run --quiet python tools/check.py inspect coverage
 uv run --quiet python tools/check.py inspect cppcheck
 uv run --quiet python tools/check.py inspect clang-tidy
-uv run --quiet python tools/check.py inspect iwyu
 uv run --quiet python tools/check.py --list
 ```
 
-两个分析器诊断以及 `full` 门禁都会从 CMake 编译数据库中扫描所有项目编译单元。
+分析器诊断以及 `full` 门禁都会从 CMake 编译数据库中扫描所有项目编译单元。
 
 ### 门禁结果、评分与卡点
 
@@ -118,7 +117,7 @@ uv run --quiet python tools/check.py --list
 
 存在构建产物依赖关系的检查会顺序执行。configure 失败会阻断 build、测试、覆盖率和依赖编译数据库的分析器；build 失败也会阻断其下游检查。如果这些前置步骤所需的可执行文件不存在，则前置步骤和下游步骤都会跳过，避免误用旧的构建产物。格式化、复杂度和各个独立分析器则只在自身所需工具缺失时跳过。
 
-在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 95、125 和 90。`fast` 包含架构（10）、configure（10）、build（20）、复杂度（10）、cppcheck（10）、clang-tidy（10）、测试（15）和覆盖率（10）。`full` 还会对整个项目执行格式检查和 IWYU。`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull configure-build-mutation 路径组成。
+在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 95、105 和 90。`fast` 包含架构（10）、configure（10）、build（20）、复杂度（10）、cppcheck（10）、clang-tidy（10）、测试（15）和覆盖率（10）。`full` 还会检查整个项目的格式。`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull configure-build-mutation 路径组成。
 
 ### 架构规则
 
@@ -138,37 +137,15 @@ uv run --quiet python tools/check.py --list
 | LLVM/Clang | `clang++`、`clang-tidy`、`clang-format`、clangd、AddressSanitizer、UndefinedBehaviorSanitizer | 所有质量门禁 |
 | `llvm-profdata`、`llvm-cov` | 测试覆盖率度量 | `fast`、`full` 及覆盖率诊断命令 |
 | cppcheck | 静态分析 | `fast`、`full` 及其诊断命令 |
-| Include-What-You-Use（IWYU） | 头文件依赖分析 | `full` 及其诊断命令 |
 | Mull | C++ 变异测试 | `hardening` |
 | Doxygen | API 文档 | `-DAXIOM_BUILD_DOCS=ON` |
 | ccache | 编译缓存 | 可选：`-DAXIOM_USE_CCACHE=ON` |
-| Lizard | 圈复杂度分析 | `fast`、`full` 及其诊断命令 |
+| Lizard | 函数复杂度、长度和参数量阈值 | `fast`、`full` 及其诊断命令 |
 
-`clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`clang-format` 是编辑器或命令行格式化工具，不会由 CMake 预设自动执行。
+`clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`full` 与 `inspect format` 都使用只读的 `--dry-run --Werror`；JSON 结果只列出需要格式化的文件，不包含 clang-format 的逐行诊断，也不会修改源码。
 
 `quality-hardening` 配置使用 LLVM 的编译器与运行时。在 Windows 上，构建在可用时会把 AddressSanitizer 的运行时 DLL 复制到可执行文件旁。独立的 `quality-mutation` 配置会启用 Mull 的 LLVM IR frontend。检查脚本会从 `PATH` 中自动配对无后缀工具，或 `mull-runner-22` 与 `mull-ir-frontend-22` 这类带 LLVM 版本后缀的工具；Mull 版本必须与所用 LLVM 工具链匹配。
 Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `uv run --quiet python tools/check.py hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
-
-### IWYU 与 LLVM 版本兼容
-
-IWYU 深度依赖 LLVM/Clang 内部接口，必须选用与已安装 Clang 匹配的 IWYU 版本或分支。例如 Clang 22 对应 IWYU 0.26 或 `clang_22` 分支。`full` 门禁与 `inspect iwyu` 要求 `include-what-you-use` 和 `iwyu_tool.py` 位于 `PATH` 中。
-
-IWYU 官方发布的是源码。standalone 构建还要求完整 LLVM 开发安装，其中必须包含导出的 `LLVMConfig.cmake`、Clang 库和头文件。项目当前使用的标准 Windows LLVM 安装包提供了编译器工具，但没有该 CMake 配置包，因此不能单独用于构建 IWYU。请使用完整 LLVM 开发构建或开发包，然后执行：
-
-```sh
-git clone --branch clang_21 https://github.com/include-what-you-use/include-what-you-use.git
-cmake -S include-what-you-use -B iwyu-build -G Ninja -DCMAKE_PREFIX_PATH=<llvm-development-prefix> -DCMAKE_INSTALL_PREFIX=<iwyu-install-prefix>
-cmake --build iwyu-build
-cmake --install iwyu-build
-```
-
-也可以在同一个构建树中同时构建 LLVM、Clang、compiler-rt 和 IWYU。下面的参考配置适用于 LLVM/Clang 22 与 IWYU 0.26；请将源目录和安装目录替换为本机实际路径：
-
-```sh
-cmake -S <llvm-source-dir>/llvm -B <llvm-build-dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=<llvm-install-prefix> -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld" -DLLVM_ENABLE_RUNTIMES=compiler-rt -DLLVM_EXTERNAL_PROJECTS=iwyu -DLLVM_EXTERNAL_IWYU_SOURCE_DIR=<iwyu-source-dir> -DLLVM_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
-cmake --build <llvm-build-dir>
-cmake --install <llvm-build-dir>
-```
 
 ### Lizard 圈复杂度分析
 
@@ -181,10 +158,10 @@ python -m pip install lizard
 按质量门禁使用的阈值分析本项目源代码和测试：
 
 ```sh
-lizard -l cpp -C 10 -L 80 src apps tests
+lizard -l cpp -C 10 -L 80 -a 5 src apps tests
 ```
 
-可通过 `-C <阈值>` 设置圈复杂度阈值，通过 `-L <阈值>` 设置函数长度阈值；违反规则时命令返回非零退出码。
+`-C` 限制圈复杂度，`-L` 限制函数长度，`-a` 限制参数量；违反规则时命令返回非零退出码。这些快速、语法级的量化指标与 clang-tidy 互补：`readability-function-size` 只保留嵌套深度，`readability-function-cognitive-complexity` 衡量面向人的控制流理解难度，`misc-include-cleaner` 负责语义级头文件诊断。
 
 ### CPM 自动管理的依赖
 

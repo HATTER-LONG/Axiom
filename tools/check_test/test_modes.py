@@ -44,7 +44,7 @@ class ModeInterceptionTests(unittest.TestCase):
             value = gate("full")
             full(value)
             checks = report_by_id(value)
-            for check_id in ("build", "tests.full", "coverage.full", "cppcheck", "clang-tidy", "iwyu"):
+            for check_id in ("build", "tests.full", "coverage.full", "cppcheck", "clang-tidy"):
                 self.assertEqual(checks[check_id]["status"], "blocked")
 
         with isolated_project(), patch("checks.modes.full.source_checks"), patch("checks.modes.full.configure", return_value=True), patch("checks.modes.full.build", return_value=True), patch("checks.modes.full.clean_coverage_profiles"), patch("checks.modes.full.tests", return_value=False), patch("checks.modes.full.run_analyzers"):
@@ -53,15 +53,15 @@ class ModeInterceptionTests(unittest.TestCase):
             self.assertEqual(report_by_id(value)["coverage.full"]["status"], "blocked")
 
     def test_full_baseline_reaches_every_checkpoint(self) -> None:
-        def source_checks(value):
+        def source_checks(value, **_kwargs):
             for check_id in ("format", "complexity", "architecture"):
                 pass_check(value, check_id, 10)
 
-        with isolated_project(), patch("checks.modes.full.source_checks", side_effect=source_checks), patch("checks.modes.full.configure", side_effect=lambda value, _preset: pass_check(value, "configure", 10)), patch("checks.modes.full.build", side_effect=lambda value, _preset: pass_check(value, "build", 20)), patch("checks.modes.full.clean_coverage_profiles"), patch("checks.modes.full.tests", side_effect=lambda value, _preset, check_id: pass_check(value, check_id, 15)), patch("checks.modes.full.coverage", side_effect=lambda value, _preset, check_id: pass_check(value, check_id, 10)), patch("checks.modes.full.run_analyzers", side_effect=lambda value, *_args, **_kwargs: tuple(pass_check(value, check_id, 10) for check_id in ("cppcheck", "clang-tidy", "iwyu"))):
+        with isolated_project(), patch("checks.modes.full.source_checks", side_effect=source_checks), patch("checks.modes.full.configure", side_effect=lambda value, _preset: pass_check(value, "configure", 10)), patch("checks.modes.full.build", side_effect=lambda value, _preset: pass_check(value, "build", 20)), patch("checks.modes.full.clean_coverage_profiles"), patch("checks.modes.full.tests", side_effect=lambda value, _preset, check_id: pass_check(value, check_id, 15)), patch("checks.modes.full.coverage", side_effect=lambda value, _preset, check_id: pass_check(value, check_id, 10)), patch("checks.modes.full.run_analyzers", side_effect=lambda value, *_args, **_kwargs: tuple(pass_check(value, check_id, 10) for check_id in ("cppcheck", "clang-tidy"))):
             value = gate("full")
             full(value)
             self.assertTrue(value.report()["passed"])
-            self.assertEqual(set(report_by_id(value)), {"format", "complexity", "architecture", "configure", "build", "tests.full", "coverage.full", "cppcheck", "clang-tidy", "iwyu"})
+            self.assertEqual(set(report_by_id(value)), {"format", "complexity", "architecture", "configure", "build", "tests.full", "coverage.full", "cppcheck", "clang-tidy"})
 
     def test_hardening_sanitizer_failure_and_platform_skip_are_reported(self) -> None:
         with isolated_project(), patch("checks.modes.hardening.configure", return_value=False), patch("checks.modes.hardening.platform.system", return_value="Windows"):

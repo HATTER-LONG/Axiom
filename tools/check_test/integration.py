@@ -89,8 +89,6 @@ def probe_tools(verbose: bool = False) -> dict[str, Tool]:
         "lizard",
         "cppcheck",
         "clang-tidy",
-        "include-what-you-use",
-        "iwyu_tool.py",
         "llvm-profdata",
         "llvm-cov",
         "mull-runner",
@@ -107,10 +105,6 @@ def probe_tools(verbose: bool = False) -> dict[str, Tool]:
             version=_version(name, path, verbose) if path else None,
             reason=None if path else "not found on PATH",
         )
-        if not tool.supported and name == "iwyu_tool.py" and tools["include-what-you-use"].path:
-            sibling = Path(tools["include-what-you-use"].path).with_name("iwyu_tool.py")
-            if sibling.is_file():
-                tool = Tool("iwyu_tool.py", True, str(sibling), None)
         if system == "Windows" and name in ("mull-runner", "mull-ir-frontend"):
             tool.supported = False
             tool.reason = "Mull is unsupported on native Windows"
@@ -326,14 +320,6 @@ def run(report_path: Path | None = None, verbose: bool = False) -> tuple[bool, d
             "library/answer.cpp",
             ("inspect", "clang-tidy", "--preset", "fixture-full"),
             "clang-tidy",
-            None,
-        ),
-        (
-            "iwyu",
-            build + ("include-what-you-use", "iwyu_tool.py"),
-            "library/answer.cpp",
-            ("inspect", "iwyu", "--preset", "fixture-full"),
-            "iwyu",
             None,
         ),
         ("test-failure", build, "spec/answer_test.cpp", ("full",), "tests.full", None),

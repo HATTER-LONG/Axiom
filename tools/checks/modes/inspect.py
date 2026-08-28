@@ -21,12 +21,11 @@ INSPECTIONS = (
     "coverage",
     "cppcheck",
     "clang-tidy",
-    "iwyu",
 )
 
 
 def run(gate: Gate, tool: str, preset: str) -> None:
-    if tool in {"cppcheck", "clang-tidy", "iwyu"}:
+    if tool in {"cppcheck", "clang-tidy"}:
         if configure(gate, preset):
             run_analyzers(gate, preset, only=tool)
         else:

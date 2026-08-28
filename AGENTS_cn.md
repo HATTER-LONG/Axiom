@@ -77,19 +77,34 @@ uv run --quiet python tools/check.py hardening
 uv run --quiet python tools/check.py full
 ```
 
-检查、阈值和工具参数的权威定义在 `tools/check.py` 及 `quality/` 下的配置中。
+检查、阈值和工具参数的权威定义在 `tools/check.py`、`tools/checks/` 及 `quality/` 下的配置中。
 
 不要在本文件中重复这些细节。
 
-### IWYU Finding
+### 文档注释
 
-将 IWYU finding 视为诊断信息，而不是自动修改指令。先判断报告的 include 是否由文件的 Public API、直接使用或调用点真正需要；若 finding 有效，优先进行最小且真实的 include 修复。
+- Public interface 以及不直观的内部类型、函数、不变量、所有权规则、状态转换和算法，都应使用兼容 Doxygen 的注释；文档注释不应只覆盖 API 方法摘要。
+- 注释应描述用途和外部可观察行为。对于可调用接口，用 `@param` 描述每个参数，用 `@return` 描述非 `void` 返回值，用 `@throws` 描述所有可能向外传播的异常；必要时补充 `@pre`、`@post`、`@note` 或 `@warning`。
+- 注释必须与行为同步，避免只是逐句复述代码。
 
-优先移除已证实冗余的 include。只有在确认文件直接使用的符号没有被有意的直接 include 提供其公开声明时，才新增 include。当符号已由更具体的公开头文件提供时，不得仅因 IWYU 建议就添加更宽泛的标准库头文件。
+```cpp
+/**
+ * @brief 加载并校验项目配置。
+ *
+ * 返回的配置拥有所有解析结果；输入流销毁后仍可安全持有。
+ *
+ * @param input 指向配置文档开头的 UTF-8 输入流。
+ * @param source_name 校验失败时用于报告错误的来源名称。
+ * @return 已应用默认值的有效配置。
+ * @throws ParseError 文档格式错误时抛出。
+ * @throws ValidationError 必填值缺失或无效时抛出。
+ */
+Configuration loadConfiguration(std::istream& input, std::string_view source_name);
+```
 
-若 finding 已被确认是 IWYU 误报，可以在 `quality/iwyu.imp` 新增或更新一个范围严格受限、由仓库维护的 mapping。首次引入时必须将该 mapping 接入 IWYU 调用，记录它所表达的具体头文件关系或工具限制，并且只抑制这一关系。例如，应将错误归属的标准库符号映射至其具体的公开头文件，而不是添加无关的聚合头文件。不得用宽泛 mapping、全局抑制、跳过检查或移除诊断来隐藏真实 include 依赖。
+### clang-tidy 抑制注释
 
-无论修改 include 还是 mapping，都必须运行适用的质量门禁，并确认受影响的翻译单元仍能编译，且 finding 被解决而没有引入新的架构依赖。
+不得仅为了让 clang-tidy 通过而使用 `NOLINT`、`NOLINTNEXTLINE`、`NOLINTBEGIN`、编译器 pragma 或等效注释。必须先确认代码本身正确、诊断属于误报或确实不适用于该处，并确认正常修改反而会降低正确性或清晰度。确有必要时，抑制必须指明具体 check、限制在最小作用域，并写明可验证的理由；禁止使用宽泛抑制。
 
 ## 5. 测试原则
 

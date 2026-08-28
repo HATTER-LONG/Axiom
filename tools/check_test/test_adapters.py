@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from support import gate, isolated_project
 
-from checks.analyzers import _run_analyzer, parse_cppcheck, parse_iwyu, parse_tidy
+from checks.analyzers import _run_analyzer, parse_cppcheck, parse_tidy
 from checks.coverage import _compact_export, coverage
 from checks.mutation import mutation_test
 
@@ -18,10 +18,9 @@ def completed(returncode: int = 0, stdout: str = "") -> subprocess.CompletedProc
 
 
 class AnalyzerInterceptionTests(unittest.TestCase):
-    def test_all_analyzer_formats_are_parsed(self) -> None:
+    def test_analyzer_formats_are_parsed(self) -> None:
         self.assertEqual(len(parse_cppcheck(["a.cpp\t2\t3\twarning\trule\tmessage"])), 1)
         self.assertEqual(len(parse_tidy(["a.cpp:2:3: warning: message [rule]"])), 1)
-        self.assertEqual(len(parse_iwyu(["a.cpp should add these lines:", "#include <vector>", "---"])), 1)
 
     def test_analyzer_rejects_empty_database_and_unparsed_tool_failure(self) -> None:
         check_gate = gate()
@@ -36,26 +35,6 @@ class AnalyzerInterceptionTests(unittest.TestCase):
                 failed.custom("cppcheck", 10, lambda check: _run_analyzer(check, "cppcheck", [unit], "fixture-fast", False))
             self.assertEqual(failed.checks[0].status, "fail")
             self.assertEqual(failed.checks[0].detail["returncodes"], [2])
-
-    def test_iwyu_uses_repository_mapping_when_present(self) -> None:
-        with isolated_project() as project:
-            mapping = project / "quality" / "iwyu.imp"
-            mapping.write_text("[]\n", encoding="utf-8")
-            unit = project / "library" / "answer.cpp"
-            value = gate()
-            with patch("checks.analyzers.missing_analyzer_tool", return_value=None), patch(
-                "checks.analyzers.iwyu_driver", return_value="iwyu_tool.py"
-            ), patch("checks.analyzers.command_output", return_value=completed()) as output:
-                self.assertTrue(
-                    value.custom(
-                        "iwyu",
-                        10,
-                        lambda check: _run_analyzer(check, "iwyu", [unit], "fixture-fast", False),
-                    )
-                )
-            command = output.call_args.args[0]
-            self.assertIn(f"--mapping_file={mapping}", command)
-
 
 class CoverageInterceptionTests(unittest.TestCase):
     def _prepared(self, project: Path) -> tuple[Path, Path]:

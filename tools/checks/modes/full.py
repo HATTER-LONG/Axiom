@@ -18,7 +18,6 @@ def run(gate: Gate) -> None:
         gate.blocked("coverage.full", 10, "configure failed")
         gate.blocked("cppcheck", 10, "configure failed")
         gate.blocked("clang-tidy", 10, "configure failed")
-        gate.blocked("iwyu", 10, "configure failed")
         return
     configure_reason = gate.skip_reason("configure")
     if configure_reason:
@@ -28,7 +27,6 @@ def run(gate: Gate) -> None:
             ("coverage.full", 10),
             ("cppcheck", 10),
             ("clang-tidy", 10),
-            ("iwyu", 10),
         ):
             gate.skipped(check_id, maximum, f"configure skipped: {configure_reason}")
         return
@@ -37,7 +35,6 @@ def run(gate: Gate) -> None:
         gate.blocked("coverage.full", 10, "build failed")
         gate.blocked("cppcheck", 10, "build failed")
         gate.blocked("clang-tidy", 10, "build failed")
-        gate.blocked("iwyu", 10, "build failed")
         return
     build_reason = gate.skip_reason("build")
     if build_reason:
@@ -46,7 +43,6 @@ def run(gate: Gate) -> None:
             ("coverage.full", 10),
             ("cppcheck", 10),
             ("clang-tidy", 10),
-            ("iwyu", 10),
         ):
             gate.skipped(check_id, maximum, f"build skipped: {build_reason}")
         return
@@ -57,4 +53,4 @@ def run(gate: Gate) -> None:
         gate.skipped("coverage.full", 10, f"tests skipped: {test_reason}")
     else:
         coverage(gate, preset, "coverage.full")
-    run_analyzers(gate, preset, analyzers=("cppcheck", "clang-tidy", "iwyu"))
+    run_analyzers(gate, preset, analyzers=("cppcheck", "clang-tidy"))

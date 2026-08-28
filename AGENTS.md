@@ -77,31 +77,46 @@ Before merging or declaring the overall task complete, run:
 uv run --quiet python tools/check.py full
 ```
 
-The authoritative definitions of checks, thresholds, and tool parameters live in `tools/check.py` and the configuration under `quality/`.
+The authoritative definitions of checks, thresholds, and tool parameters live in
+`tools/check.py`, `tools/checks/`, and the configuration under `quality/`.
 
 Do not duplicate those details in this document.
 
-### IWYU Findings
+### Documentation Comments
 
-Treat an IWYU finding as a diagnosis, not an automatic edit. First determine whether
-the reported include is required by the file's public contract or direct use, inspect
-the affected call sites, and prefer removing a demonstrably redundant include. Add
-an include only after confirming that the file directly uses a symbol whose public
-declaration is not already provided by an intentional direct include. Do not add a
-broader standard-library header merely because IWYU suggests it when the symbol is
-provided by a more specific public header.
+- Use Doxygen-compatible comments for public interfaces and for non-obvious internal
+  types, functions, invariants, ownership rules, state transitions, and algorithms.
+  Documentation is not limited to API method summaries.
+- Describe purpose and observable behavior. For callable interfaces, document every
+  parameter with `@param`, a non-void result with `@return`, and each exception that
+  may escape with `@throws`. Add `@pre`, `@post`, `@note`, or `@warning` when those
+  contracts matter.
+- Keep comments synchronized with behavior and avoid merely restating the code.
 
-If the finding is a confirmed IWYU false positive, a narrowly scoped repository-owned
-mapping may be added or updated at `quality/iwyu.imp`. The mapping must be wired into
-the IWYU invocation when first introduced, document the concrete header relationship
-or tool limitation it models, and suppress only that relationship. For example, map
-an incorrectly attributed standard-library symbol to its specific public header rather
-than adding an unrelated umbrella header. Never use broad mappings, global
-suppression, skipped checks, or removed diagnostics to hide a real include dependency.
+```cpp
+/**
+ * @brief Loads and validates a project configuration.
+ *
+ * The returned configuration owns all parsed values and is safe to retain after the
+ * input stream is destroyed.
+ *
+ * @param input UTF-8 stream positioned at the start of a configuration document.
+ * @param source_name Name used when reporting validation failures.
+ * @return A validated configuration with defaults applied.
+ * @throws ParseError If the document is malformed.
+ * @throws ValidationError If a required value is missing or invalid.
+ */
+Configuration loadConfiguration(std::istream& input, std::string_view source_name);
+```
 
-After either an include change or mapping change, run the applicable quality gate and
-confirm that the affected translation units still compile and that the IWYU finding is
-resolved without introducing a new architectural dependency.
+### clang-tidy Suppressions
+
+Do not use `NOLINT`, `NOLINTNEXTLINE`, `NOLINTBEGIN`, compiler pragmas, or equivalent
+comments merely to make clang-tidy pass. First confirm that the code is correct, the
+diagnostic is a false positive or deliberately inapplicable, and a normal code change
+would reduce correctness or clarity. Any necessary suppression must name the exact
+check, have the narrowest possible scope, and include a concrete justification. Never
+use blanket suppressions.
 
 ## 5. Testing Principles
 

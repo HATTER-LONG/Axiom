@@ -36,7 +36,9 @@ actually occur. Do not start a separate child solely to run tests.
 - **Planner (read-only):** return a dependency-ordered plan with acceptance criteria,
   preserved behavior, independent tasks, and tests.
 - **Task implementer:** implement exactly one planned task, update behavioral tests,
-  and repair `fast` until it passes.
+  update Doxygen-compatible documentation for changed contracts and non-obvious
+  behavior, and repair `fast` until it passes. Do not suppress clang-tidy unless the
+  diagnostic is confirmed inapplicable and the narrow suppression is justified.
 - **Hardening implementer:** run `hardening`, repair root causes, and rerun `fast`
   after every code change.
 - **Reviewer (read-only):** inspect the complete mergeable diff against confirmed
@@ -56,8 +58,9 @@ actually occur. Do not start a separate child solely to run tests.
 5. Run one fresh, read-only review role after hardening passes. If review identifies
    findings, create fresh task roles to repair them, then repeat hardening and review;
    all prior gates and reviews are stale after a code change.
-6. Run `full` only after review is clean. If it fails, repair the root cause with a
-   fresh task role, then repeat hardening, review, and `full`.
+6. Run `full` only after review is clean. If it reports files requiring formatting,
+   format only those files, inspect the diff, then repeat hardening, review, and `full`.
+   Repair any other failure with a fresh task role and repeat the same sequence.
 
 Stop when acceptance criteria, required gates, and clean review pass; when the user
 changes scope; or when progress requires user authority or information. Do not retry

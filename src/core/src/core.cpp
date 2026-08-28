@@ -1,5 +1,7 @@
 #include <axiom/core/core.hpp>
 
+#include <string_view>
+
 namespace axiom::core {
 
 const char* frameworkName() noexcept { return "Axiom"; }
