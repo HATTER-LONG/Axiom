@@ -18,11 +18,6 @@ function (axiom_configure_language_diagnostics target_name)
         if (AXIOM_STRICT_LANGUAGE_MODE)
             target_compile_options("${target_name}" PRIVATE -pedantic-errors)
         endif ()
-        if (AXIOM_DISABLE_MSVC_COMPATIBILITY
-            AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
-            AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
-            target_compile_options("${target_name}" PRIVATE -fno-ms-compatibility)
-        endif ()
     endif ()
 endfunction ()
 

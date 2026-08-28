@@ -11,12 +11,12 @@ include(CMakePackageConfigHelpers)
 
 option(AXIOM_BUILD_DEMO "Build the minimal demonstration application" ${PROJECT_IS_TOP_LEVEL})
 option(AXIOM_BUILD_TESTS "Build Axiom unit and integration tests" OFF)
+option(AXIOM_BUILD_INSTALL_TEST "Build the installed-package consumer test" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
 option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(AXIOM_COVERAGE "Enable LLVM source-based coverage instrumentation" OFF)
 option(AXIOM_MUTATION_TESTING "Instrument project targets for Mull mutation testing" OFF)
 set(AXIOM_MULL_IR_FRONTEND "" CACHE FILEPATH "Path to the Mull LLVM IR frontend plugin")
-option(AXIOM_DISABLE_MSVC_COMPATIBILITY "Disable MSVC compatibility extensions" ON)
 option(AXIOM_STRICT_LANGUAGE_MODE "Enable strict C++ language diagnostics" ON)
 set(AXIOM_SANITIZERS
     ""
@@ -48,21 +48,23 @@ if (PROJECT_IS_TOP_LEVEL)
     if (AXIOM_BUILD_TESTS AND BUILD_TESTING)
         add_subdirectory(tests)
 
-        add_test(
-            NAME axiom.install
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-                -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
-                -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
-                -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-                -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
-                -DAXIOM_INSTALL_CONFIG=$<CONFIG>
-                -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
-        if (AXIOM_SANITIZERS)
-            # The install consumer intentionally does not inherit private sanitizer link flags.
-            set_tests_properties(axiom.install PROPERTIES DISABLED TRUE)
+        if (AXIOM_BUILD_INSTALL_TEST)
+            add_test(
+                NAME axiom.install
+                COMMAND
+                    ${CMAKE_COMMAND}
+                    -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+                    -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
+                    -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
+                    -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                    -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                    -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
+                    -DAXIOM_INSTALL_CONFIG=$<CONFIG>
+                    -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+            if (AXIOM_SANITIZERS)
+                # The install consumer intentionally does not inherit private sanitizer link flags.
+                set_tests_properties(axiom.install PROPERTIES DISABLED TRUE)
+            endif ()
         endif ()
     endif ()
 endif ()

@@ -23,6 +23,10 @@ cmake --preset debug
 cmake --build --preset debug
 ```
 
+The installed-package consumer test is disabled during normal development because
+it performs a separate install, configure, and build. Enable it for release
+validation with `-DAXIOM_BUILD_INSTALL_TEST=ON`.
+
 ## Use as a CMake package
 
 Install the library from a configured build directory:
