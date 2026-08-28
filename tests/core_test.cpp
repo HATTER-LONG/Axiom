@@ -1,17 +1,11 @@
 #include <axiom/core/core.hpp>
 
-#include <cstdlib>
-#include <string_view>
+#include <gtest/gtest.h>
 
-int main() {
-    if(std::string_view{axiom::core::frameworkName()} != "Axiom") {
-        return EXIT_FAILURE;
-    }
-    if(!axiom::core::isFrameworkName("Axiom")) {
-        return EXIT_FAILURE;
-    }
-    if(axiom::core::isFrameworkName("Other")) {
-        return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
+TEST(CoreFrameworkName, ReturnsAxiom) { EXPECT_STREQ(axiom::core::frameworkName(), "Axiom"); }
+
+TEST(CoreFrameworkName, AcceptsExactName) { EXPECT_TRUE(axiom::core::isFrameworkName("Axiom")); }
+
+TEST(CoreFrameworkName, RejectsDifferentName) {
+    EXPECT_FALSE(axiom::core::isFrameworkName("Other"));
 }

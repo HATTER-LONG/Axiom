@@ -126,6 +126,24 @@ use blanket suppressions.
 - Coverage is only a baseline metric; it does not prove that tests are effective.
 - Do not add tests with meaningless or weak assertions merely to increase coverage.
 
+### GTEST Best Practices
+
+All unit and integration tests use the GoogleTest framework, which is fetched via CPM.
+
+- Name test cases as `TEST(SuiteName, TestName)` where the name describes the single
+  observable behavior under test.
+- Choose the assertion macro that best matches the comparison semantics (for example
+  `EXPECT_STREQ` for C strings rather than `EXPECT_EQ` on pointers).
+- Use `ASSERT_*` only to guard a precondition that later code depends on (such as a
+  pointer that is dereferenced afterwards); otherwise use `EXPECT_*` so a single run
+  surfaces multiple failures.
+- Keep tests deterministic: avoid wall-clock time, randomness, and environment
+  dependencies; inject or fixture any variability instead.
+- Use `TEST_F` fixtures for shared setup and rely on RAII (constructors,
+  `SetUp`/`TearDown`) to manage resources.
+- Assert meaningful, externally observable outcomes; never write empty or trivial
+  assertions solely to raise coverage.
+
 ## 6. Architecture Constraints
 
 Architecture dependencies are enforced by:

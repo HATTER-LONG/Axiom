@@ -1,3 +1,6 @@
+include("${PROJECT_SOURCE_DIR}/cmake/CPM.cmake")
+cpmaddpackage("gh:google/googletest@1.18.0")
+
 add_executable(axiom_core_test core_test.cpp)
 axiom_configure_language_diagnostics(axiom_core_test)
 axiom_configure_static_analyzers(axiom_core_test)
@@ -5,7 +8,7 @@ axiom_configure_sanitizers(axiom_core_test)
 axiom_configure_coverage(axiom_core_test)
 axiom_configure_mutation_testing(axiom_core_test)
 target_compile_features(axiom_core_test PRIVATE cxx_std_20)
-target_link_libraries(axiom_core_test PRIVATE Axiom::Core)
+target_link_libraries(axiom_core_test PRIVATE Axiom::Core GTest::gtest_main)
 
 add_test(NAME axiom.core COMMAND axiom_core_test)
 if (AXIOM_COVERAGE)
