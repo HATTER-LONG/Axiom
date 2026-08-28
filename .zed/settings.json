@@ -15,7 +15,7 @@
   "lsp": {
     "clangd": {
       "binary": {
-        "arguments": ["--clang-tidy", "--background-index"],
+        "arguments": ["--clang-tidy", "--compile-commands-dir=build"],
       },
     },
     "cmake": {
