@@ -122,6 +122,18 @@ TEST(ValueConverter, RejectsLossyAndImplicitScalarConversionsAtTheInputPath) {
     EXPECT_EQ(*overflowing_integer.error().path, "size");
 }
 
+TEST(ValueConverter, AcceptsBothInclusiveBoundsOfNarrowIntegerTypes) {
+    const auto lowest = fromValue<std::int8_t>(
+        Value{std::int64_t{std::numeric_limits<std::int8_t>::lowest()}}, "minimum");
+    const auto highest = fromValue<std::int8_t>(
+        Value{std::int64_t{std::numeric_limits<std::int8_t>::max()}}, "maximum");
+
+    ASSERT_TRUE(lowest);
+    ASSERT_TRUE(highest);
+    EXPECT_EQ(lowest.value(), std::numeric_limits<std::int8_t>::lowest());
+    EXPECT_EQ(highest.value(), std::numeric_limits<std::int8_t>::max());
+}
+
 TEST(ValueConverter, PreservesPreciseNestedArrayAndObjectPaths) {
     const Value input{Value::Object{{
         "size",
@@ -169,9 +181,16 @@ TEST(ValueConverter, KeepsIdentifierObjectPathSegmentsInTheEstablishedDotForm) {
     EXPECT_EQ(appendObjectPath("shape", "size"), "shape.size");
     EXPECT_EQ(appendObjectPath("", "size"), "size");
     EXPECT_EQ(appendObjectPath("shape", "_private2"), "shape._private2");
+    EXPECT_EQ(appendObjectPath("shape", "A"), "shape.A");
+    EXPECT_EQ(appendObjectPath("shape", "Z9"), "shape.Z9");
+    EXPECT_EQ(appendObjectPath("shape", "a0"), "shape.a0");
     EXPECT_EQ(appendObjectPath("shape", ""), "shape[\"\"]");
     EXPECT_EQ(appendObjectPath("shape", "\b\f\r\t\x01\x7f"),
               "shape[\"\\b\\f\\r\\t\\u0001\\u007F\"]");
+}
+
+TEST(ValueConverter, LeavesSpaceUnescapedInQuotedObjectPathKeys) {
+    EXPECT_EQ(appendObjectPath("shape", "two words"), "shape[\"two words\"]");
 }
 
 TEST(ValueConverter, MaterializesNestedContainersAsStableValueShapes) {
@@ -241,4 +260,13 @@ TEST(ValueConverter, PreservesSuccessfulAndRejectedSpecializedContainerConversio
     EXPECT_EQ(invalid_string.error().code, axiom::core::ErrorCode::TypeMismatch);
     EXPECT_EQ(bytes.value(), (std::vector<std::int8_t>{1}));
     EXPECT_EQ(nested.value().at("items"), (std::vector<std::int32_t>{1}));
+}
+
+TEST(ValueConverter, ConvertsEveryArrayElementAndPreservesItsFailureIndex) {
+    const auto converted = fromValue<std::vector<std::int32_t>>(
+        Value{Value::Array{Value{std::int64_t{1}}, Value{"invalid"}}}, "points");
+
+    ASSERT_FALSE(converted);
+    ASSERT_TRUE(converted.error().path.has_value());
+    EXPECT_EQ(*converted.error().path, "points[1]");
 }

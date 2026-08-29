@@ -45,6 +45,15 @@ TEST(ActionId, RejectsAnythingOtherThanTwoCanonicalComponents) {
     }
 }
 
+TEST(ActionId, AcceptsOneCharacterComponentsAtEveryIdentifierBoundary) {
+    for(const std::string_view valid : {"a.a", "z.z", "0.0", "9.9", "_._"}) {
+        const auto result = axiom::core::ActionId::parse(valid);
+
+        ASSERT_TRUE(result) << valid;
+        EXPECT_EQ(result.value().str(), valid);
+    }
+}
+
 TEST(TypeDescriptor, RepresentsEveryValueShapeIncludingNestedObjectAndArray) {
     const auto descriptor = axiom::core::TypeDescriptor::object(
         {{"items", axiom::core::TypeDescriptor::nested(
@@ -151,6 +160,20 @@ TEST(ActionDescriptor, RejectsInvalidOrDuplicateParameterNames) {
               axiom::core::ErrorCode::InvalidDescriptor);
 }
 
+TEST(ActionDescriptor, AcceptsParameterNamesAtEveryIdentifierBoundary) {
+    const axiom::core::ActionDescriptor descriptor{
+        .id = actionId("math.boundaries"),
+        .parameters = {{.name = "a", .type = integerType()},
+                       {.name = "z", .type = integerType()},
+                       {.name = "a0", .type = integerType()},
+                       {.name = "z9", .type = integerType()},
+                       {.name = "_", .type = integerType()}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_TRUE(axiom::core::validate(descriptor));
+}
+
 TEST(ActionDescriptor, RejectsInconsistentDefaultValues) {
     const axiom::core::ActionDescriptor required_default{
         .id = actionId("math.add"),
@@ -206,6 +229,52 @@ TEST(ActionDescriptor, AcceptsIntegerDefaultsForNumberParameters) {
     EXPECT_TRUE(axiom::core::validate(descriptor));
 }
 
+TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
+    const auto array_of_integers = axiom::core::TypeDescriptor::array(integerType());
+    const auto fixed_object = axiom::core::TypeDescriptor::object(
+        {{"value", axiom::core::TypeDescriptor::nested(integerType())}});
+    const auto values_object = axiom::core::TypeDescriptor::objectValues(integerType());
+    const axiom::core::ActionDescriptor null_scalar{
+        .id = actionId("math.null_default"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = integerType(),
+                        .default_value = axiom::core::Value{nullptr}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor bad_array{
+        .id = actionId("math.array_default"),
+        .parameters = {{.name = "values",
+                        .required = false,
+                        .type = array_of_integers,
+                        .default_value = axiom::core::Value{axiom::core::Value::Array{
+                            axiom::core::Value{"wrong"}}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor missing_fixed_member{
+        .id = actionId("math.object_default"),
+        .parameters = {{.name = "object",
+                        .required = false,
+                        .type = fixed_object,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor bad_value_member{
+        .id = actionId("math.values_default"),
+        .parameters = {{.name = "object",
+                        .required = false,
+                        .type = values_object,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{
+                            {"key", axiom::core::Value{"wrong"}}}}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(null_scalar));
+    EXPECT_FALSE(axiom::core::validate(bad_array));
+    EXPECT_FALSE(axiom::core::validate(missing_fixed_member));
+    EXPECT_FALSE(axiom::core::validate(bad_value_member));
+}
+
 TEST(ModuleDescriptor, ValidatesNamespaceAndMetadataBeforeRegistration) {
     const axiom::core::ModuleDescriptor valid{
         .namespace_name = "math_2",
@@ -258,6 +327,51 @@ TEST(TypeDescriptor, RejectsInvalidFieldNamesAndIncoherentShapes) {
     EXPECT_FALSE(axiom::core::validate(missing_field_type));
     EXPECT_FALSE(axiom::core::validate(scalar_with_element));
     EXPECT_FALSE(axiom::core::validate(invalid_array));
+}
+
+TEST(TypeDescriptor, AcceptsBoundaryCharactersInObjectFieldNames) {
+    const auto descriptor = axiom::core::TypeDescriptor::object(
+        {{"a", axiom::core::TypeDescriptor::nested(integerType())},
+         {"z", axiom::core::TypeDescriptor::nested(integerType())},
+         {"a0", axiom::core::TypeDescriptor::nested(integerType())},
+         {"z9", axiom::core::TypeDescriptor::nested(integerType())},
+         {"_", axiom::core::TypeDescriptor::nested(integerType())}});
+
+    EXPECT_TRUE(axiom::core::validate(descriptor));
+}
+
+TEST(TypeDescriptor, RejectsConflictingObjectAndArrayMemberDefinitions) {
+    const auto values = axiom::core::TypeDescriptor::objectValues(integerType());
+    const auto fixed = axiom::core::TypeDescriptor::object(
+        {{"value", axiom::core::TypeDescriptor::nested(integerType())}});
+    const axiom::core::TypeDescriptor mixed_object{
+        .kind = axiom::core::TypeDescriptor::Kind::Object,
+        .fields = fixed.fields,
+        .value_type = values.value_type,
+    };
+    const axiom::core::TypeDescriptor array_with_value_type{
+        .kind = axiom::core::TypeDescriptor::Kind::Array,
+        .element_type = axiom::core::TypeDescriptor::nested(integerType()),
+        .value_type = axiom::core::TypeDescriptor::nested(integerType()),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(mixed_object));
+    EXPECT_FALSE(axiom::core::validate(array_with_value_type));
+}
+
+TEST(TypeDescriptor, ValidatesTheNestedValueTypeOfHomogeneousObjects) {
+    const axiom::core::TypeDescriptor invalid_value_type{
+        .kind = axiom::core::TypeDescriptor::Kind::Object,
+        .value_type = axiom::core::TypeDescriptor::nested(
+            {.kind = axiom::core::TypeDescriptor::Kind::Array}),
+    };
+    const axiom::core::TypeDescriptor scalar_with_value_type{
+        .kind = axiom::core::TypeDescriptor::Kind::String,
+        .value_type = axiom::core::TypeDescriptor::nested(integerType()),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(invalid_value_type));
+    EXPECT_FALSE(axiom::core::validate(scalar_with_value_type));
 }
 
 TEST(ActionDescriptor, RejectsEmptyVersionAndAcceptsNullableDefaults) {
