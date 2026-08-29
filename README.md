@@ -56,7 +56,8 @@ The public header is available as:
 | `src/core` | Installable `Axiom::Core` library and its public headers. |
 | `apps/demo` | Minimal executable that consumes the core library. |
 | `tests` | Unit and installed-package integration tests. |
-| `tools/check.py` | JSON-reporting quality-gate entry point. |
+| `checkflow.json` | Versioned CheckFlow quality-gate flow definitions. |
+| `.checkflow/tools` | Axiom-specific architecture, formatting, and mutation-quality Tools. |
 | `quality` | Versioned quality profile and architecture policy. |
 
 ## Quality gates
@@ -65,51 +66,22 @@ Run gates through uv so agents get one compact JSON result rather than compiler
 logs. A non-zero exit code always means the selected gate failed.
 
 ```sh
-uv run --quiet python tools/check.py fast
-uv run --quiet python tools/check.py full
-uv run --quiet python tools/check.py hardening
+uv sync --group dev
+uv run --quiet checkflow fast
+uv run --quiet checkflow full
+uv run --quiet checkflow hardening
+uv run --quiet checkflow doctor
 ```
-
-### Reusable check fixture
-
-[`tools/check_test`](tools/check_test/README.md) is a standalone C++20/CMake
-demo project that exercises the public `check.py` contract.  It has its own
-source, tests, CMake presets, and architecture policy; it does not link to
-Axiom.  Use it to verify the Python report parsers and interception semantics
-without changing Axiom sources:
-
-```sh
-uv run --quiet python tools/check_test/verify.py \
-  --report build-quality/reports/check-test-integration.json
-uv run --quiet python tools/check.py --project-root tools/check_test fast
-```
-
-`--project-root` makes command execution, source discovery, build artifacts,
-and reports relative to the selected CMake project. Each project owns a
-`quality/check_profile.json` that declares its source roots, preset names,
-build directories, policy path, cache options, schemas, and quality thresholds.
-The fixture intentionally uses names different from Axiom. It runs clean
-`full` and `hardening` baselines, then compiles isolated real failure sources
-for every supported tool, including ASan and UBSan. The final report separates
-supported tools, detected failures, clean passes, unsupported capabilities, and
-unexpected failures. Use `--quick` when only the dependency-free contract suite
-is needed.
 
 Add `-v` or `--verbose` before or after the gate name to print each executed
 command, its combined output, and its exit code to stderr. The JSON report stays
 on stdout for machine consumption.
 
-Use `--report <path>` when a later agent needs the same immutable report file.
-`fast` applies complexity, cppcheck, and clang-tidy only to source files
-recompiled by its incremental build. Its inexpensive architecture rule scan
-remains whole-project so header-only violations are not missed. Formatting is
-intentionally deferred to `full`, which reports only the source files requiring
-clang-format without modifying them. `full` also runs cppcheck and clang-tidy over
-every project compilation unit. `hardening` builds and
-runs the test suite with AddressSanitizer and UndefinedBehaviorSanitizer enabled,
-then uses a separate instrumented build and requires a Mull mutation score of at
-least 90 for project source code. Mull's Mutation Testing Elements report is
-written under `build-quality/mutation/mull/`.
+`fast` validates architecture, configures and builds `quality-fast`, runs
+complexity, cppcheck, clang-tidy, CTest, and LLVM coverage. `full` adds a
+non-mutating clang-format check and the installed-package test. `hardening`
+runs ASan/UBSan tests plus a separate Mull build with a 90% mutation threshold.
+Use `checkflow doctor` to validate the declared tools before executing a flow.
 
 `fast` and `full` build with LLVM source-based coverage instrumentation and fail
 when the test suite's line coverage drops below 90%; the report also records
@@ -121,15 +93,12 @@ recording their count. Add `--coverage-html` to additionally
 render the browsable
 `llvm-cov` HTML report into `coverage-html/` next to it.
 
-For diagnosis only, without claiming a gate passed:
+For diagnosis, without executing a flow:
 
 ```sh
-uv run --quiet python tools/check.py inspect format
-uv run --quiet python tools/check.py inspect tests --preset quality-fast
-uv run --quiet python tools/check.py inspect coverage
-uv run --quiet python tools/check.py inspect cppcheck
-uv run --quiet python tools/check.py inspect clang-tidy
-uv run --quiet python tools/check.py --list
+uv run --quiet checkflow doctor
+uv run --quiet checkflow doctor fast
+uv run --quiet checkflow fast --diagnostic
 ```
 
 The analyzer inspections and the full gate scan every project compilation
@@ -193,7 +162,7 @@ They are not downloaded by CPM.
 
 | Tool                        | Used for                                                                                          | When required                                    |
 | --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| uv and Python 3.10+         | Run the quality-check script                                                                      | Quality gates                                    |
+| uv and Python 3.11+         | Run the project-local CheckFlow environment                                                       | Quality gates                                    |
 | CMake 3.25+ and Ninja       | Configure and build                                                                               | Builds and quality gates                         |
 | A C++20 compiler            | Build the project                                                                                 | Builds                                            |
 | LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
@@ -215,7 +184,7 @@ copies the AddressSanitizer runtime DLL next to the executable when available. T
 as `mull-runner-22` and `mull-ir-frontend-22` are detected from `PATH`; Mull must match the LLVM toolchain.
 Mull 0.34 does not support native Windows: run the `hardening` gate in WSL, Linux, or macOS. For
 this machine, install a Linux distribution for WSL first, then build/install the Mull source there
-and run `uv run --quiet python tools/check.py hardening` from the Linux checkout of Axiom. The
+and run `uv run --quiet checkflow hardening` from the Linux checkout of Axiom. The
 versioned executable and frontend plugin must use the same LLVM major version as `clang++`.
 
 ### Lizard complexity analysis
@@ -261,12 +230,10 @@ cmake --build --preset quality-fast
 ctest --preset quality-fast
 ```
 
-The quality script is the preferred entry point because it combines these
+CheckFlow is the preferred entry point because it combines these
 commands with the architecture, complexity, formatting, and analyzer checks.
 
-### Gate regression tests
+### Gate validation
 
-Intentional analyzer and orchestration failures live in `tools/check_test`, not
-in production demo sources. Run `python tools/check_test/verify.py` to validate
-the negative cases, then run `python tools/check.py full` for the real-project
-baseline.
+Run `uv run --quiet checkflow doctor` after changing `checkflow.json` or a
+project Tool, then run `fast`, `full`, or `hardening` as appropriate.
