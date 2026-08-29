@@ -170,7 +170,7 @@ Phase 1 采用简单、可验证的模型：一个 `Runtime` 在构造期完成 
 ## 8. 实施顺序与验收
 
 每一步添加针对外部可观察行为的测试，并运行
-`uv run --quiet python tools/check.py fast`；若失败，先修复根因再进入下一步。
+`checkflow fast`；若失败，先修复根因再进入下一步。
 
 1. `Value`、`Error`、`Result` 及其单元测试。
 2. `ActionId`、`TypeDescriptor` 与描述符验证。
@@ -186,7 +186,7 @@ Phase 1 采用简单、可验证的模型：一个 `Runtime` 在构造期完成 
 现有安装消费测试，验证 `find_package(Axiom)` 和 `Axiom::Core`。
 
 完成一个可发布的 Phase 1 增量前，运行 `fast`、`hardening` 和 `full`。以
-`tools/check.py` 及 `quality/` 中的当前定义为准；不得为适配本规格降低架构、覆盖率、格式
+`checkflow.json`、`.checkflow/tools/` 及 `quality/` 中的当前定义为准；不得为适配本规格降低架构、覆盖率、格式
 或分析门槛。
 
 ## 9. 后续演进门槛

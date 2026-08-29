@@ -55,14 +55,13 @@ target_link_libraries(my_target PRIVATE Axiom::Core)
 
 ## 质量门禁
 
-通过 uv 运行门禁，使自动化工具获得紧凑的 JSON 结果，而非编译器日志。所选门禁返回非零退出码即表示失败。
+通过全局安装的 `checkflow` 命令运行门禁，使自动化工具获得紧凑的 JSON 结果，而非编译器日志。所选门禁返回非零退出码即表示失败。
 
 ```sh
-uv sync --group dev
-uv run --quiet checkflow fast
-uv run --quiet checkflow full
-uv run --quiet checkflow hardening
-uv run --quiet checkflow doctor
+checkflow fast
+checkflow full
+checkflow hardening
+checkflow doctor
 ```
 
 在门禁名称前或后添加 `-v` / `--verbose`，可将执行的命令、合并后的输出及退出码打印到 stderr；JSON 报告始终输出到 stdout。
@@ -74,9 +73,9 @@ uv run --quiet checkflow doctor
 仅用于诊断、不会宣称门禁通过的命令：
 
 ```sh
-uv run --quiet checkflow doctor
-uv run --quiet checkflow doctor fast
-uv run --quiet checkflow fast --diagnostic
+checkflow doctor
+checkflow doctor fast
+checkflow fast --diagnostic
 ```
 
 分析器诊断以及 `full` 门禁都会从 CMake 编译数据库中扫描所有项目编译单元。
@@ -110,7 +109,7 @@ uv run --quiet checkflow fast --diagnostic
 
 | 工具 | 用途 | 何时需要 |
 | --- | --- | --- |
-| uv 与 Python 3.11+ | 运行项目级 CheckFlow 环境 | 质量门禁 |
+| CheckFlow | 运行仓库质量门禁 | 质量门禁 |
 | CMake 3.25+ 与 Ninja | 配置和构建 | 构建和质量门禁 |
 | 支持 C++20 的编译器 | 构建项目 | 构建 |
 | LLVM/Clang | `clang++`、`clang-tidy`、`clang-format`、clangd、AddressSanitizer、UndefinedBehaviorSanitizer | 所有质量门禁 |
@@ -124,7 +123,7 @@ uv run --quiet checkflow fast --diagnostic
 `clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`full` 与 `inspect format` 都使用只读的 `--dry-run --Werror`；JSON 结果只列出需要格式化的文件，不包含 clang-format 的逐行诊断，也不会修改源码。
 
 `quality-hardening` 配置使用 LLVM 的编译器与运行时。在 Windows 上，构建在可用时会把 AddressSanitizer 的运行时 DLL 复制到可执行文件旁。独立的 `quality-mutation` 配置会启用 Mull 的 LLVM IR frontend。检查脚本会从 `PATH` 中自动配对无后缀工具，或 `mull-runner-22` 与 `mull-ir-frontend-22` 这类带 LLVM 版本后缀的工具；Mull 版本必须与所用 LLVM 工具链匹配。
-Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `uv run --quiet checkflow hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
+Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `checkflow hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
 
 ### Lizard 圈复杂度分析
 
@@ -166,5 +165,5 @@ ctest --preset quality-fast
 ## 门禁回归测试
 
 修改 `checkflow.json` 或 `.checkflow/tools/` 后，先运行
-`uv run --quiet checkflow doctor`，再根据变更范围运行 `fast`、`full` 或
+`checkflow doctor`，再根据变更范围运行 `fast`、`full` 或
 `hardening`。

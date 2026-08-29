@@ -8,7 +8,7 @@
       {"id": "build", "tool": "cmake", "depends_on": ["configure"], "timeout": 600, "args": {"action": "build", "preset": "quality-fast"}},
       {"id": "clean_coverage", "tool": "coverage", "depends_on": ["build"], "args": {"action": "clean", "build_directory": "build-quality/fast"}},
       {"id": "unit_tests", "tool": "ctest", "depends_on": ["clean_coverage"], "timeout": 600, "args": {"preset": "quality-fast"}},
-      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/fast", "preset": "quality-fast", "threshold": 90, "required_cache_option": "AXIOM_COVERAGE"}}
+      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/fast", "preset": "quality-fast", "thresholds": {"lines": 90, "regions": 90, "branches": 90}, "required_cache_option": "AXIOM_COVERAGE"}}
     ],
     "full": [
       {"id": "architecture", "tool": "architecture"},
@@ -20,7 +20,7 @@
       {"id": "clang_tidy", "tool": "clang_tidy", "depends_on": ["build"], "timeout": 600, "args": {"compilation_database": "build-quality/full", "include": ["src/**", "apps/**", "tests/**"], "options": ["--quiet", "--warnings-as-errors=*"]}},
       {"id": "clean_coverage", "tool": "coverage", "depends_on": ["build"], "args": {"action": "clean", "build_directory": "build-quality/full"}},
       {"id": "unit_tests", "tool": "ctest", "depends_on": ["clean_coverage"], "timeout": 900, "args": {"preset": "quality-full"}},
-      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/full", "preset": "quality-full", "threshold": 90, "required_cache_option": "AXIOM_COVERAGE"}}
+      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/full", "preset": "quality-full", "thresholds": {"lines": 90, "regions": 90, "branches": 90}, "required_cache_option": "AXIOM_COVERAGE"}}
     ],
     "hardening": [
       {"id": "configure", "tool": "cmake", "timeout": 300, "args": {"action": "configure", "preset": "quality-hardening"}},

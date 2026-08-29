@@ -62,15 +62,15 @@ The public header is available as:
 
 ## Quality gates
 
-Run gates through uv so agents get one compact JSON result rather than compiler
-logs. A non-zero exit code always means the selected gate failed.
+Run gates through the globally installed `checkflow` command so agents get one
+compact JSON result rather than compiler logs. A non-zero exit code always means
+the selected gate failed.
 
 ```sh
-uv sync --group dev
-uv run --quiet checkflow fast
-uv run --quiet checkflow full
-uv run --quiet checkflow hardening
-uv run --quiet checkflow doctor
+checkflow fast
+checkflow full
+checkflow hardening
+checkflow doctor
 ```
 
 Add `-v` or `--verbose` before or after the gate name to print each executed
@@ -96,9 +96,9 @@ render the browsable
 For diagnosis, without executing a flow:
 
 ```sh
-uv run --quiet checkflow doctor
-uv run --quiet checkflow doctor fast
-uv run --quiet checkflow fast --diagnostic
+checkflow doctor
+checkflow doctor fast
+checkflow fast --diagnostic
 ```
 
 The analyzer inspections and the full gate scan every project compilation
@@ -162,7 +162,7 @@ They are not downloaded by CPM.
 
 | Tool                        | Used for                                                                                          | When required                                    |
 | --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| uv and Python 3.11+         | Run the project-local CheckFlow environment                                                       | Quality gates                                    |
+| CheckFlow                   | Run the repository quality gates                                                                   | Quality gates                                    |
 | CMake 3.25+ and Ninja       | Configure and build                                                                               | Builds and quality gates                         |
 | A C++20 compiler            | Build the project                                                                                 | Builds                                            |
 | LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
@@ -184,7 +184,7 @@ copies the AddressSanitizer runtime DLL next to the executable when available. T
 as `mull-runner-22` and `mull-ir-frontend-22` are detected from `PATH`; Mull must match the LLVM toolchain.
 Mull 0.34 does not support native Windows: run the `hardening` gate in WSL, Linux, or macOS. For
 this machine, install a Linux distribution for WSL first, then build/install the Mull source there
-and run `uv run --quiet checkflow hardening` from the Linux checkout of Axiom. The
+and run `checkflow hardening` from the Linux checkout of Axiom. The
 versioned executable and frontend plugin must use the same LLVM major version as `clang++`.
 
 ### Lizard complexity analysis
@@ -235,5 +235,5 @@ commands with the architecture, complexity, formatting, and analyzer checks.
 
 ### Gate validation
 
-Run `uv run --quiet checkflow doctor` after changing `checkflow.json` or a
+Run `checkflow doctor` after changing `checkflow.json` or a
 project Tool, then run `fast`, `full`, or `hardening` as appropriate.

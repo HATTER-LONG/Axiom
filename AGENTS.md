@@ -1,240 +1,201 @@
 # Axiom Agent Development Guide
 
+This document defines the engineering, design, testing, and quality principles that all Axiom development agents must follow.
+
+
 ## 1. Core Principles
 
-- Keep changes small and focused. Every step should be independently verifiable.
-- Prefer incremental development over large upfront plans followed by one large implementation.
-- Prompts provide direction; deterministic tools enforce quality.
-- Never skip, disable, bypass, or weaken quality checks merely to make a task pass.
+- Keep changes small and focused. Each step should be independently verifiable.
+- Prefer incremental development over large upfront designs followed by one-shot implementation.
+- Reuse existing designs whenever possible. Avoid unnecessary abstractions and interfaces.
+- Prompts guide reasoning and implementation; deterministic tools enforce quality.
+- Never skip, disable, bypass, weaken, or lower quality checks merely to make a task pass.
 
 ## 2. Code Design
 
 - Prefer **thin interfaces and deep modules**.
-- Public APIs should remain minimal, stable, and clear while hiding internal complexity.
-- Prefer modifying internal module implementations instead of expanding the Public API.
-- Unless a module is explicitly an adapter layer, do not expose third-party implementation types such as Qt, OCC, or Boost across module boundaries.
-- Maintain one-way dependencies:
-  - Lower-level modules must not depend on application-level modules.
-  - Lower-level modules must not depend on UI code.
-  - Production code must not depend on test code.
-- Prefer RAII, explicit ownership, and composition over unnecessary complex inheritance.
-- Do not introduce complex abstractions for hypothetical future requirements.
-- Do not perform large-scale refactoring unrelated to the current task.
+- Public APIs should remain minimal, stable, clear, and hide internal complexity.
+- Prefer changing internal implementation over expanding the Public API.
+- Place behavior in the module that truly owns the responsibility, not wherever it is easiest to modify.
+- Preserve one-way dependencies:
+  - lower-level modules must not depend on higher-level modules;
+  - Domain/Core must not depend on UI;
+  - libraries must not depend on applications;
+  - production code must not depend on test code.
+- Unless a module is explicitly an adapter layer, do not expose implementation types from Qt, OCC, Boost, or other third-party libraries across module boundaries.
+- Prefer RAII with explicit ownership and lifetime semantics.
+- Prefer composition over complex inheritance.
+- Do not introduce abstractions for hypothetical future requirements.
+- Avoid broad refactoring unrelated to the current task.
 - Avoid vague catch-all modules such as `utils`, `common`, or `manager`.
 
-## 3. Before Making Changes
+## 3. Before Modifying Code
 
-Before writing code, determine:
+Before implementation, determine:
 
 1. Which module owns the requested behavior.
-2. Whether the existing interfaces can already satisfy the requirement.
-3. Whether modifying the Public API is truly necessary.
+2. Whether existing interfaces already satisfy the requirement.
+3. Whether a Public API change is truly necessary.
 4. Which existing behaviors must remain unchanged.
-5. Which tests need to be added or updated.
+5. How tests will prove the change is correct.
 
-Read only the code that is actually relevant to the current task. Avoid expanding the working context without a clear reason.
+Read only the code and context necessary to complete the current task.
 
-## 4. Development Workflow
+## 4. Implementation Principles
 
-Each small development goal should follow this cycle:
-
-```text
-Understand the requirement
-        ↓
-Implement the minimum change
-        ↓
-Add or update tests
-        ↓
-Run fast
-        ↓
-Fix failures
-        ↓
-Proceed to the next step
-```
-
-After completing each independently verifiable goal, run:
-
-```bash
-uv run --quiet checkflow fast --report build-quality/reports/fast.json
-```
-
-If it fails:
-
-- Inspect the JSON report.
-- Identify and fix the root cause.
-- Run `fast` again.
-- Do not proceed to the next development stage until it passes.
-
-For larger tasks, run:
-
-```bash
-uv run --quiet checkflow hardening --report build-quality/reports/hardening.json
-```
-
-Before merging or declaring the overall task complete, run:
-
-```bash
-uv run --quiet checkflow full --report build-quality/reports/full.json
-```
-
-The authoritative flow definitions live in `checkflow.json`; Axiom-specific tool
-implementations live in `.checkflow/tools/`, and policies remain under `quality/`.
-
-Do not duplicate those details in this document.
-
-### Documentation Comments
-
-- Use Doxygen-compatible comments for public interfaces and for non-obvious internal
-  types, functions, invariants, ownership rules, state transitions, and algorithms.
-  Documentation is not limited to API method summaries.
-- Describe purpose and observable behavior. For callable interfaces, document every
-  parameter with `@param`, a non-void result with `@return`, and each exception that
-  may escape with `@throws`. Add `@pre`, `@post`, `@note`, or `@warning` when those
-  contracts matter.
-- Keep comments synchronized with behavior and avoid merely restating the code.
-
-```cpp
-/**
- * @brief Loads and validates a project configuration.
- *
- * The returned configuration owns all parsed values and is safe to retain after the
- * input stream is destroyed.
- *
- * @param input UTF-8 stream positioned at the start of a configuration document.
- * @param source_name Name used when reporting validation failures.
- * @return A validated configuration with defaults applied.
- * @throws ParseError If the document is malformed.
- * @throws ValidationError If a required value is missing or invalid.
- */
-Configuration loadConfiguration(std::istream& input, std::string_view source_name);
-```
-
-### clang-tidy Suppressions
-
-Do not use `NOLINT`, `NOLINTNEXTLINE`, `NOLINTBEGIN`, compiler pragmas, or equivalent
-comments merely to make clang-tidy pass. First confirm that the code is correct, the
-diagnostic is a false positive or deliberately inapplicable, and a normal code change
-would reduce correctness or clarity. Any necessary suppression must name the exact
-check, have the narrowest possible scope, and include a concrete justification. Never
-use blanket suppressions.
+- Implement the smallest correct solution that satisfies the current requirement.
+- Keep naming, control flow, state, ownership, and lifetime clear.
+- When encountering deep nesting, large functions, mixed responsibilities, or complex state, improve the structure rather than increasing complexity thresholds.
+- Error handling must be explicit. Do not silently ignore failures or swallow exceptions without a clear contract.
+- Comments should explain contracts, constraints, and **why**, rather than restating **what** the code already says.
 
 ## 5. Testing Principles
 
+All unit and integration tests use GoogleTest.
+
 - Every new behavior must have corresponding tests.
-- Bug fixes should include regression tests.
-- Prefer testing externally observable behavior rather than internal implementation details.
-- Coverage is only a baseline metric; it does not prove that tests are effective.
-- Do not add tests with meaningless or weak assertions merely to increase coverage.
+- Every bug fix must include a regression test that reproduces the original issue.
+- Prefer testing externally observable behavior rather than implementation details.
+- Each test should focus on one primary behavior, and its name should describe that behavior.
+- Prefer `EXPECT_*`; use `ASSERT_*` only when subsequent test logic depends on the condition being true.
+- Use the GoogleTest assertion that best matches the comparison semantics.
+- Tests must be deterministic, independent, runnable in isolation, and independent of execution order.
+- Use fixtures only for genuinely shared test setup; manage test resources with RAII.
+- Avoid excessive mocking. Prefer small-scale tests using real objects when practical.
+- Coverage is useful for identifying untested code, but does not prove test quality.
+- Never add weak or meaningless tests merely to increase coverage.
 
-### GTEST Best Practices
+## 6. Documentation
 
-All unit and integration tests use the GoogleTest framework, which is fetched via CPM.
+Public APIs, as well as non-obvious internal types, functions, invariants, ownership rules, lifetime rules, and state transitions, should use Doxygen-compatible documentation.
 
-- Name test cases as `TEST(SuiteName, TestName)` where the name describes the single
-  observable behavior under test.
-- Choose the assertion macro that best matches the comparison semantics (for example
-  `EXPECT_STREQ` for C strings rather than `EXPECT_EQ` on pointers).
-- Use `ASSERT_*` only to guard a precondition that later code depends on (such as a
-  pointer that is dereferenced afterwards); otherwise use `EXPECT_*` so a single run
-  surfaces multiple failures.
-- Keep tests deterministic: avoid wall-clock time, randomness, and environment
-  dependencies; inject or fixture any variability instead.
-- Use `TEST_F` fixtures for shared setup and rely on RAII (constructors,
-  `SetUp`/`TearDown`) to manage resources.
-- Assert meaningful, externally observable outcomes; never write empty or trivial
-  assertions solely to raise coverage.
+Documentation should describe API contracts and externally observable behavior.
 
-## 6. Architecture Constraints
+Use the following where appropriate:
 
-Architecture dependencies are enforced by:
+```text
+@param
+@return
+@throws
+@pre
+@post
+@note
+@warning
+```
+
+Documentation must remain synchronized with actual behavior.
+
+## 7. Static Analysis and Architecture Checks
+
+Static-analysis findings should normally be resolved by improving the code.
+
+Do not use the following merely to make checks pass:
+
+```text
+NOLINT
+NOLINTNEXTLINE
+NOLINTBEGIN
+compiler pragmas
+```
+
+Suppression is allowed only when the code is known to be correct and the diagnostic is confirmed to be a false positive or genuinely inapplicable.
+
+Any suppression must:
+
+- name the specific check;
+- use the smallest possible scope;
+- include a clear and verifiable justification.
+
+Architecture rules are defined in:
 
 ```text
 quality/architecture_rules.json
 ```
 
-The fundamental rules are:
+Architecture violations must be resolved by correcting responsibilities, interfaces, or dependency direction. Never bypass architecture checks.
 
-- Lower-level modules must not depend on higher-level modules.
-- Domain code must not depend on UI code.
-- Libraries must not depend on applications.
-- Production code must not depend on test code.
+## 8. Quality Gates
 
-If an architecture violation occurs, resolve it by correcting responsibilities, extracting interfaces, or applying dependency inversion.
+CheckFlow is the unified entry point for repository quality validation.
 
-Never bypass or disable architecture checks.
+Run its flows from the repository root with the globally installed `checkflow`
+command. Do not create a project-local Python environment for CheckFlow.
 
-## 7. Multi-Agent Collaboration
+The authoritative workflow configuration is:
 
-Different agents should preferably operate with separate, clean contexts.
+```text
+checkflow.json
+```
 
-### Git-Managed Task Boundaries
+Project-specific tools are located in:
 
-- Inspect `git status --short` before starting a task. Do not take ownership of
-  unrelated changes.
-- Each agent owns one bounded task at a time. Before returning, switching tasks,
-  or handing off work, it must leave its task changes committed; no task boundary
-  may leave unstaged or staged work behind.
-- Every agent must run one final `fast` gate after completing its changes and
-  before committing. If it fails, repair the root cause and rerun it; do not
-  commit a failed task as complete.
-- Every task commit must have a concise, descriptive log message that states the
-  task outcome. Repair commits must identify the problem repaired, not merely say
-  "fix".
-- Do not combine unrelated work in one commit. The commit history is the durable
-  handoff and review record.
+```text
+.checkflow/tools/
+```
 
-### Commit-Based Review and Follow-up
+Quality policies are located in:
 
-- The primary reviews committed work, never an agent's uncommitted diff. It must
-  inspect the commits for the task with `git log` and review the committed range
-  with `git diff <base>..HEAD` or `git show`.
-- Record the reviewed commit range in the handoff. A review has no result until
-  the reviewed work is committed.
-- Keep the same reviewer agent available after it returns findings. That reviewer
-  must verify the repair commits and review subsequent commits in the task,
-  comparing them with the previously reviewed range rather than an uncommitted
-  working tree.
+```text
+quality/
+```
 
-When handing work from one agent to another, transfer only the information necessary to continue effectively:
+During development:
 
-- Current task objective
-- Acceptance Criteria
-- Committed range and concise commit log
-- Test results
-- Quality Gate reports
-- Remaining unresolved issues
+- run `fast` after each independently verifiable development step;
+- run `hardening` after completing the main implementation of larger tasks;
+- run `full` before final delivery or merge.
 
-Do not pass the complete long-running context of one agent directly to the next.
+If a Quality Gate fails:
 
-The committed repository history, tests, and deterministic reports should serve as the primary shared source of truth.
+1. inspect the report;
+2. identify the root cause;
+3. fix the problem;
+4. run the gate again.
 
-## 8. Prohibited Practices
+Never make a gate pass by weakening rules, skipping tests, or adding exclusions.
+
+## 9. Git and Working Tree
+
+Before modifying the repository, check:
+
+```bash
+git status --short
+```
+
+Unrelated existing changes must be treated as work owned by the user or another task.
+
+Do not overwrite, revert, or casually modify unrelated work.
+
+## 10. Prohibited Practices
 
 Do not:
 
-- Claim a task is complete without passing the required Quality Gates.
-- Lower quality standards merely to make checks pass.
-- Modify the Public API without a justified requirement.
-- Introduce incorrect module dependency directions.
-- Leak third-party implementation details across module boundaries unnecessarily.
-- Create complex abstractions without concrete requirements.
-- Perform large unrelated refactoring as part of a focused task.
-- Hide real problems by disabling warnings, excluding tests, ignoring rules, or weakening checks.
-- Continuously mix large numbers of unrelated tasks within the same long-running Agent context.
+- claim completion before the required Quality Gates pass;
+- weaken quality standards to make checks pass;
+- expand Public APIs without a justified requirement;
+- introduce incorrect dependency directions;
+- unnecessarily expose third-party implementation types;
+- design complex abstractions for hypothetical requirements;
+- perform large unrelated refactors;
+- write meaningless tests to increase coverage;
+- use suppressions to hide real problems;
+- modify user work unrelated to the current task.
 
-## 9. Definition of Done
+## 11. Definition of Done
 
-A task is complete only when:
+A development goal is complete only when:
 
-- The requested behavior has been implemented correctly.
-- The scope of changes remains minimal and focused.
-- Any Public API changes are necessary and justified.
-- Module dependency directions remain correct.
-- New behavior has corresponding tests.
-- `fast` passes.
-- `hardening` passes for larger tasks.
-- `full` passes before merge or final delivery.
+- the requested behavior is implemented correctly;
+- the change remains small and focused;
+- the code belongs to the correct module;
+- any Public API change is necessary and justified;
+- dependency direction remains correct;
+- ownership and lifetime are clear;
+- new behavior has corresponding tests;
+- bug fixes include regression tests;
+- documentation matches actual behavior;
+- all required Quality Gates pass.
 
-The goal is not simply for the Agent to **write code**.
+The goal is not to make an agent generate code as quickly as possible.
 
-The goal is for the Agent to continuously deliver **reliable, maintainable, and evolvable software within clear architectural boundaries and deterministic quality gates**.
+The goal is to continuously deliver reliable, maintainable, and evolvable software under clear architectural boundaries, effective tests, and deterministic quality gates.
