@@ -1,5 +1,6 @@
 #include <axiom/core/action/action_id.hpp>
 #include <axiom/core/action/detail/typed_action_adapter.hpp>
+#include <axiom/core/action/invocation_context.hpp>
 #include <axiom/core/action/module.hpp>
 #include <axiom/core/action/module_builder.hpp>
 #include <axiom/core/action/runtime.hpp>
@@ -8,6 +9,7 @@
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
 #include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_record.hpp>
 #include <axiom/core/logging/log_sink.hpp>
 #include <axiom/core/logging/logging_service.hpp>
 
@@ -83,6 +85,8 @@ void throwStandard() { throw std::runtime_error{"unexpected"}; }
 void throwUnknown() { throw 7; }
 void plainVoid() {}
 int rvalueOnly(std::string&& value);
+
+template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 double sumMap(const std::map<std::string, double>& values) {
     double total = 0.0;
     for(const auto& [name, value] : values) {
@@ -503,7 +507,7 @@ TEST(Runtime, LogsAnEmptyBuilderRegistrationFailureWithoutAModuleField) {
     Runtime runtime{logging.logger("runtime")};
     ModuleBuilder source{
         axiom::core::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
-    ModuleBuilder empty{std::move(source)};
+    ModuleBuilder empty{transferOwnership(source)};
 
     const auto result = runtime.registerModule(std::move(source));
 

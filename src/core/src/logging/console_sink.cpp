@@ -1,15 +1,23 @@
 #include <axiom/core/logging/console_sink.hpp>
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_record.hpp>
 
+#include <axiom/core/base/value.hpp>
+
+#include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <array>
 #include <chrono>
-#include <cstdio>
+#include <cstdint>
 #include <ctime>
 #include <format>
 #include <memory>
+#include <ranges>
 #include <string>
-#include <utility>
+#include <string_view>
+#include <vector>
 
 namespace axiom::core::logging {
 
@@ -62,56 +70,95 @@ void appendEscaped(std::string& text, const std::string& value) {
     text.push_back('"');
 }
 
-void appendValue(std::string& text, const Value& value);
+struct RenderTask {
+    enum class Kind : std::uint8_t { Value, Text, Key };
 
-void appendArray(std::string& text, const Value::Array& values) {
+    Kind kind{Kind::Value};
+    const Value* value{nullptr};
+    const std::string* key{nullptr};
+    std::string_view text;
+};
+
+void scheduleArray(std::string& text, std::vector<RenderTask>& tasks, const Value::Array& values) {
     text.push_back('[');
-    bool first = true;
-    for(const auto& value : values) {
-        if(!std::exchange(first, false)) {
-            text.append(", ");
+    tasks.push_back({.kind = RenderTask::Kind::Text, .text = "]"});
+    bool is_last = true;
+    for(const auto& item : std::views::reverse(values)) {
+        if(is_last) {
+            is_last = false;
+        } else {
+            tasks.push_back({.kind = RenderTask::Kind::Text, .text = ", "});
         }
-        appendValue(text, value);
+        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item});
     }
-    text.push_back(']');
 }
 
-void appendObject(std::string& text, const Value::Object& fields) {
+void scheduleObject(std::string& text,
+                    std::vector<RenderTask>& tasks,
+                    const Value::Object& fields) {
     text.push_back('{');
-    bool first = true;
-    for(const auto& [key, value] : fields) {
-        if(!std::exchange(first, false)) {
-            text.append(", ");
+    tasks.push_back({.kind = RenderTask::Kind::Text, .text = "}"});
+    bool is_last = true;
+    for(const auto& item : std::views::reverse(fields)) {
+        if(is_last) {
+            is_last = false;
+        } else {
+            tasks.push_back({.kind = RenderTask::Kind::Text, .text = ", "});
         }
-        text.append(key).append("=");
-        appendValue(text, value);
+        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item.second});
+        tasks.push_back({.kind = RenderTask::Kind::Key, .key = &item.first});
     }
-    text.push_back('}');
 }
 
-void appendValue(std::string& text, const Value& value) {
+void appendScalar(std::string& text, const Value& value) {
     switch(value.type()) {
     case Value::Type::Null:
         text.append("null");
-        return;
+        break;
     case Value::Type::Boolean:
         text.append(value.asBoolean() ? "true" : "false");
-        return;
+        break;
     case Value::Type::Integer:
         text.append(std::to_string(value.asInteger()));
-        return;
+        break;
     case Value::Type::Number:
         text.append(std::to_string(value.asNumber()));
-        return;
+        break;
     case Value::Type::String:
         appendEscaped(text, value.asString());
-        return;
+        break;
     case Value::Type::Array:
-        appendArray(text, value.asArray());
-        return;
     case Value::Type::Object:
-        appendObject(text, value.asObject());
+        break;
+    }
+}
+
+void appendTask(std::string& text, std::vector<RenderTask>& tasks, const RenderTask& task) {
+    if(task.kind == RenderTask::Kind::Text) {
+        text.append(task.text);
         return;
+    }
+    if(task.kind == RenderTask::Kind::Key) {
+        text.append(*task.key).append("=");
+        return;
+    }
+    if(task.value->isArray()) {
+        scheduleArray(text, tasks, task.value->asArray());
+        return;
+    }
+    if(task.value->isObject()) {
+        scheduleObject(text, tasks, task.value->asObject());
+        return;
+    }
+    appendScalar(text, *task.value);
+}
+
+void appendValue(std::string& text, const Value& value) {
+    std::vector<RenderTask> tasks{{.kind = RenderTask::Kind::Value, .value = &value}};
+    while(!tasks.empty()) {
+        const auto task = tasks.back();
+        tasks.pop_back();
+        appendTask(text, tasks, task);
     }
 }
 
@@ -127,9 +174,9 @@ void appendValue(std::string& text, const Value& value) {
 #else
     gmtime_r(&raw_time, &utc);
 #endif
-    char date[32]{};
-    static_cast<void>(std::strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%S", &utc));
-    return std::format("{}.{:03}Z", date, milliseconds.count());
+    std::array<char, 32> date{};
+    static_cast<void>(std::strftime(date.data(), date.size(), "%Y-%m-%dT%H:%M:%S", &utc));
+    return std::format("{}.{:03}Z", date.data(), milliseconds.count());
 }
 
 [[nodiscard]] std::string formatRecord(const LogRecord& record) {
@@ -147,10 +194,10 @@ void appendValue(std::string& text, const Value& value) {
 
 class ConsoleSink::Implementation {
 public:
-    Implementation() {
-        const auto sink =
-            std::make_shared<spdlog::sinks::stderr_color_sink_mt>(spdlog::color_mode::always);
-        logger = std::make_shared<spdlog::logger>("axiom.console", std::move(sink));
+    Implementation()
+        : logger{std::make_shared<spdlog::logger>(
+              "axiom.console",
+              std::make_shared<spdlog::sinks::stderr_color_sink_mt>(spdlog::color_mode::always))} {
         logger->set_pattern("%^%v%$");
         logger->set_level(spdlog::level::trace);
     }
@@ -171,6 +218,7 @@ void ConsoleSink::flush() noexcept {
     try {
         implementation_->logger->flush();
     } catch(...) {
+        return;
     }
 }
 

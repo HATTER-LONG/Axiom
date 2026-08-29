@@ -64,6 +64,7 @@ public:
             write(level, std::format(format, std::forward<Arguments>(arguments)...),
                   std::move(fields), location);
         } catch(...) {
+            return;
         }
     }
 

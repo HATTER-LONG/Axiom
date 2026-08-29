@@ -1,7 +1,15 @@
 #include <axiom/core/logging/log_collector.hpp>
 
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_query.hpp>
+#include <axiom/core/logging/log_record.hpp>
+
 #include <algorithm>
+#include <cstddef>
+#include <mutex>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace axiom::core::logging {
 
@@ -13,6 +21,14 @@ namespace {
            (category.starts_with(prefix) && category[prefix.size()] == '.');
 }
 
+[[nodiscard]] bool matches(const LogRecord& record, const LogQuery& query) noexcept {
+    return isAtLeast(record.level, query.minimum_level) &&
+           (query.category_prefixes.empty() ||
+            std::ranges::any_of(query.category_prefixes, [&record](const std::string& prefix) {
+                return matchesPrefix(record.category, prefix);
+            }));
+}
+
 } // namespace
 
 LogCollector::LogCollector(const std::size_t capacity) : capacity_(capacity) {
@@ -20,7 +36,7 @@ LogCollector::LogCollector(const std::size_t capacity) : capacity_(capacity) {
 }
 
 void LogCollector::consume(const LogRecord& record) {
-    std::lock_guard lock{mutex_};
+    const std::scoped_lock lock{mutex_};
     if(capacity_ == 0) {
         return;
     }
@@ -37,7 +53,7 @@ std::size_t LogCollector::capacity() const noexcept { return capacity_; }
 
 std::vector<LogRecord> LogCollector::records(const LogQuery& query) const {
     std::vector<LogRecord> result;
-    std::lock_guard lock{mutex_};
+    const std::scoped_lock lock{mutex_};
     result.reserve(size_);
     for(std::size_t offset = 0; offset < size_; ++offset) {
         const auto index = (oldest_ + offset) % capacity_;
@@ -54,13 +70,5 @@ std::vector<LogRecord> LogCollector::records(const LogQuery& query) const {
 }
 
 std::vector<LogRecord> LogCollector::query(const LogQuery& query) const { return records(query); }
-
-bool LogCollector::matches(const LogRecord& record, const LogQuery& query) const noexcept {
-    return isAtLeast(record.level, query.minimum_level) &&
-           (query.category_prefixes.empty() ||
-            std::ranges::any_of(query.category_prefixes, [&record](const std::string& prefix) {
-                return matchesPrefix(record.category, prefix);
-            }));
-}
 
 } // namespace axiom::core::logging

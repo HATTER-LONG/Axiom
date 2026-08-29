@@ -13,6 +13,7 @@
 #include <axiom/core/base/value.hpp>
 #include <axiom/core/logging/log_level.hpp>
 #include <axiom/core/logging/logger.hpp>
+#include <axiom/core/logging/scoped_log_context.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -22,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace axiom::core::detail {
@@ -52,15 +54,11 @@ namespace {
     return "internal_error";
 }
 
-[[nodiscard]] logging::LogLevel registrationLevel(const Result<void>& result) noexcept {
-    if(result) {
-        return logging::LogLevel::Info;
-    }
-    return result.error().code == ErrorCode::InternalError ? logging::LogLevel::Error
-                                                           : logging::LogLevel::Warning;
+[[nodiscard]] logging::LogLevel registrationFailureLevel(const ErrorCode code) noexcept {
+    return code == ErrorCode::InternalError ? logging::LogLevel::Error : logging::LogLevel::Warning;
 }
 
-[[nodiscard]] logging::LogLevel invocationLevel(const Result<Value>& result) noexcept {
+[[nodiscard]] logging::LogLevel invocationLevel(const Result<Value>& result) {
     if(result) {
         return logging::LogLevel::Info;
     }
@@ -100,36 +98,32 @@ namespace {
 class RuntimeState {
 public:
     explicit RuntimeState(logging::Logger logger)
-        : dispatcher{registry}, module_logger{logger.child("module")},
-          action_logger{logger.child("action")} {}
+        : dispatcher{registry}, root_logger{std::move(logger)},
+          module_logger{root_logger.child("module")}, action_logger{root_logger.child("action")} {}
 
     void logRegistration(const Result<void>& result, const std::string_view module) const noexcept {
         try {
-            Value::Object fields;
-            if(!module.empty()) {
-                fields.insert_or_assign("module", Value{std::string{module}});
-            }
             if(result) {
-                AXIOM_LOG(module_logger, registrationLevel(result), std::move(fields),
-                          "registered module {}", module);
-            } else {
-                AXIOM_LOG(module_logger, registrationLevel(result), std::move(fields),
-                          "module registration failed: {}", outcomeStatus(result.error().code));
+                logRegistrationSuccess(module_logger, module);
+                return;
             }
+            logRegistrationFailure(module_logger, module, result.error().code);
         } catch(...) {
+            return;
         }
     }
 
-    void logActionStart(const logging::Logger& logger) const noexcept {
+    static void logActionStart(const logging::Logger& logger) noexcept {
         try {
             AXIOM_LOG_DEBUG(logger, "action invocation started");
         } catch(...) {
+            return;
         }
     }
 
-    void logActionEnd(const logging::Logger& logger,
-                      const Result<Value>& result,
-                      const std::int64_t duration_ms) const noexcept {
+    static void logActionEnd(const logging::Logger& logger,
+                             const Result<Value>& result,
+                             const std::int64_t duration_ms) noexcept {
         try {
             Value::Object fields{
                 {"status", Value{result ? "success" : outcomeStatus(result.error().code)}},
@@ -137,11 +131,35 @@ public:
             AXIOM_LOG(logger, invocationLevel(result), std::move(fields),
                       "action invocation finished");
         } catch(...) {
+            return;
         }
     }
 
+private:
+    [[nodiscard]] static Value::Object registrationFields(const std::string_view module) {
+        if(module.empty()) {
+            return {};
+        }
+        return {{"module", Value{std::string{module}}}};
+    }
+
+    static void logRegistrationSuccess(const logging::Logger& logger,
+                                       const std::string_view module) {
+        AXIOM_LOG(logger, logging::LogLevel::Info, registrationFields(module),
+                  "registered module {}", module);
+    }
+
+    static void logRegistrationFailure(const logging::Logger& logger,
+                                       const std::string_view module,
+                                       const ErrorCode code) {
+        AXIOM_LOG(logger, registrationFailureLevel(code), registrationFields(module),
+                  "module registration failed: {}", outcomeStatus(code));
+    }
+
+public:
     Registry registry;
     Dispatcher dispatcher{registry};
+    logging::Logger root_logger;
     logging::Logger module_logger;
     logging::Logger action_logger;
 };
@@ -162,6 +180,7 @@ Result<void> Runtime::registerModule(ModuleBuilder&& builder) {
             module = builder.state_->descriptor.namespace_name;
         }
     } catch(...) {
+        module.clear();
     }
     if(!builder.state_) {
         auto result = Result<void>::failure({.code = ErrorCode::InvalidArgument,
@@ -189,19 +208,23 @@ Result<Value> Runtime::invoke(const ActionId& id,
         scoped_context =
             state_->action_logger.scopedContext(detail::invocationContextFields(context, id));
     } catch(...) {
+        // Invocation proceeds with an empty scoped context when logging allocation fails.
+        scoped_context = {};
     }
     try {
         invocation_logger = state_->action_logger.withFields(detail::invocationFields(id));
     } catch(...) {
+        // Invocation proceeds with an inert logger when deriving logging fields fails.
+        invocation_logger = {};
     }
 
-    state_->logActionStart(invocation_logger);
+    detail::RuntimeState::logActionStart(invocation_logger);
     const auto started = std::chrono::steady_clock::now();
     auto result = state_->dispatcher.invoke(id, arguments, context);
     const auto elapsed = std::chrono::steady_clock::now() - started;
     const auto duration_ms = std::max<std::int64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 0);
-    state_->logActionEnd(invocation_logger, result, duration_ms);
+    detail::RuntimeState::logActionEnd(invocation_logger, result, duration_ms);
     return result;
 }
 

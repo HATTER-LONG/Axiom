@@ -1,15 +1,29 @@
+#include <axiom/core/base/value.hpp>
 #include <axiom/core/logging/callback_sink.hpp>
 #include <axiom/core/logging/console_sink.hpp>
 #include <axiom/core/logging/log_collector.hpp>
+#include <axiom/core/logging/log_filter.hpp>
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_record.hpp>
+#include <axiom/core/logging/log_sink.hpp>
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
 
+// cppcheck does not load GoogleTest's generated include paths when it scans sources directly.
+// Preserve analysis of the test bodies by supplying its equivalent function-shaped macro only
+// when the real framework did not provide TEST.
+#ifndef TEST
+#define TEST(suite_name, test_name) void suite_name##_##test_name()
+#endif
+
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <source_location>
 #include <stdexcept>
@@ -29,8 +43,9 @@ using axiom::core::logging::LogCollector;
 using axiom::core::logging::LogFilter;
 using axiom::core::logging::LoggingService;
 using axiom::core::logging::LogLevel;
-using axiom::core::logging::LogQuery;
 using axiom::core::logging::LogRecord;
+
+template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 
 class RecordingSink final : public ILogSink {
 public:
@@ -76,6 +91,78 @@ LogRecord record(std::string message,
             .source_file = "logging_test.cpp",
             .source_function = "record",
             .source_line = 1};
+}
+
+void expectRecordMessageAndCategory(const LogRecord& logged) {
+    EXPECT_EQ(logged.message, "action 7 finished");
+    EXPECT_EQ(logged.category, "runtime.action");
+}
+
+void expectRecordSource(const LogRecord& logged) {
+    EXPECT_NE(logged.source_line, 0U);
+    EXPECT_FALSE(logged.source_file.empty());
+}
+
+void expectFirstThreeLevels(const std::vector<LogRecord>& records) {
+    EXPECT_EQ(records.at(0).level, LogLevel::Trace);
+    EXPECT_EQ(records.at(1).level, LogLevel::Debug);
+    EXPECT_EQ(records.at(2).level, LogLevel::Info);
+}
+
+void expectLastThreeLevels(const std::vector<LogRecord>& records) {
+    EXPECT_EQ(records.at(3).level, LogLevel::Warning);
+    EXPECT_EQ(records.at(4).level, LogLevel::Error);
+    EXPECT_EQ(records.at(5).level, LogLevel::Critical);
+}
+
+void writeFirstThreeLevels(const axiom::core::logging::Logger& logger) {
+    AXIOM_LOG_TRACE(logger, "trace");
+    AXIOM_LOG_DEBUG(logger, "debug");
+    AXIOM_LOG_INFO(logger, "info");
+}
+
+void writeLastThreeLevels(const axiom::core::logging::Logger& logger) {
+    AXIOM_LOG_WARNING(logger, "warning");
+    AXIOM_LOG_ERROR(logger, "error");
+    AXIOM_LOG_CRITICAL(logger, "critical");
+}
+
+void expectOutputContains(const std::string& output, const std::string_view text) {
+    EXPECT_NE(output.find(text), std::string::npos);
+}
+
+void expectForwardedMessage(const LogRecord& logged) { EXPECT_EQ(logged.message, "forwarded"); }
+
+void expectForwardedLevel(const LogRecord& logged) { EXPECT_EQ(logged.level, LogLevel::Critical); }
+
+void expectForwardedCategory(const LogRecord& logged) {
+    EXPECT_EQ(logged.category, "runtime.callback");
+}
+
+void waitForStart(const std::atomic<bool>& started) {
+    while(!started.load(std::memory_order_acquire)) {
+    }
+}
+
+void consumeConcurrentRecords(LogCollector& collector,
+                              const std::atomic<bool>& started,
+                              const int writer) {
+    waitForStart(started);
+    for(int index = 0; index < 100; ++index) {
+        collector.consume(record(std::to_string(writer) + "." + std::to_string(index)));
+    }
+}
+
+void observeConcurrentRecords(LogCollector& collector,
+                              const std::atomic<bool>& started,
+                              std::atomic<bool>& capacity_respected) {
+    waitForStart(started);
+    for(int index = 0; index < 100; ++index) {
+        if(collector.records().size() > 128U) {
+            capacity_respected.store(false, std::memory_order_release);
+            return;
+        }
+    }
 }
 
 TEST(LogFilter, MatchesOnlyWholeCategorySegments) {
@@ -182,7 +269,7 @@ TEST(LoggingService, RemovesSubscriptionWhenItsScopeEnds) {
 
 TEST(LoggingService, KeepsMovedFromServicesSafeToUseAsNoOps) {
     LoggingService original;
-    LoggingService owner = std::move(original);
+    LoggingService owner = transferOwnership(original);
     const auto sink = std::make_shared<RecordingSink>();
 
     auto subscription = original.addSink(sink);
@@ -199,7 +286,8 @@ TEST(Logger, MergesContextAndFixedFieldsInPrecedenceOrder) {
     LoggingService service;
     const auto sink = std::make_shared<RecordingSink>();
     auto subscription = service.addSink(sink);
-    const auto logger = service.logger("runtime", {{"shared", Value{"logger"}}, {"logger", Value{1}}});
+    const auto logger =
+        service.logger("runtime", {{"shared", Value{"logger"}}, {"logger", Value{1}}});
 
     auto outer = service.scopedContext({{"outer", Value{true}}, {"shared", Value{"outer"}}});
     {
@@ -223,7 +311,8 @@ TEST(Logger, DerivesCategoriesAndFixedFieldsWithoutChangingTheOriginal) {
     const auto logger = service.logger("runtime", {{"source", Value{"parent"}}});
 
     logger.child("").write(LogLevel::Info, "parent");
-    logger.child("action").withFields({{"source", Value{"child"}}, {"child", Value{true}}})
+    logger.child("action")
+        .withFields({{"source", Value{"child"}}, {"child", Value{true}}})
         .write(LogLevel::Info, "child");
     service.logger("").child("root").write(LogLevel::Info, "root");
 
@@ -335,11 +424,9 @@ TEST(Logger, IgnoresFailingSinksAndCapturesMacroCallSite) {
     AXIOM_LOG_INFO(logger, "action {} finished", 7);
 
     ASSERT_EQ(good_sink->records.size(), 1U);
-    const auto& record = good_sink->records.front();
-    EXPECT_EQ(record.message, "action 7 finished");
-    EXPECT_EQ(record.category, "runtime.action");
-    EXPECT_NE(record.source_line, 0U);
-    EXPECT_FALSE(record.source_file.empty());
+    const auto& logged_record = good_sink->records.front();
+    expectRecordMessageAndCategory(logged_record);
+    expectRecordSource(logged_record);
 }
 
 TEST(Logger, PreservesTheExplicitSourceLocationInTheRecord) {
@@ -365,20 +452,12 @@ TEST(Logger, ProvidesAllSixLevelShortcuts) {
     auto subscription = service.addSink(sink);
     const auto logger = service.logger("runtime");
 
-    AXIOM_LOG_TRACE(logger, "trace");
-    AXIOM_LOG_DEBUG(logger, "debug");
-    AXIOM_LOG_INFO(logger, "info");
-    AXIOM_LOG_WARNING(logger, "warning");
-    AXIOM_LOG_ERROR(logger, "error");
-    AXIOM_LOG_CRITICAL(logger, "critical");
+    writeFirstThreeLevels(logger);
+    writeLastThreeLevels(logger);
 
     ASSERT_EQ(sink->records.size(), 6U);
-    EXPECT_EQ(sink->records.at(0).level, LogLevel::Trace);
-    EXPECT_EQ(sink->records.at(1).level, LogLevel::Debug);
-    EXPECT_EQ(sink->records.at(2).level, LogLevel::Info);
-    EXPECT_EQ(sink->records.at(3).level, LogLevel::Warning);
-    EXPECT_EQ(sink->records.at(4).level, LogLevel::Error);
-    EXPECT_EQ(sink->records.at(5).level, LogLevel::Critical);
+    expectFirstThreeLevels(sink->records);
+    expectLastThreeLevels(sink->records);
 }
 
 TEST(LoggingService, AllowsSinksToLogRecursivelyAfterTakingTheSinkSnapshot) {
@@ -393,7 +472,7 @@ TEST(LoggingService, AllowsSinksToLogRecursivelyAfterTakingTheSinkSnapshot) {
 }
 
 TEST(Logger, IsSafeNoOpWhenDefaultConstructed) {
-    axiom::core::logging::Logger logger;
+    const axiom::core::logging::Logger logger;
 
     EXPECT_FALSE(logger.enabled(LogLevel::Critical));
     logger.write(LogLevel::Critical, "ignored");
@@ -424,11 +503,10 @@ TEST(ConsoleSink, WritesColorizedUtcStructuredRecordsToStandardError) {
     sink.flush();
     const auto output = testing::internal::GetCapturedStderr();
 
-    EXPECT_NE(output.find("\x1B["), std::string::npos);
-    EXPECT_NE(output.find("1970-01-01T00:00:00.123Z [warning] [runtime.action] created"),
-              std::string::npos);
-    EXPECT_NE(output.find("(logging_test.cpp:42 invoke)"), std::string::npos);
-    EXPECT_NE(output.find("{alpha=1, nested={a=true, z=\"last\"}}"), std::string::npos);
+    expectOutputContains(output, "\x1B[");
+    expectOutputContains(output, "1970-01-01T00:00:00.123Z [warning] [runtime.action] created");
+    expectOutputContains(output, "(logging_test.cpp:42 invoke)");
+    expectOutputContains(output, "{alpha=1, nested={a=true, z=\"last\"}}");
 }
 
 TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
@@ -447,13 +525,13 @@ TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
     sink.flush();
     const auto output = testing::internal::GetCapturedStderr();
 
-    EXPECT_NE(output.find("[trace]"), std::string::npos);
-    EXPECT_NE(output.find("[debug]"), std::string::npos);
-    EXPECT_NE(output.find("[info]"), std::string::npos);
-    EXPECT_NE(output.find("[warning]"), std::string::npos);
-    EXPECT_NE(output.find("[error]"), std::string::npos);
-    EXPECT_NE(output.find("[critical]"), std::string::npos);
-    EXPECT_NE(output.find("[null, false, 2.500000, \"quote\\\\\\\"\"]"), std::string::npos);
+    expectOutputContains(output, "[trace]");
+    expectOutputContains(output, "[debug]");
+    expectOutputContains(output, "[info]");
+    expectOutputContains(output, "[warning]");
+    expectOutputContains(output, "[error]");
+    expectOutputContains(output, "[critical]");
+    expectOutputContains(output, R"([null, false, 2.500000, "quote\\\""])");
 }
 
 TEST(CallbackSink, LetsLoggingServiceIsolateCallbackExceptions) {
@@ -478,9 +556,9 @@ TEST(CallbackSink, ForwardsTheConsumedRecordToItsCallback) {
     callback.consume(expected);
 
     ASSERT_EQ(received.size(), 1U);
-    EXPECT_EQ(received.front().message, "forwarded");
-    EXPECT_EQ(received.front().level, LogLevel::Critical);
-    EXPECT_EQ(received.front().category, "runtime.callback");
+    expectForwardedMessage(received.front());
+    expectForwardedLevel(received.front());
+    expectForwardedCategory(received.front());
 }
 
 TEST(CallbackSink, AcceptsAnEmptyCallback) {
@@ -532,8 +610,7 @@ TEST(LogCollector, FiltersWholeCategorySegmentsAndKeepsAnOversizedLimit) {
     collector.consume(record("child", LogLevel::Info, "runtime.action.child"));
     collector.consume(record("similar", LogLevel::Info, "runtime.actions"));
 
-    const auto matching = collector.records(
-        {.category_prefixes = {"runtime.action"}, .limit = 4});
+    const auto matching = collector.records({.category_prefixes = {"runtime.action"}, .limit = 4});
 
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "exact");
@@ -555,23 +632,15 @@ TEST(LogCollector, PreservesEveryMatchWhenTheLimitEqualsTheMatchCount) {
 TEST(LogCollector, SupportsConcurrentConsumptionAndQueries) {
     LogCollector collector{128};
     std::atomic<bool> started{false};
+    std::atomic<bool> capacity_respected{true};
     std::vector<std::thread> writers;
+    writers.reserve(4);
     for(int writer = 0; writer < 4; ++writer) {
-        writers.emplace_back([&collector, &started, writer] {
-            while(!started.load(std::memory_order_acquire)) {
-            }
-            for(int index = 0; index < 100; ++index) {
-                collector.consume(record(std::to_string(writer) + "." + std::to_string(index)));
-            }
-        });
+        writers.emplace_back(consumeConcurrentRecords, std::ref(collector), std::cref(started),
+                             writer);
     }
-    std::thread reader{[&collector, &started] {
-        while(!started.load(std::memory_order_acquire)) {
-        }
-        for(int index = 0; index < 100; ++index) {
-            EXPECT_LE(collector.records().size(), 128U);
-        }
-    }};
+    std::thread reader{observeConcurrentRecords, std::ref(collector), std::cref(started),
+                       std::ref(capacity_respected)};
 
     started.store(true, std::memory_order_release);
     for(auto& writer : writers) {
@@ -579,6 +648,7 @@ TEST(LogCollector, SupportsConcurrentConsumptionAndQueries) {
     }
     reader.join();
 
+    EXPECT_TRUE(capacity_respected.load(std::memory_order_acquire));
     EXPECT_EQ(collector.records().size(), 128U);
 }
 

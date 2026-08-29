@@ -31,8 +31,6 @@ public:
     [[nodiscard]] std::vector<LogRecord> query(const LogQuery& query) const;
 
 private:
-    [[nodiscard]] bool matches(const LogRecord& record, const LogQuery& query) const noexcept;
-
     const std::size_t capacity_;
     mutable std::mutex mutex_;
     std::vector<LogRecord> buffer_;

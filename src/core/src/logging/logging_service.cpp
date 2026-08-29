@@ -1,12 +1,23 @@
 #include <axiom/core/logging/logging_service.hpp>
 
+#include <axiom/core/base/value.hpp>
+#include <axiom/core/logging/log_filter.hpp>
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_record.hpp>
+#include <axiom/core/logging/log_sink.hpp>
 #include <axiom/core/logging/logger.hpp>
+#include <axiom/core/logging/scoped_log_context.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <memory>
 #include <mutex>
+#include <source_location>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -14,16 +25,30 @@ namespace axiom::core::logging {
 
 namespace detail {
 
+namespace {
+
 struct SinkRegistration {
-    std::uint64_t id;
+    std::uint64_t id{0};
     std::shared_ptr<ILogSink> sink;
     LogFilter filter;
 };
 
+struct ContextEntry {
+    const LoggingState* state{nullptr};
+    std::uint64_t id{0};
+    Value::Object fields;
+};
+
+thread_local std::vector<ContextEntry> contexts;
+// Context entries are only ever compared within their owning thread-local stack.
+thread_local std::uint64_t next_context_id{1};
+
+} // namespace
+
 class LoggingState {
 public:
     [[nodiscard]] std::uint64_t addSink(std::shared_ptr<ILogSink> sink, LogFilter filter) {
-        std::lock_guard lock{mutex_};
+        const std::scoped_lock lock{mutex_};
         const auto id = next_sink_id_++;
         sinks_.push_back({.id = id, .sink = std::move(sink), .filter = std::move(filter)});
         return id;
@@ -31,18 +56,19 @@ public:
 
     void removeSink(const std::uint64_t id) noexcept {
         try {
-            std::lock_guard lock{mutex_};
+            const std::scoped_lock lock{mutex_};
             std::erase_if(sinks_, [id](const SinkRegistration& registration) {
                 return registration.id == id;
             });
         } catch(...) {
+            return;
         }
     }
 
     [[nodiscard]] bool enabled(const LogLevel level,
                                const std::string_view category) const noexcept {
         try {
-            std::lock_guard lock{mutex_};
+            const std::scoped_lock lock{mutex_};
             return std::ranges::any_of(sinks_,
                                        [level, category](const SinkRegistration& registration) {
                                            return registration.filter.matches(level, category);
@@ -52,61 +78,60 @@ public:
         }
     }
 
-    void dispatch(LogRecord record) const noexcept {
+    void dispatch(const LogRecord& record) const noexcept {
         try {
-            std::vector<std::shared_ptr<ILogSink>> recipients;
-            {
-                std::lock_guard lock{mutex_};
-                recipients.reserve(sinks_.size());
-                for(const auto& registration : sinks_) {
-                    if(registration.filter.matches(record.level, record.category)) {
-                        recipients.push_back(registration.sink);
-                    }
-                }
-            }
-            for(const auto& sink : recipients) {
+            for(const auto& sink : matchingSinks(record)) {
                 try {
                     sink->consume(record);
                 } catch(...) {
+                    continue;
                 }
             }
         } catch(...) {
+            return;
         }
     }
 
     void flush() noexcept {
         try {
-            std::vector<std::shared_ptr<ILogSink>> recipients;
-            {
-                std::lock_guard lock{mutex_};
-                recipients.reserve(sinks_.size());
-                for(const auto& registration : sinks_) {
-                    recipients.push_back(registration.sink);
-                }
-            }
-            for(const auto& sink : recipients) {
+            for(const auto& sink : allSinks()) {
                 sink->flush();
             }
         } catch(...) {
+            return;
         }
     }
 
 private:
+    [[nodiscard]] std::vector<std::shared_ptr<ILogSink>>
+    matchingSinks(const LogRecord& record) const {
+        const std::scoped_lock lock{mutex_};
+        std::vector<std::shared_ptr<ILogSink>> recipients;
+        recipients.reserve(sinks_.size());
+        for(const auto& registration : sinks_) {
+            if(registration.filter.matches(record.level, record.category)) {
+                recipients.push_back(registration.sink);
+            }
+        }
+        return recipients;
+    }
+
+    [[nodiscard]] std::vector<std::shared_ptr<ILogSink>> allSinks() const {
+        const std::scoped_lock lock{mutex_};
+        std::vector<std::shared_ptr<ILogSink>> recipients;
+        recipients.reserve(sinks_.size());
+        std::ranges::transform(
+            sinks_, std::back_inserter(recipients),
+            [](const SinkRegistration& registration) { return registration.sink; });
+        return recipients;
+    }
+
     mutable std::mutex mutex_;
     std::vector<SinkRegistration> sinks_;
     std::uint64_t next_sink_id_{1};
 };
 
-struct ContextEntry {
-    const LoggingState* state;
-    std::uint64_t id;
-    Value::Object fields;
-};
-
-thread_local std::vector<ContextEntry> contexts;
-// Context entries are only ever compared within their owning thread-local stack.
-thread_local std::uint64_t next_context_id{1};
-
+namespace {
 [[nodiscard]] std::uint64_t pushContext(const std::shared_ptr<LoggingState>& state,
                                         Value::Object fields) {
     const auto id = next_context_id++;
@@ -115,12 +140,12 @@ thread_local std::uint64_t next_context_id{1};
 }
 
 void popContext(const LoggingState* const state, const std::uint64_t id) noexcept {
-    const auto entry =
-        std::find_if(contexts.rbegin(), contexts.rend(), [state, id](const ContextEntry& item) {
-            return item.state == state && item.id == id;
-        });
-    if(entry != contexts.rend()) {
-        contexts.erase(std::next(entry).base());
+    for(auto index = contexts.size(); index != 0; --index) {
+        const auto& entry = contexts[index - 1];
+        if(entry.state == state && entry.id == id) {
+            contexts.erase(contexts.begin() + static_cast<std::ptrdiff_t>(index - 1));
+            return;
+        }
     }
 }
 
@@ -135,6 +160,8 @@ void popContext(const LoggingState* const state, const std::uint64_t id) noexcep
     }
     return fields;
 }
+
+} // namespace
 
 } // namespace detail
 
@@ -290,6 +317,7 @@ void Logger::write(const LogLevel level,
                           .source_column = location.column(),
                           .fields = std::move(all_fields)});
     } catch(...) {
+        return;
     }
 }
 
