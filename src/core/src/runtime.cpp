@@ -73,12 +73,15 @@ namespace {
 }
 
 [[nodiscard]] bool isRuntimeOwnedLogField(const std::string_view key) noexcept {
+    // Runtime overwrites these keys after merging caller metadata so invoke logs stay consistent.
     return key == "module" || key == "action" || key == "status" || key == "duration_ms";
 }
 
 [[nodiscard]] Value::Object invocationContextFields(const InvocationContext& context,
                                                     const ActionId& id) {
     Value::Object fields;
+    // Drop caller metadata that collides with runtime-owned keys, then inject request/trace
+    // identity and the authoritative module/action identifiers.
     for(const auto& [key, value] : context.metadata) {
         if(!isRuntimeOwnedLogField(key)) {
             fields.insert_or_assign(key, Value{value});

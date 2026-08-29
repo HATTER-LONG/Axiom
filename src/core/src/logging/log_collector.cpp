@@ -15,6 +15,7 @@ namespace axiom::core::logging {
 
 namespace {
 
+// Same segment-boundary rule as LogFilter::matches (prefix "runtime" ≠ "runtime2").
 [[nodiscard]] bool matchesPrefix(const std::string_view category,
                                  const std::string_view prefix) noexcept {
     return prefix.empty() || category == prefix ||
@@ -38,6 +39,7 @@ LogCollector::LogCollector(const std::size_t capacity) : capacity_(capacity) {
 void LogCollector::consume(const LogRecord& record) {
     const std::scoped_lock lock{mutex_};
     if(capacity_ == 0) {
+        // Zero capacity is a deliberate drop-all sink, not an error.
         return;
     }
     if(size_ < capacity_) {
@@ -45,6 +47,7 @@ void LogCollector::consume(const LogRecord& record) {
         ++size_;
         return;
     }
+    // Ring buffer: overwrite the oldest slot and advance the read cursor.
     buffer_.at(oldest_) = record;
     oldest_ = (oldest_ + 1) % capacity_;
 }
@@ -63,6 +66,8 @@ std::vector<LogRecord> LogCollector::records(const LogQuery& log_query) const {
         }
     }
     if(log_query.limit != 0) {
+        // Keep the newest N matches; erase from the front so remaining order stays
+        // oldest-to-newest within that subset.
         const auto first = result.size() - std::min(result.size(), log_query.limit);
         result.erase(result.begin(), result.begin() + static_cast<std::ptrdiff_t>(first));
     }

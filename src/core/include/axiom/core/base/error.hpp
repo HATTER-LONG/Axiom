@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file error.hpp
+ * @brief Structured Error and ErrorCode values returned from Core boundaries.
+ */
+
 #include <axiom/core/base/value.hpp>
 
 #include <cstdint>
@@ -8,17 +13,19 @@
 
 namespace axiom::core {
 
-/** @brief Stable categories for expected failures at a Core invocation boundary. */
+/**
+ * @brief Stable categories for expected failures at a Core invocation boundary.
+ */
 enum class ErrorCode : std::uint8_t {
-    InvalidArgument,
-    MissingArgument,
-    UnknownArgument,
-    TypeMismatch,
-    NotFound,
-    AlreadyExists,
-    InvalidDescriptor,
-    InvocationFailed,
-    InternalError,
+    InvalidArgument,   ///< A provided argument violates its contract.
+    MissingArgument,   ///< A required argument was omitted.
+    UnknownArgument,   ///< An unexpected argument name was supplied.
+    TypeMismatch,      ///< An argument value does not match the declared type.
+    NotFound,          ///< The requested module, action, or resource does not exist.
+    AlreadyExists,     ///< Registration or creation collided with an existing entry.
+    InvalidDescriptor, ///< A module/action/type descriptor failed validation.
+    InvocationFailed,  ///< The action ran but reported a typed failure (e.g. std::exception).
+    InternalError,     ///< An unexpected or non-std throwable escaped the boundary.
 };
 
 /**

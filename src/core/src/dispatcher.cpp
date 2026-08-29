@@ -91,8 +91,10 @@ Result<Value> Dispatcher::invoke(const ActionId& id,
         }
         return implementation.value().get().invoke(arguments, context);
     } catch(const std::exception&) {
+        // Typed exceptions from adapters map to a caller-facing InvocationFailed.
         return Result<Value>::failure(invocationFailed());
     } catch(...) {
+        // Unknown throwables are treated as InternalError (not attributed to the action).
         return Result<Value>::failure(internalError());
     }
 }

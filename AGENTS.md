@@ -65,25 +65,67 @@ All unit and integration tests use GoogleTest.
 - Coverage is useful for identifying untested code, but does not prove test quality.
 - Never add weak or meaningless tests merely to increase coverage.
 
-## 6. Documentation
+## 6. Documentation and Comments
 
-Public APIs, as well as non-obvious internal types, functions, invariants, ownership rules, lifetime rules, and state transitions, should use Doxygen-compatible documentation.
+### 6.1 What must be documented
 
-Documentation should describe API contracts and externally observable behavior.
+- **Public headers** (anything under a module's `include/` and re-exported by the module umbrella): every public type, free function, and public method needs Doxygen comments that describe the **API contract**, not the implementation.
+- **Non-obvious internals**: invariants, ownership, lifetime, lock/ordering rules, and state transitions that callers or maintainers cannot infer from names alone.
+- **Complex or core logic** in `.cpp` / `.ipp` files: short **why** comments at the decision points (merge order, lock/snapshot policy, ring-buffer eviction, exception mapping, etc.). Do not narrate obvious control flow.
 
-Use the following where appropriate:
-
-```text
-@param
-@return
-@throws
-@pre
-@post
-@note
-@warning
-```
+Comments explain contracts, constraints, and **why**. Do not restate **what** the code already says.
 
 Documentation must remain synchronized with actual behavior.
+
+### 6.2 Required Doxygen tags
+
+Use Doxygen-compatible blocks (`/** ... */` or `///<` for members). Prefer this tag set:
+
+| Tag | When to use |
+|-----|-------------|
+| `@file` | Once per public header: module role and what the header exposes |
+| `@brief` | Every documented entity (one sentence) |
+| `@tparam` | Template parameters that affect the contract |
+| `@param` | Every meaningful parameter (direction and ownership when non-obvious) |
+| `@return` | Non-`void` results, including validity / lifetime of references |
+| `@throws` | Exceptions the API may propagate (or state that failures are swallowed) |
+| `@pre` / `@post` | Preconditions and postconditions callers must honor |
+| `@note` | Important behavioral caveats (thread safety, ordering, no-op cases) |
+| `@warning` | Dangerous misuse or irreversible effects |
+
+Enums should document enumerators when severity, ordering, or domain meaning is not obvious from the name. Struct/class data members that are part of the public contract should use `///<` or a preceding block.
+
+A one-line `/** @brief ... */` is acceptable only for trivial accessors with no parameters and an obvious return. Public write paths, factories, registration APIs, and anything with ownership or failure semantics need the fuller tag set.
+
+### 6.3 Complete example
+
+```cpp
+/**
+ * @file logging_service.hpp
+ * @brief Owns sinks and filtering state shared by a family of Logger instances.
+ *
+ * Dispatch snapshots matching sinks under a lock and invokes them after releasing
+ * it, so sinks may safely log recursively. Callers that need an observability
+ * barrier must call flush().
+ */
+
+/**
+ * @brief Registers a sink and returns a RAII subscription that unregisters it.
+ *
+ * A null @p sink produces an empty subscription and does not modify the service.
+ *
+ * @param sink Shared ownership of the consumer; retained until the subscription ends.
+ * @param filter Severity and category-prefix selection applied before consume().
+ * @return Move-only subscription; destroying or resetting it removes the sink.
+ * @throws std::bad_alloc If sink registration storage cannot be allocated.
+ * @note Matching and dispatch remain synchronous in the current implementation.
+ * @warning Do not destroy the LoggingService while another thread is mid-write
+ *          against a Logger obtained from it.
+ */
+[[nodiscard]] LogSubscription addSink(std::shared_ptr<ILogSink> sink, LogFilter filter = {});
+```
+
+Match the style already used in strong Core headers such as `value.hpp`, `result.hpp`, `runtime.hpp`, and `module_builder.hpp`.
 
 ## 7. Static Analysis and Architecture Checks
 
@@ -144,6 +186,8 @@ During development:
 - run `fast` after each independently verifiable development step;
 - run `hardening` after completing the main implementation of larger tasks;
 - run `full` before final delivery or merge.
+
+The `hardening` and `full` flows clear their CheckFlow build directories (`build-quality/hardening`, `build-quality/mutation`, and `build-quality/full` respectively) before configure, so those gates always start from a clean tree. The `fast` flow keeps an incremental build.
 
 If a Quality Gate fails:
 

@@ -1,5 +1,13 @@
 #pragma once
 
+/**
+ * @file core.hpp
+ * @brief Umbrella header for the Axiom Core public surface (base, action, logging).
+ *
+ * Prefer including this header from application and test code. Module-internal
+ * translation units may include the narrower headers they need.
+ */
+
 // IWYU pragma: begin_exports
 #include <axiom/core/action/action_id.hpp>
 #include <axiom/core/action/descriptor.hpp>

@@ -47,8 +47,13 @@
       { "id": "architecture", "tool": "architecture" },
       { "id": "format", "tool": "format" },
       {
+        "id": "clear_build",
+        "command": "rm -rf build-quality/full"
+      },
+      {
         "id": "configure",
         "tool": "cmake",
+        "depends_on": ["clear_build"],
         "timeout": 300,
         "args": { "action": "configure", "preset": "quality-full" }
       },
@@ -91,7 +96,8 @@
         "args": {
           "compilation_database": "build-quality/full",
           "include": ["src/**", "apps/**", "tests/**"],
-          "options": ["--quiet", "--warnings-as-errors=*"]
+          "options": ["--quiet", "--warnings-as-errors=*"],
+          "headers": true
         }
       },
       {
@@ -122,8 +128,13 @@
     ],
     "hardening": [
       {
+        "id": "clear_build",
+        "command": "rm -rf build-quality/hardening build-quality/mutation"
+      },
+      {
         "id": "configure",
         "tool": "cmake",
+        "depends_on": ["clear_build"],
         "timeout": 300,
         "args": { "action": "configure", "preset": "quality-hardening" }
       },
@@ -144,6 +155,7 @@
       {
         "id": "mutation",
         "tool": "mull",
+        "depends_on": ["unit_tests"],
         "timeout": 1800,
         "args": {
           "preset": "quality-mutation",

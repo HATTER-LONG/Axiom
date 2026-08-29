@@ -70,6 +70,9 @@ void appendEscaped(std::string& text, const std::string& value) {
     text.push_back('"');
 }
 
+// Iterative Value renderer: children are pushed in reverse so a LIFO walk emits
+// nested arrays/objects in declaration order without recursion (avoids deep Value trees
+// blowing the call stack).
 struct RenderTask {
     enum class Kind : std::uint8_t { Value, Text, Key };
 
@@ -81,6 +84,7 @@ struct RenderTask {
 
 void scheduleArray(std::string& text, std::vector<RenderTask>& tasks, const Value::Array& values) {
     text.push_back('[');
+    // Closing bracket is scheduled first so it is emitted after all elements.
     tasks.push_back({.kind = RenderTask::Kind::Text, .text = "]"});
     bool is_last = true;
     for(const auto& item : std::views::reverse(values)) {
@@ -99,6 +103,7 @@ void scheduleObject(std::string& text,
     text.push_back('{');
     tasks.push_back({.kind = RenderTask::Kind::Text, .text = "}"});
     bool is_last = true;
+    // Reverse walk + push Key then Value so pop order is Key, Value, separator...
     for(const auto& item : std::views::reverse(fields)) {
         if(is_last) {
             is_last = false;
@@ -155,6 +160,7 @@ void appendTask(std::string& text, std::vector<RenderTask>& tasks, const RenderT
 
 void appendValue(std::string& text, const Value& value) {
     std::vector<RenderTask> tasks{{.kind = RenderTask::Kind::Value, .value = &value}};
+    // Explicit stack replaces recursion; nested containers push more work onto tasks.
     while(!tasks.empty()) {
         const auto task = tasks.back();
         tasks.pop_back();

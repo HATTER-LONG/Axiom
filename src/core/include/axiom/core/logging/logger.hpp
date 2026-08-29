@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file logger.hpp
+ * @brief Lightweight logger bound to a LoggingService, category, and fixed fields.
+ */
+
 #include <axiom/core/base/value.hpp>
 #include <axiom/core/logging/log_level.hpp>
 #include <axiom/core/logging/scoped_log_context.hpp>
@@ -25,19 +30,38 @@ class LoggingState;
  */
 class Logger {
 public:
+    /** @brief Creates a no-op Logger that ignores all write operations. */
     Logger() noexcept = default;
 
-    /** @brief Creates a category beneath this Logger's category. */
+    /**
+     * @brief Creates a category beneath this Logger's category.
+     * @param category Relative category segment(s) joined under this Logger's path.
+     * @return Logger sharing the same service and fixed fields with an extended category.
+     */
     [[nodiscard]] Logger child(std::string_view category) const;
-    /** @brief Creates a Logger whose fields override this Logger's fixed fields. */
+
+    /**
+     * @brief Creates a Logger whose fields override this Logger's fixed fields.
+     * @param fields Keys that replace same-named fixed fields on the returned Logger.
+     * @return Logger sharing the same service and category with merged fixed fields.
+     */
     [[nodiscard]] Logger withFields(Value::Object fields) const;
-    /** @brief Returns whether at least one registered sink accepts this level and category. */
+
+    /**
+     * @brief Returns whether at least one registered sink accepts this level and category.
+     * @param level Candidate severity to test against registered filters.
+     * @return true when a write at @p level would reach at least one sink.
+     */
     [[nodiscard]] bool enabled(LogLevel level) const noexcept;
+
     /**
      * @brief Pushes fields into the current thread's context for this Logger's service.
      *
      * The returned guard affects every Logger created by the same LoggingService. A
      * default-constructed Logger returns an inert guard.
+     *
+     * @param fields Structured fields merged into subsequent events on this thread.
+     * @return RAII guard that pops the context on destruction.
      */
     [[nodiscard]] ScopedLogContext scopedContext(Value::Object fields) const;
 
@@ -47,13 +71,23 @@ public:
      * @param message Owned event message.
      * @param fields Event-local fields, which override all inherited fields.
      * @param location Call-site source location.
+     * @note Sink and filter failures are swallowed so logging cannot abort business logic.
      */
     void write(LogLevel level,
                std::string message,
                Value::Object fields = {},
                std::source_location location = std::source_location::current()) const noexcept;
 
-    /** @brief Formats and writes a record, swallowing formatting failures. */
+    /**
+     * @brief Formats and writes a record, swallowing formatting failures.
+     * @tparam Arguments Types of values substituted into @p format.
+     * @param level Severity for the event.
+     * @param fields Event-local fields, which override all inherited fields.
+     * @param location Call-site source location captured by the caller or macros.
+     * @param format std::format format string for the message.
+     * @param arguments Values substituted into @p format.
+     * @note On format failure the event is dropped and no exception escapes.
+     */
     template <typename... Arguments>
     void writeFormatted(LogLevel level,
                         Value::Object fields,
@@ -79,7 +113,17 @@ private:
 
 } // namespace axiom::core::logging
 
-/** @brief Emits a formatted log record with explicit event fields. */
+/**
+ * @brief Emits a formatted log record with explicit event fields when enabled.
+ *
+ * Evaluates @p logger and @p level once, then calls Logger::writeFormatted only when
+ * Logger::enabled returns true for that level.
+ *
+ * @param logger Logger expression used for the emit (may have side effects once).
+ * @param level LogLevel severity for the event.
+ * @param fields Value::Object of event-local fields.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG(logger, level, fields, ...)                                                      \
     do {                                                                                           \
         auto&& axiom_log_logger_ = (logger);                                                       \
@@ -90,27 +134,51 @@ private:
         }                                                                                          \
     } while(false)
 
-/** @brief Emits a Trace-level formatted log record. */
+/**
+ * @brief Emits a Trace-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_TRACE(logger, ...)                                                               \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Trace, ::axiom::core::Value::Object{},   \
               __VA_ARGS__)
-/** @brief Emits a Debug-level formatted log record. */
+/**
+ * @brief Emits a Debug-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_DEBUG(logger, ...)                                                               \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Debug, ::axiom::core::Value::Object{},   \
               __VA_ARGS__)
-/** @brief Emits an Info-level formatted log record. */
+/**
+ * @brief Emits an Info-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_INFO(logger, ...)                                                                \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Info, ::axiom::core::Value::Object{},    \
               __VA_ARGS__)
-/** @brief Emits a Warning-level formatted log record. */
+/**
+ * @brief Emits a Warning-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_WARNING(logger, ...)                                                             \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Warning, ::axiom::core::Value::Object{}, \
               __VA_ARGS__)
-/** @brief Emits an Error-level formatted log record. */
+/**
+ * @brief Emits an Error-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_ERROR(logger, ...)                                                               \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Error, ::axiom::core::Value::Object{},   \
               __VA_ARGS__)
-/** @brief Emits a Critical-level formatted log record. */
+/**
+ * @brief Emits a Critical-level formatted log record with empty event fields.
+ * @param logger Logger expression used for the emit.
+ * @param ... Format string followed by std::format arguments.
+ */
 #define AXIOM_LOG_CRITICAL(logger, ...)                                                            \
     AXIOM_LOG((logger), ::axiom::core::logging::LogLevel::Critical,                                \
               ::axiom::core::Value::Object{}, __VA_ARGS__)

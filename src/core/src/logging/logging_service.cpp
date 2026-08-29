@@ -80,10 +80,13 @@ public:
 
     void dispatch(const LogRecord& record) const noexcept {
         try {
+            // Snapshot under the lock, then call sinks unlocked so recursive logging
+            // (and slow sinks) cannot deadlock against addSink/removeSink/flush.
             for(const auto& sink : matchingSinks(record)) {
                 try {
                     sink->consume(record);
                 } catch(...) {
+                    // One failing sink must not suppress delivery to the rest.
                     continue;
                 }
             }
@@ -94,6 +97,7 @@ public:
 
     void flush() noexcept {
         try {
+            // Same snapshot-then-unlock pattern as dispatch().
             for(const auto& sink : allSinks()) {
                 try {
                     sink->flush();
@@ -144,6 +148,8 @@ namespace {
 }
 
 void popContext(const LoggingState* const state, const std::uint64_t id) noexcept {
+    // Not strictly LIFO: nested scopes for different services may interleave on one
+    // thread, so locate by (state, id) rather than assuming the top entry matches.
     for(auto index = contexts.size(); index != 0; --index) {
         const auto& entry = contexts[index - 1];
         if(entry.state == state && entry.id == id) {
@@ -155,6 +161,7 @@ void popContext(const LoggingState* const state, const std::uint64_t id) noexcep
 
 [[nodiscard]] Value::Object contextFields(const LoggingState* const state) {
     Value::Object fields;
+    // Outer-to-inner walk: later scopes override same-named keys from earlier ones.
     for(const auto& context : contexts) {
         if(context.state == state) {
             for(const auto& [key, value] : context.fields) {
@@ -173,6 +180,7 @@ bool LogFilter::matches(const LogLevel level, const std::string_view category) c
     if(!isAtLeast(level, minimum_level)) {
         return false;
     }
+    // Require a '.' boundary after the prefix so "runtime" never matches "runtime2".
     return category_prefixes.empty() ||
            std::ranges::any_of(category_prefixes, [category](const std::string& prefix) {
                return prefix.empty() || category == prefix ||
@@ -304,6 +312,7 @@ void Logger::write(const LogLevel level,
         return;
     }
     try {
+        // Merge precedence (later wins): thread context → Logger bound fields → event fields.
         auto all_fields = detail::contextFields(state_.get());
         for(const auto& [key, value] : fields_) {
             all_fields.insert_or_assign(key, value);
