@@ -94,6 +94,10 @@ TEST(TypeDescriptor, RejectsSelfReferentialAndMultiNodeCycles) {
     const auto self_result = axiom::core::validate(*self);
     const auto multi_node_result = axiom::core::validate(*first);
 
+    self->element_type.reset();
+    first->element_type.reset();
+    second->element_type.reset();
+
     ASSERT_FALSE(self_result);
     ASSERT_FALSE(multi_node_result);
     EXPECT_EQ(self_result.error().code, axiom::core::ErrorCode::InvalidDescriptor);
