@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:checkflow:schema:project:v1",
+  "title": "CheckFlow project configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "flows"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "pattern": "\\S"}
+      },
+      "additionalProperties": true
+    },
+    "flows": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "allOf": [
+          {"pattern": "^[a-z][a-z0-9_]*$"},
+          {"not": {"enum": ["doctor", "init"]}}
+        ]
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {"$ref": "#/$defs/step"}
+      }
+    }
+  },
+  "$defs": {
+    "step": {
+      "oneOf": [
+        {"$ref": "#/$defs/toolStep"},
+        {"$ref": "#/$defs/commandStep"}
+      ]
+    },
+    "toolStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool"],
+      "properties": {
+        "tool": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "args": {"type": "object"},
+        "id": {"$ref": "#/$defs/stepId"},
+        "depends_on": {"$ref": "#/$defs/dependencies"},
+        "timeout": {"type": "number", "exclusiveMinimum": 0},
+        "env": {"$ref": "#/$defs/environment"}
+      }
+    },
+    "commandStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {"type": "string", "pattern": "\\S"},
+        "id": {"$ref": "#/$defs/stepId"},
+        "depends_on": {"$ref": "#/$defs/dependencies"},
+        "timeout": {"type": "number", "exclusiveMinimum": 0},
+        "env": {"$ref": "#/$defs/environment"}
+      }
+    },
+    "stepId": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/stepId"}
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

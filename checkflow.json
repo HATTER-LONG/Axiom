@@ -1,0 +1,32 @@
+{
+  "$schema": "./.checkflow/checkflow.schema.json",
+  "project": {"name": "Axiom", "language": "cpp"},
+  "flows": {
+    "fast": [
+      {"id": "architecture", "tool": "architecture"},
+      {"id": "configure", "tool": "cmake", "timeout": 300, "args": {"action": "configure", "preset": "quality-fast"}},
+      {"id": "build", "tool": "cmake", "depends_on": ["configure"], "timeout": 600, "args": {"action": "build", "preset": "quality-fast"}},
+      {"id": "clean_coverage", "tool": "coverage", "depends_on": ["build"], "args": {"action": "clean", "build_directory": "build-quality/fast"}},
+      {"id": "unit_tests", "tool": "ctest", "depends_on": ["clean_coverage"], "timeout": 600, "args": {"preset": "quality-fast"}},
+      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/fast", "preset": "quality-fast", "threshold": 90, "required_cache_option": "AXIOM_COVERAGE"}}
+    ],
+    "full": [
+      {"id": "architecture", "tool": "architecture"},
+      {"id": "format", "tool": "format"},
+      {"id": "configure", "tool": "cmake", "timeout": 300, "args": {"action": "configure", "preset": "quality-full"}},
+      {"id": "build", "tool": "cmake", "depends_on": ["configure"], "timeout": 600, "args": {"action": "build", "preset": "quality-full"}},
+      {"id": "complexity", "tool": "lizard", "depends_on": ["build"], "args": {"language": "cpp", "complexity": 10, "length": 80, "arguments": 5, "paths": ["src", "apps", "tests"]}},
+      {"id": "cppcheck", "tool": "cppcheck", "depends_on": ["build"], "timeout": 600, "args": {"paths": ["src", "apps", "tests"], "options": ["--enable=warning,style,performance,portability"]}},
+      {"id": "clang_tidy", "tool": "clang_tidy", "depends_on": ["build"], "timeout": 600, "args": {"compilation_database": "build-quality/full", "include": ["src/**", "apps/**", "tests/**"], "options": ["--quiet", "--warnings-as-errors=*"]}},
+      {"id": "clean_coverage", "tool": "coverage", "depends_on": ["build"], "args": {"action": "clean", "build_directory": "build-quality/full"}},
+      {"id": "unit_tests", "tool": "ctest", "depends_on": ["clean_coverage"], "timeout": 900, "args": {"preset": "quality-full"}},
+      {"id": "coverage", "tool": "coverage", "depends_on": ["unit_tests"], "timeout": 300, "args": {"build_directory": "build-quality/full", "preset": "quality-full", "threshold": 90, "required_cache_option": "AXIOM_COVERAGE"}}
+    ],
+    "hardening": [
+      {"id": "configure", "tool": "cmake", "timeout": 300, "args": {"action": "configure", "preset": "quality-hardening"}},
+      {"id": "build", "tool": "cmake", "depends_on": ["configure"], "timeout": 600, "args": {"action": "build", "preset": "quality-hardening"}},
+      {"id": "unit_tests", "tool": "ctest", "depends_on": ["build"], "timeout": 900, "args": {"preset": "quality-hardening"}},
+      {"id": "mutation", "tool": "mull", "timeout": 1800, "args": {"preset": "quality-mutation", "build_directory": "build-quality/mutation", "frontend_cache_option": "AXIOM_MULL_IR_FRONTEND", "threshold": 90}}
+    ]
+  }
+}

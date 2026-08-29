@@ -1,0 +1,11 @@
+[project]
+name = "axiom-quality-tools"
+version = "0.1.0"
+description = "Project-local quality gate tooling for Axiom"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "checkflow @ git+https://github.com/HATTER-LONG/CheckFlow.git@90ec67f41fa3cf41b1765fe390f905c439793cab",
+]
