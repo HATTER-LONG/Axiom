@@ -75,7 +75,7 @@ Result<Value> Dispatcher::invoke(const ActionId& id,
                                  const Arguments& arguments,
                                  const InvocationContext& context) const {
     try {
-        const auto descriptor = registry.findAction(id);
+        const auto descriptor = registry_.findAction(id);
         if(!descriptor) {
             return Result<Value>::failure(descriptor.error());
         }
@@ -85,7 +85,7 @@ Result<Value> Dispatcher::invoke(const ActionId& id,
             return Result<Value>::failure(validation.error());
         }
 
-        const auto implementation = registry.findImplementation(id);
+        const auto implementation = registry_.findImplementation(id);
         if(!implementation) {
             return Result<Value>::failure(implementation.error());
         }

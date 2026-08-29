@@ -94,7 +94,7 @@ public:
     discoverActions() const;
 
 private:
-    std::unique_ptr<detail::RuntimeState> state;
+    std::unique_ptr<detail::RuntimeState> state_;
 };
 
 } // namespace axiom::core

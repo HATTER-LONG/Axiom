@@ -58,7 +58,9 @@ public:
      * @param other Value whose payload is transferred.
      * @post `other.isNull()` is true.
      */
-    Value(Value&& other) noexcept : storage(std::move(other.storage)) { other.storage = nullptr; }
+    Value(Value&& other) noexcept : storage_(std::move(other.storage_)) {
+        other.storage_ = nullptr;
+    }
     /** @brief Copies a dynamic value and its immutable payload. */
     Value& operator=(const Value&) = default;
     /**
@@ -72,8 +74,8 @@ public:
      */
     Value& operator=(Value&& other) noexcept {
         if(this != &other) {
-            storage = std::move(other.storage);
-            other.storage = nullptr;
+            storage_ = std::move(other.storage_);
+            other.storage_ = nullptr;
         }
         return *this;
     }
@@ -81,17 +83,17 @@ public:
      * @brief Creates a null value.
      * @param value Null marker.
      */
-    Value(std::nullptr_t value) noexcept : storage(value) {}
+    Value(std::nullptr_t value) noexcept : storage_(value) {}
     /**
      * @brief Creates a boolean value.
      * @param value Boolean payload.
      */
-    explicit Value(bool value) noexcept : storage(value) {}
+    explicit Value(bool value) noexcept : storage_(value) {}
     /**
      * @brief Creates an integer value.
      * @param value Signed 64-bit payload.
      */
-    explicit Value(std::int64_t value) noexcept : storage(value) {}
+    explicit Value(std::int64_t value) noexcept : storage_(value) {}
     /**
      * @brief Creates an integer value from another signed integral type.
      * @tparam Integer Signed integral type narrower than std::int64_t.
@@ -101,32 +103,32 @@ public:
         requires(std::is_integral_v<Integer> && std::is_signed_v<Integer> &&
                  !std::is_same_v<std::remove_cv_t<Integer>, bool> &&
                  !std::is_same_v<std::remove_cv_t<Integer>, std::int64_t>)
-    explicit Value(Integer value) noexcept : storage(static_cast<std::int64_t>(value)) {}
+    explicit Value(Integer value) noexcept : storage_(static_cast<std::int64_t>(value)) {}
     /**
      * @brief Creates a number value.
      * @param value Double-precision payload.
      */
-    explicit Value(double value) noexcept : storage(value) {}
+    explicit Value(double value) noexcept : storage_(value) {}
     /**
      * @brief Creates a string value by taking ownership of text.
      * @param value UTF-8-compatible text.
      */
-    explicit Value(std::string value) : storage(std::move(value)) {}
+    explicit Value(std::string value) : storage_(std::move(value)) {}
     /**
      * @brief Creates a string value from a null-terminated string.
      * @param value Null-terminated text. Must not be null.
      */
-    explicit Value(const char* value) : storage(std::string{value}) {}
+    explicit Value(const char* value) : storage_(std::string{value}) {}
     /**
      * @brief Creates an array value by taking ownership of its elements.
      * @param value Array payload.
      */
-    explicit Value(Array value) : storage(std::make_shared<const Array>(std::move(value))) {}
+    explicit Value(Array value) : storage_(std::make_shared<const Array>(std::move(value))) {}
     /**
      * @brief Creates an object value by taking ownership of its fields.
      * @param value Ordered object payload.
      */
-    explicit Value(Object value) : storage(std::make_shared<const Object>(std::move(value))) {}
+    explicit Value(Object value) : storage_(std::make_shared<const Object>(std::move(value))) {}
 
     /** @brief Returns the logical type of this value. */
     [[nodiscard]] Type type() const noexcept;
@@ -191,13 +193,13 @@ private:
                                  std::shared_ptr<const Array>,
                                  std::shared_ptr<const Object>>;
 
-    Storage storage{nullptr};
+    Storage storage_{nullptr};
 };
 
 /** @brief Named invocation parameters represented as an ordered Value object. */
 using Arguments = Value::Object;
 
-inline Value::Type Value::type() const noexcept { return static_cast<Type>(storage.index()); }
+inline Value::Type Value::type() const noexcept { return static_cast<Type>(storage_.index()); }
 
 inline bool Value::isNull() const noexcept { return type() == Type::Null; }
 inline bool Value::isBoolean() const noexcept { return type() == Type::Boolean; }
@@ -211,42 +213,42 @@ inline bool Value::asBoolean() const {
     if(!isBoolean()) {
         throw ValueTypeError{"Value is not a boolean"};
     }
-    return std::get<bool>(storage);
+    return std::get<bool>(storage_);
 }
 
 inline std::int64_t Value::asInteger() const {
     if(!isInteger()) {
         throw ValueTypeError{"Value is not an integer"};
     }
-    return std::get<std::int64_t>(storage);
+    return std::get<std::int64_t>(storage_);
 }
 
 inline double Value::asNumber() const {
     if(!isNumber()) {
         throw ValueTypeError{"Value is not a number"};
     }
-    return std::get<double>(storage);
+    return std::get<double>(storage_);
 }
 
 inline const std::string& Value::asString() const {
     if(!isString()) {
         throw ValueTypeError{"Value is not a string"};
     }
-    return std::get<std::string>(storage);
+    return std::get<std::string>(storage_);
 }
 
 inline const Value::Array& Value::asArray() const {
     if(!isArray()) {
         throw ValueTypeError{"Value is not an array"};
     }
-    return *std::get<std::shared_ptr<const Array>>(storage);
+    return *std::get<std::shared_ptr<const Array>>(storage_);
 }
 
 inline const Value::Object& Value::asObject() const {
     if(!isObject()) {
         throw ValueTypeError{"Value is not an object"};
     }
-    return *std::get<std::shared_ptr<const Object>>(storage);
+    return *std::get<std::shared_ptr<const Object>>(storage_);
 }
 
 } // namespace axiom::core

@@ -22,9 +22,7 @@ using axiom::core::detail::fromValue;
 using axiom::core::detail::toValue;
 using axiom::core::detail::ValueConvertible;
 
-struct UnsupportedObject {
-    int size;
-};
+struct UnsupportedObject {};
 
 struct NonDefaultConstructibleCompare {
     explicit NonDefaultConstructibleCompare(const int tag) : tag(tag) {}
@@ -114,12 +112,19 @@ TEST(ValueConverter, RejectsLossyAndImplicitScalarConversionsAtTheInputPath) {
     EXPECT_EQ(number_to_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
     EXPECT_EQ(string_to_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
     EXPECT_EQ(overflowing_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
-    ASSERT_TRUE(number_to_integer.error().path.has_value());
-    ASSERT_TRUE(string_to_integer.error().path.has_value());
-    ASSERT_TRUE(overflowing_integer.error().path.has_value());
-    EXPECT_EQ(*number_to_integer.error().path, "size");
-    EXPECT_EQ(*string_to_integer.error().path, "size");
-    EXPECT_EQ(*overflowing_integer.error().path, "size");
+    const auto& number_to_integer_path = number_to_integer.error().path;
+    const auto& string_to_integer_path = string_to_integer.error().path;
+    const auto& overflowing_integer_path = overflowing_integer.error().path;
+    ASSERT_TRUE(number_to_integer_path.has_value());
+    ASSERT_TRUE(string_to_integer_path.has_value());
+    ASSERT_TRUE(overflowing_integer_path.has_value());
+    if(!number_to_integer_path.has_value() || !string_to_integer_path.has_value() ||
+       !overflowing_integer_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(number_to_integer_path.value(), "size");
+    EXPECT_EQ(string_to_integer_path.value(), "size");
+    EXPECT_EQ(overflowing_integer_path.value(), "size");
 }
 
 TEST(ValueConverter, AcceptsBothInclusiveBoundsOfNarrowIntegerTypes) {
@@ -149,8 +154,12 @@ TEST(ValueConverter, PreservesPreciseNestedArrayAndObjectPaths) {
 
     ASSERT_FALSE(converted);
     EXPECT_EQ(converted.error().code, axiom::core::ErrorCode::TypeMismatch);
-    ASSERT_TRUE(converted.error().path.has_value());
-    EXPECT_EQ(*converted.error().path, "shape.size.y[1]");
+    const auto& path = converted.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), "shape.size.y[1]");
 }
 
 TEST(ValueConverter, EncodesNonIdentifierMapKeysWithoutAmbiguousPathSyntax) {
@@ -167,14 +176,22 @@ TEST(ValueConverter, EncodesNonIdentifierMapKeysWithoutAmbiguousPathSyntax) {
     ASSERT_FALSE(bracketed);
     ASSERT_FALSE(quoted);
     ASSERT_FALSE(newline);
-    ASSERT_TRUE(dotted.error().path.has_value());
-    ASSERT_TRUE(bracketed.error().path.has_value());
-    ASSERT_TRUE(quoted.error().path.has_value());
-    ASSERT_TRUE(newline.error().path.has_value());
-    EXPECT_EQ(*dotted.error().path, "shape[\"a.b\"]");
-    EXPECT_EQ(*bracketed.error().path, "shape[\"items[0]\"]");
-    EXPECT_EQ(*quoted.error().path, "shape[\"a\\\"b\\\\c\"]");
-    EXPECT_EQ(*newline.error().path, "shape[\"line\\nbreak\"]");
+    const auto& dotted_path = dotted.error().path;
+    const auto& bracketed_path = bracketed.error().path;
+    const auto& quoted_path = quoted.error().path;
+    const auto& newline_path = newline.error().path;
+    ASSERT_TRUE(dotted_path.has_value());
+    ASSERT_TRUE(bracketed_path.has_value());
+    ASSERT_TRUE(quoted_path.has_value());
+    ASSERT_TRUE(newline_path.has_value());
+    if(!dotted_path.has_value() || !bracketed_path.has_value() || !quoted_path.has_value() ||
+       !newline_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(dotted_path.value(), "shape[\"a.b\"]");
+    EXPECT_EQ(bracketed_path.value(), "shape[\"items[0]\"]");
+    EXPECT_EQ(quoted_path.value(), "shape[\"a\\\"b\\\\c\"]");
+    EXPECT_EQ(newline_path.value(), "shape[\"line\\nbreak\"]");
 }
 
 TEST(ValueConverter, KeepsIdentifierObjectPathSegmentsInTheEstablishedDotForm) {
@@ -215,10 +232,15 @@ TEST(ValueConverter, RejectsMismatchedContainerShapesAtTheTopLevelPath) {
     ASSERT_FALSE(object);
     EXPECT_EQ(array.error().code, axiom::core::ErrorCode::TypeMismatch);
     EXPECT_EQ(object.error().code, axiom::core::ErrorCode::TypeMismatch);
-    ASSERT_TRUE(array.error().path.has_value());
-    ASSERT_TRUE(object.error().path.has_value());
-    EXPECT_EQ(*array.error().path, "points");
-    EXPECT_EQ(*object.error().path, "shape");
+    const auto& array_path = array.error().path;
+    const auto& object_path = object.error().path;
+    ASSERT_TRUE(array_path.has_value());
+    ASSERT_TRUE(object_path.has_value());
+    if(!array_path.has_value() || !object_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(array_path.value(), "points");
+    EXPECT_EQ(object_path.value(), "shape");
 }
 
 TEST(ValueConverter, ConvertsAndRejectsEveryScalarInputCategory) {
@@ -248,11 +270,10 @@ TEST(ValueConverter, ConvertsSuccessfulVectorAndMapContainers) {
 
 TEST(ValueConverter, PreservesSuccessfulAndRejectedSpecializedContainerConversions) {
     const auto invalid_string = fromValue<std::string>(Value{true}, "name");
-    const auto bytes = fromValue<std::vector<std::int8_t>>(
-        Value{Value::Array{Value{std::int64_t{1}}}}, "bytes");
+    const auto bytes =
+        fromValue<std::vector<std::int8_t>>(Value{Value::Array{Value{std::int64_t{1}}}}, "bytes");
     const auto nested = fromValue<std::map<std::string, std::vector<std::int32_t>>>(
-        Value{Value::Object{{"items", Value{Value::Array{Value{std::int64_t{1}}}}}}},
-        "shape");
+        Value{Value::Object{{"items", Value{Value::Array{Value{std::int64_t{1}}}}}}}, "shape");
 
     ASSERT_FALSE(invalid_string);
     ASSERT_TRUE(bytes);
@@ -267,6 +288,10 @@ TEST(ValueConverter, ConvertsEveryArrayElementAndPreservesItsFailureIndex) {
         Value{Value::Array{Value{std::int64_t{1}}, Value{"invalid"}}}, "points");
 
     ASSERT_FALSE(converted);
-    ASSERT_TRUE(converted.error().path.has_value());
-    EXPECT_EQ(*converted.error().path, "points[1]");
+    const auto& path = converted.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), "points[1]");
 }

@@ -124,7 +124,7 @@ public:
     using SourceArguments = Traits::ArgumentTypes;
 
     TypedActionAdapter(Callable callable, std::vector<ParameterDescriptor> parameters)
-        : callable(std::move(callable)), parameters(std::move(parameters)) {}
+        : callable_(std::move(callable)), parameters_(std::move(parameters)) {}
 
     [[nodiscard]] Result<Value> invoke(const Arguments& arguments,
                                        const InvocationContext& context) override {
@@ -151,22 +151,23 @@ private:
         if constexpr(Index == std::tuple_size_v<SourceArguments>) {
             return Result<void>::success();
         } else {
-            const auto supplied = arguments.find(parameters[Index].name);
+            const auto supplied = arguments.find(parameters_[Index].name);
             const Value* value = nullptr;
             if(supplied != arguments.end()) {
                 value = &supplied->second;
-            } else if(parameters[Index].default_value) {
-                value = &*parameters[Index].default_value;
+            } else if(const auto& default_value = parameters_[Index].default_value;
+                      default_value.has_value()) {
+                value = &default_value.value();
             }
             if(value == nullptr) {
                 return Result<void>::failure(
                     {.code = ErrorCode::MissingArgument,
-                     .message = "Required argument is missing: " + parameters[Index].name,
-                     .path = parameters[Index].name,
+                     .message = "Required argument is missing: " + parameters_[Index].name,
+                     .path = parameters_[Index].name,
                      .details = std::nullopt});
             }
             using Target = std::tuple_element_t<Index, Tuple>;
-            auto result = fromValue<Target>(*value, parameters[Index].name);
+            auto result = fromValue<Target>(*value, parameters_[Index].name);
             if(!result) {
                 return Result<void>::failure(result.error());
             }
@@ -177,11 +178,11 @@ private:
 
     template <typename Tuple> [[nodiscard]] Result<Value> invokeCallable(Tuple& converted) {
         if constexpr(std::is_void_v<Return>) {
-            std::apply([this](auto&... values) { std::invoke(callable, values...); }, converted);
+            std::apply([this](auto&... values) { std::invoke(callable_, values...); }, converted);
             return Result<Value>::success(Value{});
         } else {
             auto result = std::apply(
-                [this](auto&... values) { return std::invoke(callable, values...); }, converted);
+                [this](auto&... values) { return std::invoke(callable_, values...); }, converted);
             return convertReturn(std::move(result));
         }
     }
@@ -204,8 +205,8 @@ private:
         }
     }
 
-    Callable callable;
-    std::vector<ParameterDescriptor> parameters;
+    Callable callable_;
+    std::vector<ParameterDescriptor> parameters_;
 };
 
 } // namespace axiom::core::detail

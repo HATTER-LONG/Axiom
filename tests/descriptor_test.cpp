@@ -362,8 +362,8 @@ TEST(TypeDescriptor, RejectsConflictingObjectAndArrayMemberDefinitions) {
 TEST(TypeDescriptor, ValidatesTheNestedValueTypeOfHomogeneousObjects) {
     const axiom::core::TypeDescriptor invalid_value_type{
         .kind = axiom::core::TypeDescriptor::Kind::Object,
-        .value_type = axiom::core::TypeDescriptor::nested(
-            {.kind = axiom::core::TypeDescriptor::Kind::Array}),
+        .value_type =
+            axiom::core::TypeDescriptor::nested({.kind = axiom::core::TypeDescriptor::Kind::Array}),
     };
     const axiom::core::TypeDescriptor scalar_with_value_type{
         .kind = axiom::core::TypeDescriptor::Kind::String,
@@ -570,8 +570,8 @@ TEST(TypeDescriptor, RejectsScalarDescriptorsWithHomogeneousObjectMembers) {
 
 TEST(TypeDescriptor, AcceptsSharedChildrenWithoutTreatingThemAsCycles) {
     const auto shared = std::make_shared<axiom::core::TypeDescriptor>(integerType());
-    const auto descriptor = axiom::core::TypeDescriptor::object(
-        {{"first", shared}, {"second", shared}});
+    const auto descriptor =
+        axiom::core::TypeDescriptor::object({{"first", shared}, {"second", shared}});
 
     EXPECT_TRUE(axiom::core::validate(descriptor));
 }

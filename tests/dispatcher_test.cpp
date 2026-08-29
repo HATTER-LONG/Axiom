@@ -124,8 +124,12 @@ void expectUnknownArgument(const Result<Value>& result) {
 }
 
 void expectEncodedArgumentPath(const Result<Value>& result, const std::string& expected_path) {
-    ASSERT_TRUE(result.error().path.has_value());
-    EXPECT_EQ(*result.error().path, expected_path);
+    const auto& path = result.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), expected_path);
 }
 
 } // namespace
@@ -177,8 +181,12 @@ TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
 
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, ErrorCode::MissingArgument);
-    ASSERT_TRUE(result.error().path.has_value());
-    EXPECT_EQ(*result.error().path, "second");
+    const auto& path = result.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), "second");
 }
 
 TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
@@ -195,8 +203,12 @@ TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
 
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, ErrorCode::UnknownArgument);
-    ASSERT_TRUE(result.error().path.has_value());
-    EXPECT_EQ(*result.error().path, "extra");
+    const auto& path = result.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), "extra");
 }
 
 TEST(Dispatcher, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
@@ -239,8 +251,12 @@ TEST(Dispatcher, PreservesBusinessErrorCodeAndPath) {
 
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, ErrorCode::TypeMismatch);
-    ASSERT_TRUE(result.error().path.has_value());
-    EXPECT_EQ(*result.error().path, "shape.size");
+    const auto& path = result.error().path;
+    ASSERT_TRUE(path.has_value());
+    if(!path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(path.value(), "shape.size");
 }
 
 TEST(Dispatcher, NormalizesStandardExceptionsAtTheInvocationBoundary) {

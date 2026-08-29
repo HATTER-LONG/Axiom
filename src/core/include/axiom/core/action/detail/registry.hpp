@@ -162,7 +162,7 @@ private:
         std::map<std::string, std::shared_ptr<RegisteredAction>, std::less<>> actions;
     };
 
-    std::unique_ptr<State> state;
+    std::unique_ptr<State> state_;
 };
 
 } // namespace axiom::core::detail

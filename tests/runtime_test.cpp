@@ -86,11 +86,11 @@ struct NonCopyableCallable {
 
 class Multiplier {
 public:
-    explicit Multiplier(const int factor) : factor(factor) {}
-    [[nodiscard]] int multiply(const int value) const { return value * factor; }
+    explicit Multiplier(const int factor) : factor_(factor) {}
+    [[nodiscard]] int multiply(const int value) const { return value * factor_; }
 
 private:
-    int factor;
+    int factor_;
 };
 
 static_assert(axiom::core::detail::isAdaptableCallable<decltype(&add)>());
@@ -298,8 +298,12 @@ TEST(Runtime, PreservesBusinessErrorsAndSupportsVoidResults) {
 
     ASSERT_FALSE(business);
     EXPECT_EQ(business.error().code, ErrorCode::InvalidArgument);
-    ASSERT_TRUE(business.error().path.has_value());
-    EXPECT_EQ(*business.error().path, "value");
+    const auto& business_path = business.error().path;
+    ASSERT_TRUE(business_path.has_value());
+    if(!business_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(business_path.value(), "value");
     ASSERT_TRUE(result_void);
     EXPECT_TRUE(result_void.value().isNull());
     ASSERT_TRUE(plain_void);
@@ -324,16 +328,28 @@ TEST(Runtime, ReportsStructuralAndConversionErrorsAtPublicPaths) {
     EXPECT_EQ(unknown.error().code, ErrorCode::NotFound);
     ASSERT_FALSE(missing);
     EXPECT_EQ(missing.error().code, ErrorCode::MissingArgument);
-    ASSERT_TRUE(missing.error().path.has_value());
-    EXPECT_EQ(*missing.error().path, "right");
+    const auto& missing_path = missing.error().path;
+    ASSERT_TRUE(missing_path.has_value());
+    if(!missing_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(missing_path.value(), "right");
     ASSERT_FALSE(extra);
     EXPECT_EQ(extra.error().code, ErrorCode::UnknownArgument);
-    ASSERT_TRUE(extra.error().path.has_value());
-    EXPECT_EQ(*extra.error().path, "extra");
+    const auto& extra_path = extra.error().path;
+    ASSERT_TRUE(extra_path.has_value());
+    if(!extra_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(extra_path.value(), "extra");
     ASSERT_FALSE(mismatch);
     EXPECT_EQ(mismatch.error().code, ErrorCode::TypeMismatch);
-    ASSERT_TRUE(mismatch.error().path.has_value());
-    EXPECT_EQ(*mismatch.error().path, "left");
+    const auto& mismatch_path = mismatch.error().path;
+    ASSERT_TRUE(mismatch_path.has_value());
+    if(!mismatch_path.has_value()) {
+        return;
+    }
+    EXPECT_EQ(mismatch_path.value(), "left");
 }
 
 TEST(Runtime, NormalizesStandardAndUnknownCallableExceptions) {

@@ -32,7 +32,7 @@ public:
     [[nodiscard]] static Result failure(Error error) { return Result{std::move(error)}; }
 
     /** @brief Returns whether this result holds a successful value. */
-    [[nodiscard]] bool hasValue() const noexcept { return std::holds_alternative<T>(storage); }
+    [[nodiscard]] bool hasValue() const noexcept { return std::holds_alternative<T>(storage_); }
     /** @brief Returns whether this result holds an error. */
     [[nodiscard]] bool hasError() const noexcept { return !hasValue(); }
     /** @brief Returns whether this result holds a successful value. */
@@ -47,7 +47,7 @@ public:
         if(hasError()) {
             throw std::logic_error{"Result does not contain a value"};
         }
-        return std::get<T>(storage);
+        return std::get<T>(storage_);
     }
     /**
      * @brief Returns the successful value.
@@ -58,7 +58,7 @@ public:
         if(hasError()) {
             throw std::logic_error{"Result does not contain a value"};
         }
-        return std::get<T>(storage);
+        return std::get<T>(storage_);
     }
     /**
      * @brief Returns the structured error.
@@ -69,7 +69,7 @@ public:
         if(hasValue()) {
             throw std::logic_error{"Result does not contain an error"};
         }
-        return std::get<Error>(storage);
+        return std::get<Error>(storage_);
     }
     /**
      * @brief Returns the structured error.
@@ -80,14 +80,14 @@ public:
         if(hasValue()) {
             throw std::logic_error{"Result does not contain an error"};
         }
-        return std::get<Error>(storage);
+        return std::get<Error>(storage_);
     }
 
 private:
-    explicit Result(T value) : storage(std::move(value)) {}
-    explicit Result(Error error) : storage(std::move(error)) {}
+    explicit Result(T value) : storage_(std::move(value)) {}
+    explicit Result(Error error) : storage_(std::move(error)) {}
 
-    std::variant<T, Error> storage;
+    std::variant<T, Error> storage_;
 };
 
 /**
@@ -109,7 +109,7 @@ public:
 
     /** @brief Returns whether this result represents success. */
     [[nodiscard]] bool hasValue() const noexcept {
-        return std::holds_alternative<std::monostate>(storage);
+        return std::holds_alternative<std::monostate>(storage_);
     }
     /** @brief Returns whether this result holds an error. */
     [[nodiscard]] bool hasError() const noexcept { return !hasValue(); }
@@ -134,7 +134,7 @@ public:
         if(hasValue()) {
             throw std::logic_error{"Result does not contain an error"};
         }
-        return std::get<Error>(storage);
+        return std::get<Error>(storage_);
     }
     /**
      * @brief Returns the structured error.
@@ -145,14 +145,14 @@ public:
         if(hasValue()) {
             throw std::logic_error{"Result does not contain an error"};
         }
-        return std::get<Error>(storage);
+        return std::get<Error>(storage_);
     }
 
 private:
-    explicit Result(std::monostate value) : storage(value) {}
-    explicit Result(Error error) : storage(std::move(error)) {}
+    explicit Result(std::monostate value) : storage_(value) {}
+    explicit Result(Error error) : storage_(std::move(error)) {}
 
-    std::variant<std::monostate, Error> storage;
+    std::variant<std::monostate, Error> storage_;
 };
 
 } // namespace axiom::core

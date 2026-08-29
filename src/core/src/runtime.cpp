@@ -30,20 +30,20 @@ public:
 
 namespace axiom::core {
 
-Runtime::Runtime() : state(std::make_unique<detail::RuntimeState>()) {}
+Runtime::Runtime() : state_(std::make_unique<detail::RuntimeState>()) {}
 Runtime::~Runtime() noexcept = default;
 
 Result<void> Runtime::registerModule(ModuleBuilder&& builder) {
-    if(!builder.state) {
+    if(!builder.state_) {
         return Result<void>::failure({.code = ErrorCode::InvalidArgument,
                                       .message = "ModuleBuilder must not be empty",
                                       .path = std::nullopt,
                                       .details = std::nullopt});
     }
-    auto result = state->registry.registerModuleWithActions(builder.state->descriptor,
-                                                            builder.state->actions);
+    auto result = state_->registry.registerModuleWithActions(builder.state_->descriptor,
+                                                             builder.state_->actions);
     if(result) {
-        builder.state.reset();
+        builder.state_.reset();
     }
     return result;
 }
@@ -51,25 +51,25 @@ Result<void> Runtime::registerModule(ModuleBuilder&& builder) {
 Result<Value> Runtime::invoke(const ActionId& id,
                               const Arguments& arguments,
                               const InvocationContext& context) const {
-    return state->dispatcher.invoke(id, arguments, context);
+    return state_->dispatcher.invoke(id, arguments, context);
 }
 
 Result<std::reference_wrapper<const ModuleDescriptor>>
 Runtime::findModule(const std::string_view namespace_name) const {
-    return state->registry.findModule(namespace_name);
+    return state_->registry.findModule(namespace_name);
 }
 
 Result<std::reference_wrapper<const ActionDescriptor>>
 Runtime::findAction(const ActionId& id) const {
-    return state->registry.findAction(id);
+    return state_->registry.findAction(id);
 }
 
 std::vector<std::reference_wrapper<const ModuleDescriptor>> Runtime::discoverModules() const {
-    return state->registry.discoverModules();
+    return state_->registry.discoverModules();
 }
 
 std::vector<std::reference_wrapper<const ActionDescriptor>> Runtime::discoverActions() const {
-    return state->registry.discoverActions();
+    return state_->registry.discoverActions();
 }
 
 } // namespace axiom::core

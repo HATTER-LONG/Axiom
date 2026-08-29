@@ -137,7 +137,7 @@ template <typename RegisteredActions>
 
 } // namespace
 
-Registry::Registry() : state(std::make_unique<State>()) {}
+Registry::Registry() : state_(std::make_unique<State>()) {}
 Registry::~Registry() noexcept = default;
 
 Result<void> Registry::registerModule(const ModuleDescriptor& descriptor) {
@@ -146,16 +146,16 @@ Result<void> Registry::registerModule(const ModuleDescriptor& descriptor) {
         if(!validation) {
             return validation;
         }
-        if(state->modules.contains(descriptor.namespace_name)) {
+        if(state_->modules.contains(descriptor.namespace_name)) {
             return Result<void>::failure(
                 registrationError(ErrorCode::AlreadyExists,
                                   "Module is already registered: " + descriptor.namespace_name));
         }
 
-        auto next = std::make_unique<State>(*state);
+        auto next = std::make_unique<State>(*state_);
         auto registered = std::make_shared<ModuleDescriptor>(descriptor);
         next->modules.emplace(descriptor.namespace_name, std::move(registered));
-        state.swap(next);
+        state_.swap(next);
         return Result<void>::success();
     } catch(const std::exception&) {
         return unexpectedRegistrationFailure();
@@ -171,20 +171,20 @@ Result<void> Registry::registerModuleWithActions(const ModuleDescriptor& descrip
         if(!module_validation) {
             return module_validation;
         }
-        if(state->modules.contains(descriptor.namespace_name)) {
+        if(state_->modules.contains(descriptor.namespace_name)) {
             return Result<void>::failure(
                 registrationError(ErrorCode::AlreadyExists,
                                   "Module is already registered: " + descriptor.namespace_name));
         }
 
         for(const auto& pending : pending_actions) {
-            auto validation = validatePendingAction(pending, descriptor, state->actions);
+            auto validation = validatePendingAction(pending, descriptor, state_->actions);
             if(!validation) {
                 return validation;
             }
         }
 
-        auto next = std::make_unique<State>(*state);
+        auto next = std::make_unique<State>(*state_);
         auto registered_module = std::make_shared<ModuleDescriptor>(descriptor);
         next->modules.emplace(descriptor.namespace_name, std::move(registered_module));
         std::vector<std::shared_ptr<RegisteredAction>> prepared_actions;
@@ -207,7 +207,7 @@ Result<void> Registry::registerModuleWithActions(const ModuleDescriptor& descrip
             prepared_actions[index]->implementation =
                 std::move(pending_actions[index].implementation);
         }
-        state.swap(next);
+        state_.swap(next);
         return Result<void>::success();
     } catch(const std::exception&) {
         return unexpectedRegistrationFailure();
@@ -230,16 +230,16 @@ Result<void> Registry::registerAction(const ActionDescriptor& descriptor,
 
         const std::string module_name{descriptor.id.module()};
         const std::string action_id{descriptor.id.str()};
-        if(!state->modules.contains(module_name)) {
+        if(!state_->modules.contains(module_name)) {
             return Result<void>::failure(
                 registrationError(ErrorCode::NotFound, "Module is not registered: " + module_name));
         }
-        if(state->actions.contains(action_id)) {
+        if(state_->actions.contains(action_id)) {
             return Result<void>::failure(registrationError(
                 ErrorCode::AlreadyExists, "Action is already registered: " + action_id));
         }
 
-        auto next = std::make_unique<State>(*state);
+        auto next = std::make_unique<State>(*state_);
         auto registered = std::make_shared<RegisteredAction>();
         registered->descriptor =
             std::make_unique<ActionDescriptor>(copyActionDescriptor(descriptor));
@@ -250,7 +250,7 @@ Result<void> Registry::registerAction(const ActionDescriptor& descriptor,
                 ErrorCode::InternalError, "Registry prepared a duplicate Action: " + action_id));
         }
         registered->implementation = std::move(implementation);
-        state.swap(next);
+        state_.swap(next);
         return Result<void>::success();
     } catch(const std::exception&) {
         return unexpectedRegistrationFailure();
@@ -261,8 +261,8 @@ Result<void> Registry::registerAction(const ActionDescriptor& descriptor,
 
 Result<std::reference_wrapper<const ModuleDescriptor>>
 Registry::findModule(const std::string_view namespace_name) const {
-    const auto module = state->modules.find(namespace_name);
-    if(module == state->modules.end()) {
+    const auto module = state_->modules.find(namespace_name);
+    if(module == state_->modules.end()) {
         return Result<std::reference_wrapper<const ModuleDescriptor>>::failure(registrationError(
             ErrorCode::NotFound, "Module is not registered: " + std::string{namespace_name}));
     }
@@ -272,8 +272,8 @@ Registry::findModule(const std::string_view namespace_name) const {
 
 Result<std::reference_wrapper<const ActionDescriptor>>
 Registry::findAction(const ActionId& id) const {
-    const auto action = state->actions.find(id.str());
-    if(action == state->actions.end()) {
+    const auto action = state_->actions.find(id.str());
+    if(action == state_->actions.end()) {
         return Result<std::reference_wrapper<const ActionDescriptor>>::failure(registrationError(
             ErrorCode::NotFound, "Action is not registered: " + std::string{id.str()}));
     }
@@ -282,8 +282,8 @@ Registry::findAction(const ActionId& id) const {
 }
 
 Result<std::reference_wrapper<IAction>> Registry::findImplementation(const ActionId& id) {
-    const auto action = state->actions.find(id.str());
-    if(action == state->actions.end()) {
+    const auto action = state_->actions.find(id.str());
+    if(action == state_->actions.end()) {
         return Result<std::reference_wrapper<IAction>>::failure(registrationError(
             ErrorCode::NotFound, "Action is not registered: " + std::string{id.str()}));
     }
@@ -293,8 +293,8 @@ Result<std::reference_wrapper<IAction>> Registry::findImplementation(const Actio
 
 std::vector<std::reference_wrapper<const ModuleDescriptor>> Registry::discoverModules() const {
     std::vector<std::reference_wrapper<const ModuleDescriptor>> result;
-    result.reserve(state->modules.size());
-    for(const auto& [name, descriptor] : state->modules) {
+    result.reserve(state_->modules.size());
+    for(const auto& [name, descriptor] : state_->modules) {
         static_cast<void>(name);
         result.emplace_back(std::cref(*descriptor));
     }
@@ -303,8 +303,8 @@ std::vector<std::reference_wrapper<const ModuleDescriptor>> Registry::discoverMo
 
 std::vector<std::reference_wrapper<const ActionDescriptor>> Registry::discoverActions() const {
     std::vector<std::reference_wrapper<const ActionDescriptor>> result;
-    result.reserve(state->actions.size());
-    for(const auto& [id, action] : state->actions) {
+    result.reserve(state_->actions.size());
+    for(const auto& [id, action] : state_->actions) {
         static_cast<void>(id);
         result.emplace_back(std::cref(*action->descriptor));
     }

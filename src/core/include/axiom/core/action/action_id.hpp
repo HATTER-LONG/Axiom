@@ -45,22 +45,22 @@ public:
      * @brief Returns the canonical complete identifier.
      * @return View valid while this ActionId remains alive and unmodified.
      */
-    [[nodiscard]] std::string_view str() const noexcept { return text; }
+    [[nodiscard]] std::string_view str() const noexcept { return text_; }
     /**
      * @brief Returns the module component of this identifier.
      * @return View valid while this ActionId remains alive and unmodified.
      */
-    [[nodiscard]] std::string_view module() const noexcept { return module_name; }
+    [[nodiscard]] std::string_view module() const noexcept { return module_name_; }
     /**
      * @brief Returns the action component of this identifier.
      * @return View valid while this ActionId remains alive and unmodified.
      */
-    [[nodiscard]] std::string_view action() const noexcept { return action_name; }
+    [[nodiscard]] std::string_view action() const noexcept { return action_name_; }
 
 private:
     ActionId(std::string text_value, std::string module_value, std::string action_value)
-        : text(std::move(text_value)), module_name(std::move(module_value)),
-          action_name(std::move(action_value)) {}
+        : text_(std::move(text_value)), module_name_(std::move(module_value)),
+          action_name_(std::move(action_value)) {}
 
     [[nodiscard]] static bool isIdentifier(std::string_view text) noexcept {
         return !text.empty() && std::ranges::all_of(text, [](const char character) noexcept {
@@ -69,9 +69,9 @@ private:
         });
     }
 
-    std::string text;
-    std::string module_name;
-    std::string action_name;
+    std::string text_;
+    std::string module_name_;
+    std::string action_name_;
 };
 
 } // namespace axiom::core

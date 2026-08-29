@@ -30,8 +30,8 @@ using axiom::core::detail::Registry;
 class LifetimeTrackingAction final : public IAction {
 public:
     explicit LifetimeTrackingAction(int& destruction_count) noexcept
-        : destruction_count(destruction_count) {}
-    ~LifetimeTrackingAction() noexcept override { ++destruction_count; }
+        : destruction_count_(destruction_count) {}
+    ~LifetimeTrackingAction() noexcept override { ++destruction_count_; }
 
     [[nodiscard]] axiom::core::Result<axiom::core::Value>
     invoke(const axiom::core::Arguments& arguments,
@@ -42,7 +42,7 @@ public:
     }
 
 private:
-    int& destruction_count;
+    int& destruction_count_;
 };
 
 ActionId actionId(const std::string_view text) {

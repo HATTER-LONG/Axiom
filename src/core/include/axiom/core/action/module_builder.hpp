@@ -154,7 +154,7 @@ private:
                                                  std::vector<ParameterDescriptor> parameters,
                                                  const TypeDescriptor& return_type);
 
-    std::unique_ptr<detail::ModuleBuilderState> state;
+    std::unique_ptr<detail::ModuleBuilderState> state_;
 };
 
 } // namespace axiom::core
@@ -171,7 +171,7 @@ public:
      * @brief Retains the object used for each member invocation.
      * @param object Non-null shared owner of the member function receiver.
      */
-    explicit MemberBinding(std::shared_ptr<Object> object) : object(std::move(object)) {}
+    explicit MemberBinding(std::shared_ptr<Object> object) : object_(std::move(object)) {}
 
     /**
      * @brief Invokes the bound member function.
@@ -179,11 +179,11 @@ public:
      * @return The member function's result when it is non-void.
      */
     Return operator()(Arguments... arguments) const {
-        return std::invoke(Method, *object, std::forward<Arguments>(arguments)...);
+        return std::invoke(Method, *object_, std::forward<Arguments>(arguments)...);
     }
 
 private:
-    std::shared_ptr<Object> object;
+    std::shared_ptr<Object> object_;
 };
 
 template <auto Method, typename Object, typename Return, typename... Arguments>

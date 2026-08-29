@@ -23,7 +23,7 @@ public:
      *
      * @param registry Registered Action source to resolve during invocation.
      */
-    explicit Dispatcher(Registry& registry) noexcept : registry(registry) {}
+    explicit Dispatcher(Registry& registry) noexcept : registry_(registry) {}
 
     /**
      * @brief Looks up, validates, and invokes an Action.
@@ -38,7 +38,7 @@ public:
     invoke(const ActionId& id, const Arguments& arguments, const InvocationContext& context) const;
 
 private:
-    Registry& registry;
+    Registry& registry_;
 };
 
 } // namespace axiom::core::detail

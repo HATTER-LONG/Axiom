@@ -28,7 +28,7 @@ namespace {
 } // namespace
 
 ModuleBuilder::ModuleBuilder(const ModuleDescriptor& descriptor)
-    : state(std::make_unique<detail::ModuleBuilderState>(descriptor)) {}
+    : state_(std::make_unique<detail::ModuleBuilderState>(descriptor)) {}
 
 ModuleBuilder::~ModuleBuilder() noexcept = default;
 ModuleBuilder::ModuleBuilder(ModuleBuilder&&) noexcept = default;
@@ -39,11 +39,11 @@ Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
                                               std::unique_ptr<detail::IAction> implementation,
                                               std::vector<ParameterDescriptor> parameters,
                                               const TypeDescriptor& return_type) {
-    if(!state) {
+    if(!state_) {
         return Result<void>::failure(builderError(
             ErrorCode::InvalidArgument, "ModuleBuilder is empty or has already been registered"));
     }
-    const std::string full_id = state->descriptor.namespace_name + "." + std::string{action_name};
+    const std::string full_id = state_->descriptor.namespace_name + "." + std::string{action_name};
     auto id = ActionId::parse(full_id);
     if(!id) {
         return Result<void>::failure(id.error());
@@ -60,15 +60,15 @@ Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
     if(!validation) {
         return validation;
     }
-    const auto duplicate = std::ranges::find_if(state->actions, [&descriptor](const auto& action) {
+    const auto duplicate = std::ranges::find_if(state_->actions, [&descriptor](const auto& action) {
         return action.descriptor->id.str() == descriptor->id.str();
     });
-    if(duplicate != state->actions.end()) {
+    if(duplicate != state_->actions.end()) {
         return Result<void>::failure(
             builderError(ErrorCode::AlreadyExists,
                          "Action is already pending: " + std::string{descriptor->id.str()}));
     }
-    state->actions.emplace_back(std::move(descriptor), std::move(implementation));
+    state_->actions.emplace_back(std::move(descriptor), std::move(implementation));
     return Result<void>::success();
 }
 
