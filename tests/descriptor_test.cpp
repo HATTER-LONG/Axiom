@@ -276,3 +276,188 @@ TEST(ActionDescriptor, RejectsEmptyVersionAndAcceptsNullableDefaults) {
     EXPECT_FALSE(axiom::core::validate(empty_version));
     EXPECT_TRUE(axiom::core::validate(nullable_default));
 }
+
+TEST(ActionDescriptor, RejectsDefaultsWithIncompatibleContainerShapes) {
+    const axiom::core::ActionDescriptor array_default{
+        .id = actionId("shape.array"),
+        .parameters = {{.name = "values",
+                        .required = false,
+                        .type = axiom::core::TypeDescriptor::array(integerType()),
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor object_default{
+        .id = actionId("shape.object"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = axiom::core::TypeDescriptor::object(
+                            {{"count", axiom::core::TypeDescriptor::nested(integerType())}}),
+                        .default_value = axiom::core::Value{axiom::core::Value::Array{}}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(array_default));
+    EXPECT_FALSE(axiom::core::validate(object_default));
+}
+
+TEST(ActionDescriptor, RejectsDefaultsThatDoNotMatchObjectMembers) {
+    const auto type = axiom::core::TypeDescriptor::object(
+        {{"count", axiom::core::TypeDescriptor::nested(integerType())}});
+    const axiom::core::ActionDescriptor missing_member{
+        .id = actionId("shape.missing"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = type,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor extra_member{
+        .id = actionId("shape.extra"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = type,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{
+                            {"count", axiom::core::Value{std::int64_t{1}}},
+                            {"other", axiom::core::Value{std::int64_t{2}}}}}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(missing_member));
+    EXPECT_FALSE(axiom::core::validate(extra_member));
+}
+
+TEST(ActionDescriptor, RejectsNullDefaultForNonNullableScalar) {
+    const axiom::core::ActionDescriptor descriptor{
+        .id = actionId("shape.null"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = integerType(),
+                        .default_value = axiom::core::Value{nullptr}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(descriptor));
+}
+
+TEST(ActionDescriptor, ValidatesDefaultsForEveryScalarCategory) {
+    const axiom::core::ActionDescriptor boolean_default{
+        .id = actionId("shape.boolean"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = {.kind = axiom::core::TypeDescriptor::Kind::Boolean},
+                        .default_value = axiom::core::Value{true}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor null_default{
+        .id = actionId("shape.null_value"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = {.kind = axiom::core::TypeDescriptor::Kind::Null},
+                        .default_value = axiom::core::Value{nullptr}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor non_null_for_null_type{
+        .id = actionId("shape.not_null"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = {.kind = axiom::core::TypeDescriptor::Kind::Null},
+                        .default_value = axiom::core::Value{std::int64_t{1}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor number_default{
+        .id = actionId("shape.number"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = {.kind = axiom::core::TypeDescriptor::Kind::Number},
+                        .default_value = axiom::core::Value{1.5}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_TRUE(axiom::core::validate(boolean_default));
+    EXPECT_TRUE(axiom::core::validate(null_default));
+    EXPECT_FALSE(axiom::core::validate(non_null_for_null_type));
+    EXPECT_TRUE(axiom::core::validate(number_default));
+}
+
+TEST(ActionDescriptor, ValidatesHomogeneousObjectDefaultsAndInvalidParameterTypes) {
+    const auto values = axiom::core::TypeDescriptor::objectValues(integerType());
+    const axiom::core::ActionDescriptor valid_default{
+        .id = actionId("shape.values"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = values,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{
+                            {"first", axiom::core::Value{std::int64_t{1}}}}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor invalid_member{
+        .id = actionId("shape.invalid_value"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = values,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{
+                            {"first", axiom::core::Value{"one"}}}}}},
+        .return_type = integerType(),
+    };
+    const axiom::core::ActionDescriptor invalid_parameter_type{
+        .id = actionId("shape.invalid_type"),
+        .parameters = {{.name = "value",
+                        .type = {.kind = axiom::core::TypeDescriptor::Kind::Array}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_TRUE(axiom::core::validate(valid_default));
+    EXPECT_FALSE(axiom::core::validate(invalid_member));
+    EXPECT_FALSE(axiom::core::validate(invalid_parameter_type));
+}
+
+TEST(ActionDescriptor, RejectsSameSizeObjectDefaultWithMissingNamedMember) {
+    const auto type = axiom::core::TypeDescriptor::object(
+        {{"first", axiom::core::TypeDescriptor::nested(integerType())},
+         {"second", axiom::core::TypeDescriptor::nested(integerType())}});
+    const axiom::core::ActionDescriptor descriptor{
+        .id = actionId("shape.named"),
+        .parameters = {{.name = "value",
+                        .required = false,
+                        .type = type,
+                        .default_value = axiom::core::Value{axiom::core::Value::Object{
+                            {"first", axiom::core::Value{std::int64_t{1}}},
+                            {"other", axiom::core::Value{std::int64_t{2}}}}}}},
+        .return_type = integerType(),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(descriptor));
+}
+
+TEST(TypeDescriptor, RejectsConflictingAndInvalidContainerMembers) {
+    const auto array_value_type = axiom::core::TypeDescriptor{
+        .kind = axiom::core::TypeDescriptor::Kind::Array,
+        .element_type = std::make_shared<axiom::core::TypeDescriptor>(integerType()),
+        .value_type = std::make_shared<axiom::core::TypeDescriptor>(integerType()),
+    };
+    const auto object_both_member_forms = axiom::core::TypeDescriptor{
+        .kind = axiom::core::TypeDescriptor::Kind::Object,
+        .fields = {{"count", axiom::core::TypeDescriptor::nested(integerType())}},
+        .value_type = std::make_shared<axiom::core::TypeDescriptor>(integerType()),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(array_value_type));
+    EXPECT_FALSE(axiom::core::validate(object_both_member_forms));
+}
+
+TEST(TypeDescriptor, RejectsScalarDescriptorsWithHomogeneousObjectMembers) {
+    const axiom::core::TypeDescriptor descriptor{
+        .kind = axiom::core::TypeDescriptor::Kind::String,
+        .value_type = std::make_shared<axiom::core::TypeDescriptor>(integerType()),
+    };
+
+    EXPECT_FALSE(axiom::core::validate(descriptor));
+}
+
+TEST(TypeDescriptor, AcceptsSharedChildrenWithoutTreatingThemAsCycles) {
+    const auto shared = std::make_shared<axiom::core::TypeDescriptor>(integerType());
+    const auto descriptor = axiom::core::TypeDescriptor::object(
+        {{"first", shared}, {"second", shared}});
+
+    EXPECT_TRUE(axiom::core::validate(descriptor));
+}

@@ -201,3 +201,44 @@ TEST(ValueConverter, RejectsMismatchedContainerShapesAtTheTopLevelPath) {
     EXPECT_EQ(*array.error().path, "points");
     EXPECT_EQ(*object.error().path, "shape");
 }
+
+TEST(ValueConverter, ConvertsAndRejectsEveryScalarInputCategory) {
+    const auto floating = fromValue<double>(Value{1.5}, "ratio");
+    const auto invalid_floating = fromValue<double>(Value{"one"}, "ratio");
+    const auto invalid_small_integer = fromValue<std::int8_t>(Value{"one"}, "count");
+
+    ASSERT_TRUE(floating);
+    ASSERT_FALSE(invalid_floating);
+    ASSERT_FALSE(invalid_small_integer);
+    EXPECT_DOUBLE_EQ(floating.value(), 1.5);
+    EXPECT_EQ(invalid_floating.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(invalid_small_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
+}
+
+TEST(ValueConverter, ConvertsSuccessfulVectorAndMapContainers) {
+    const auto vector = fromValue<std::vector<std::int32_t>>(
+        Value{Value::Array{Value{std::int64_t{1}}, Value{std::int64_t{2}}}}, "values");
+    const auto map = fromValue<std::map<std::string, bool>>(
+        Value{Value::Object{{"enabled", Value{true}}}}, "settings");
+
+    ASSERT_TRUE(vector);
+    ASSERT_TRUE(map);
+    EXPECT_EQ(vector.value(), (std::vector<std::int32_t>{1, 2}));
+    EXPECT_TRUE(map.value().at("enabled"));
+}
+
+TEST(ValueConverter, PreservesSuccessfulAndRejectedSpecializedContainerConversions) {
+    const auto invalid_string = fromValue<std::string>(Value{true}, "name");
+    const auto bytes = fromValue<std::vector<std::int8_t>>(
+        Value{Value::Array{Value{std::int64_t{1}}}}, "bytes");
+    const auto nested = fromValue<std::map<std::string, std::vector<std::int32_t>>>(
+        Value{Value::Object{{"items", Value{Value::Array{Value{std::int64_t{1}}}}}}},
+        "shape");
+
+    ASSERT_FALSE(invalid_string);
+    ASSERT_TRUE(bytes);
+    ASSERT_TRUE(nested);
+    EXPECT_EQ(invalid_string.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(bytes.value(), (std::vector<std::int8_t>{1}));
+    EXPECT_EQ(nested.value().at("items"), (std::vector<std::int32_t>{1}));
+}
