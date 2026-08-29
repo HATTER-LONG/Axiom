@@ -211,10 +211,16 @@ ConsoleSink::ConsoleSink(ConsoleSink&&) noexcept = default;
 ConsoleSink& ConsoleSink::operator=(ConsoleSink&&) noexcept = default;
 
 void ConsoleSink::consume(const LogRecord& record) {
+    if(implementation_ == nullptr) {
+        return;
+    }
     implementation_->logger->log(spdlogLevel(record.level), formatRecord(record));
 }
 
 void ConsoleSink::flush() noexcept {
+    if(implementation_ == nullptr) {
+        return;
+    }
     try {
         implementation_->logger->flush();
     } catch(...) {

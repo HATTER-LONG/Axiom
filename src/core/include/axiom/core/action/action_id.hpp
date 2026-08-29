@@ -1,10 +1,13 @@
 #pragma once
 
+#include <axiom/core/base/error.hpp>
 #include <axiom/core/base/result.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace axiom::core {
 

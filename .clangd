@@ -5,8 +5,8 @@ Diagnostics:
   ClangTidy:
     FastCheckFilter: Strict
 
-  UnusedIncludes: Strict
-  MissingIncludes: None
+  # UnusedIncludes: Strict
+  # MissingIncludes: None
 
 Completion:
   AllScopes: Yes

@@ -1,5 +1,6 @@
 #pragma once
 
+// IWYU pragma: begin_exports
 #include <axiom/core/action/action_id.hpp>
 #include <axiom/core/action/descriptor.hpp>
 #include <axiom/core/action/invocation_context.hpp>
@@ -21,6 +22,7 @@
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/logging_service.hpp>
 #include <axiom/core/logging/scoped_log_context.hpp>
+// IWYU pragma: end_exports
 
 #include <string_view>
 

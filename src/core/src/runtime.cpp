@@ -72,11 +72,17 @@ namespace {
     return {{"module", Value{std::string{id.module()}}}, {"action", Value{std::string{id.str()}}}};
 }
 
+[[nodiscard]] bool isRuntimeOwnedLogField(const std::string_view key) noexcept {
+    return key == "module" || key == "action" || key == "status" || key == "duration_ms";
+}
+
 [[nodiscard]] Value::Object invocationContextFields(const InvocationContext& context,
                                                     const ActionId& id) {
     Value::Object fields;
     for(const auto& [key, value] : context.metadata) {
-        fields.insert_or_assign(key, Value{value});
+        if(!isRuntimeOwnedLogField(key)) {
+            fields.insert_or_assign(key, Value{value});
+        }
     }
     if(!context.request_id.empty()) {
         fields.insert_or_assign("request_id", Value{context.request_id});

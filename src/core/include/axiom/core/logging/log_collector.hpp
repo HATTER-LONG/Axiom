@@ -1,6 +1,7 @@
 #pragma once
 
 #include <axiom/core/logging/log_query.hpp>
+#include <axiom/core/logging/log_record.hpp>
 #include <axiom/core/logging/log_sink.hpp>
 
 #include <cstddef>

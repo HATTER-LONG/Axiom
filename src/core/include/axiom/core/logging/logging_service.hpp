@@ -6,10 +6,9 @@
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/scoped_log_context.hpp>
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <utility>
+#include <string>
 
 namespace axiom::core::logging {
 

@@ -95,7 +95,11 @@ public:
     void flush() noexcept {
         try {
             for(const auto& sink : allSinks()) {
-                sink->flush();
+                try {
+                    sink->flush();
+                } catch(...) {
+                    continue;
+                }
             }
         } catch(...) {
             return;

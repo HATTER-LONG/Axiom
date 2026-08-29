@@ -141,14 +141,15 @@ function (axiom_configure_tools)
     endforeach ()
 
     if (AXIOM_SANITIZERS)
-        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CPM.cmake")
-        cpmaddpackage("gh:StableCoder/cmake-scripts#25.08")
+        # Load CPM at file scope in the root CMakeLists.txt. Including it from this
+        # function would re-run cmake_minimum_required() and can leave CPMAddPackage
+        # undefined on case-sensitive CMake platforms.
+        CPMAddPackage("gh:StableCoder/cmake-scripts#25.08")
         include("${cmake-scripts_SOURCE_DIR}/sanitizers.cmake")
     endif ()
 
     if (AXIOM_USE_CCACHE AND PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CPM.cmake")
-        cpmaddpackage("gh:TheLartians/Ccache.cmake@1.2.5")
+        CPMAddPackage("gh:TheLartians/Ccache.cmake@1.2.5")
     endif ()
 
     if (AXIOM_BUILD_DOCS)

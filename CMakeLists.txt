@@ -33,6 +33,7 @@ if (NOT CPM_SOURCE_CACHE OR CPM_SOURCE_CACHE STREQUAL "${PROJECT_SOURCE_DIR}/.ca
         CACHE PATH "Persistent CPM package source cache" FORCE)
 endif ()
 
+include("${PROJECT_SOURCE_DIR}/cmake/CPM.cmake")
 include(cmake/tools.cmake)
 axiom_configure_tools()
 

@@ -1,6 +1,6 @@
 # Axiom Core 结构化 Logging 子系统设计
 
-> 状态：实施中（基础 logging 与首期 Sink 已交付）
+> 状态：已交付（基础 logging 与首期 Sink）
 > 范围：在 `Axiom::Core` 中引入 `axiom::core::logging`
 
 ## 1. 目标与边界
@@ -56,7 +56,8 @@ action、应用、Qt 或 Agent 的头文件。
 - `LogFilter` 包含最低级别和零到多个 category 前缀。空前缀集合表示全部；`runtime` 必须按段
   匹配 `runtime` 与 `runtime.*`，而不匹配名称中仅有相同字符前缀的 category。
 - `LogQuery` 包含最低级别、category 前缀及 `limit`。
-- `ILogSink::consume(const LogRecord&)` 允许第三方实现抛出；派发层必须捕获异常。
+- `ILogSink::consume(const LogRecord&)` 与 `flush()` 允许第三方实现抛出；派发层必须捕获异常
+  并继续处理其余 Sink。
 
 ### 3.2 LoggingService
 
@@ -127,8 +128,10 @@ spdlog 仅以私有头文件实现编入 `Axiom::Core`，不得出现在公开�
   `InvocationFailed` 与 `InternalError` 记录 Error。
 - 结束记录包含 `status`、`module`、完整 `action`，以及由 `steady_clock` 测得的
   `duration_ms`。
-- `InvocationContext` 映射 `request_id`、`trace_id`、`caller` 与 metadata；Runtime 的
-  module/action/status/duration 字段覆盖 metadata 中同名项。
+- `InvocationContext` 映射 `request_id`、`trace_id`、`caller` 与 metadata；Runtime 拥有的
+  `module`、`action`、`status`、`duration_ms` 覆盖 metadata 中的同名项。scoped context 在调用
+  期间写入 Runtime 的 `module`/`action`，并丢弃 metadata 里这四个保留键；`status` 与
+  `duration_ms` 只出现在结束记录上。
 
 所有日志准备、上下文创建与派发都是旁路操作；失败不得改变 Action 是否执行，也不得改变原始
 `Result`。

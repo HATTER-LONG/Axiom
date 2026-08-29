@@ -7,8 +7,8 @@ namespace axiom::core::logging {
 /**
  * @brief Consumer of records emitted by a LoggingService.
  *
- * @note consume implementations may throw. LoggingService catches those failures and
- * continues dispatching the record to other registered sinks.
+ * @note consume and flush implementations may throw. LoggingService catches those
+ * failures, continues with remaining sinks, and does not propagate them to callers.
  */
 class ILogSink {
 public:
@@ -17,7 +17,7 @@ public:
     /** @brief Consumes one record. */
     virtual void consume(const LogRecord& record) = 0;
     /** @brief Makes records accepted before this call observable. */
-    virtual void flush() noexcept {}
+    virtual void flush() {}
 };
 
 } // namespace axiom::core::logging

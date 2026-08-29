@@ -64,6 +64,12 @@ public:
     }
 };
 
+class ThrowingFlushSink final : public ILogSink {
+public:
+    void consume(const LogRecord& record) override { static_cast<void>(record); }
+    void flush() override { throw std::runtime_error{"flush failure"}; }
+};
+
 class ReentrantSink final : public ILogSink {
 public:
     explicit ReentrantSink(axiom::core::logging::Logger logger) : logger_(std::move(logger)) {}
@@ -153,7 +159,7 @@ void consumeConcurrentRecords(LogCollector& collector,
     }
 }
 
-void observeConcurrentRecords(LogCollector& collector,
+void observeConcurrentRecords(const LogCollector& collector,
                               const std::atomic<bool>& started,
                               std::atomic<bool>& capacity_respected) {
     waitForStart(started);
@@ -489,6 +495,19 @@ TEST(LoggingService, FlushesSinksWithoutThrowing) {
     EXPECT_EQ(sink->flushes, 1U);
 }
 
+TEST(LoggingService, ContinuesFlushingAfterASinkThrows) {
+    LoggingService service;
+    const auto before = std::make_shared<RecordingSink>();
+    const auto after = std::make_shared<RecordingSink>();
+    auto before_subscription = service.addSink(before);
+    auto throwing_subscription = service.addSink(std::make_shared<ThrowingFlushSink>());
+    auto after_subscription = service.addSink(after);
+
+    EXPECT_NO_THROW(service.flush());
+    EXPECT_EQ(before->flushes, 1U);
+    EXPECT_EQ(after->flushes, 1U);
+}
+
 TEST(ConsoleSink, WritesColorizedUtcStructuredRecordsToStandardError) {
     ConsoleSink sink;
     auto logged = record("created", LogLevel::Warning, "runtime.action");
@@ -532,6 +551,21 @@ TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
     expectOutputContains(output, "[error]");
     expectOutputContains(output, "[critical]");
     expectOutputContains(output, R"([null, false, 2.500000, "quote\\\""])");
+}
+
+TEST(ConsoleSink, TreatsMovedFromInstancesAsNoOps) {
+    ConsoleSink sink;
+    ConsoleSink destination{transferOwnership(sink)};
+
+    testing::internal::CaptureStderr();
+    sink.consume(record("ignored after move"));
+    sink.flush();
+    destination.consume(record("kept after move"));
+    destination.flush();
+    const auto output = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(output.find("ignored after move"), std::string::npos);
+    expectOutputContains(output, "kept after move");
 }
 
 TEST(CallbackSink, LetsLoggingServiceIsolateCallbackExceptions) {

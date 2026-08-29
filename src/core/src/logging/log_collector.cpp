@@ -21,10 +21,10 @@ namespace {
            (category.starts_with(prefix) && category[prefix.size()] == '.');
 }
 
-[[nodiscard]] bool matches(const LogRecord& record, const LogQuery& query) noexcept {
-    return isAtLeast(record.level, query.minimum_level) &&
-           (query.category_prefixes.empty() ||
-            std::ranges::any_of(query.category_prefixes, [&record](const std::string& prefix) {
+[[nodiscard]] bool matches(const LogRecord& record, const LogQuery& log_query) noexcept {
+    return isAtLeast(record.level, log_query.minimum_level) &&
+           (log_query.category_prefixes.empty() ||
+            std::ranges::any_of(log_query.category_prefixes, [&record](const std::string& prefix) {
                 return matchesPrefix(record.category, prefix);
             }));
 }
@@ -51,24 +51,26 @@ void LogCollector::consume(const LogRecord& record) {
 
 std::size_t LogCollector::capacity() const noexcept { return capacity_; }
 
-std::vector<LogRecord> LogCollector::records(const LogQuery& query) const {
+std::vector<LogRecord> LogCollector::records(const LogQuery& log_query) const {
     std::vector<LogRecord> result;
     const std::scoped_lock lock{mutex_};
     result.reserve(size_);
     for(std::size_t offset = 0; offset < size_; ++offset) {
         const auto index = (oldest_ + offset) % capacity_;
         const auto& record = buffer_.at(index);
-        if(matches(record, query)) {
+        if(matches(record, log_query)) {
             result.push_back(record);
         }
     }
-    if(query.limit != 0) {
-        const auto first = result.size() - std::min(result.size(), query.limit);
+    if(log_query.limit != 0) {
+        const auto first = result.size() - std::min(result.size(), log_query.limit);
         result.erase(result.begin(), result.begin() + static_cast<std::ptrdiff_t>(first));
     }
     return result;
 }
 
-std::vector<LogRecord> LogCollector::query(const LogQuery& query) const { return records(query); }
+std::vector<LogRecord> LogCollector::query(const LogQuery& log_query) const {
+    return records(log_query);
+}
 
 } // namespace axiom::core::logging

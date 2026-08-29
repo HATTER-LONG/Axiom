@@ -556,6 +556,8 @@ TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     EXPECT_EQ(business_record.fields.at("tenant").asString(), "north");
     EXPECT_EQ(business_record.fields.at("module").asString(), "context");
     EXPECT_EQ(business_record.fields.at("action").asString(), "context.emit");
+    EXPECT_FALSE(business_record.fields.contains("status"));
+    EXPECT_FALSE(business_record.fields.contains("duration_ms"));
 
     const auto& finish = recordAt(*sink, 3U);
     EXPECT_EQ(finish.fields.at("module").asString(), "context");

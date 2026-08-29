@@ -1,18 +1,23 @@
 #pragma once
 
 #include <axiom/core/action/descriptor.hpp>
+#include <axiom/core/action/detail/function_traits.hpp>
 #include <axiom/core/action/detail/typed_action_adapter.hpp>
 #include <axiom/core/action/module.hpp>
 #include <axiom/core/base/error.hpp>
 #include <axiom/core/base/result.hpp>
+#include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
 
+#include <concepts>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace axiom::core {
