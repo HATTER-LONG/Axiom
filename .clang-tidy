@@ -11,7 +11,6 @@ Checks: "-*,
     -modernize-use-trailing-return-type,
     -readability-magic-numbers,
     -readability-identifier-length"
-HeaderFilterRegex: '.*[/\\](src|apps|tests)[/\\].*'
 SystemHeaders: false
 CheckOptions:
   # =========================
@@ -81,14 +80,19 @@ CheckOptions:
   #   int count;
   # =========================
 
-  - key: readability-identifier-naming.ClassMemberCase
+# Private/protected implementation state
+  - key: readability-identifier-naming.PrivateMemberCase
     value: lower_case
-
-  - key: readability-identifier-naming.ClassMemberSuffix
+  - key: readability-identifier-naming.PrivateMemberSuffix
     value: _
 
-  # Struct / generic member names remain without suffix.
-  - key: readability-identifier-naming.MemberCase
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: _
+
+    # Public data members
+  - key: readability-identifier-naming.PublicMemberCase
     value: lower_case
 
   # =========================

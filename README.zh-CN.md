@@ -1,8 +1,9 @@
 # Axiom
 
-一个基于 CMake 的紧凑 C++20 应用框架，提供可安装的 `Axiom::Core` 库、简洁的
-demo 可执行程序、集成测试和可复现的质量门禁。核心公开 API 保持精简，以便逐步
-增加模块而不过早扩大框架接口。
+一个基于 CMake 的紧凑 C++20 应用框架。当前核心是一个可安装的同步能力运行时：
+将带类型的 C++ callable 注册为带描述的 `Module`/`Action`，通过元数据发现，并经由
+动态 `Value` 边界调用，同时以结构化 `Result` 返回错误。仓库还提供简洁的 demo、测试
+和可复现的质量门禁。
 
 [English README](README.md)
 
@@ -42,6 +43,19 @@ target_link_libraries(my_target PRIVATE Axiom::Core)
 #include <axiom/core/core.hpp>
 ```
 
+## 核心运行时模型
+
+公开 API 以 `Value`/`Arguments` 表示有序动态值，以 `ModuleBuilder` 暂存带类型的
+callable Action，以 `Runtime` 注册模块、发现描述符并同步调用，以 `Error`/`Result<T>`
+在边界传递结构化失败。Action ID 使用规范的 `module.action` 形式，两部分均只能包含
+小写 ASCII 字母、数字和下划线。
+
+当前支持 `bool`、有符号整数、浮点数、`std::string`、递归的 `std::vector<T>`，以及字符
+串键的 `std::map`/`std::unordered_map` 转换。整数输入可以转换为浮点数，但会拒绝有损
+转换和隐式字符串解析；可选参数通过经过校验的 `param(..., default_value)` 提供默认值。
+Runtime 有意不保证线程安全，注册、发现和调用不能并发执行。Core 当前不提供协议适配器、
+JSON 序列化、网络、插件、日志、鉴权或异步执行。
+
 ## 项目结构
 
 | 路径 | 用途 |
@@ -49,55 +63,40 @@ target_link_libraries(my_target PRIVATE Axiom::Core)
 | `src/core` | 可安装的 `Axiom::Core` 库及其公开头文件。 |
 | `apps/demo` | 使用核心库的最小可执行程序。 |
 | `tests` | 单元测试和已安装包的集成测试。 |
-| `tools/check.py` | 输出 JSON 报告的质量门禁入口。 |
+| `checkflow.json` | 版本化的 CheckFlow 质量门禁流程定义。 |
+| `.checkflow/tools` | Axiom 专属的架构、格式与变异质量 Tool。 |
 | `quality` | 版本化质量配置和架构策略。 |
 
 ## 质量门禁
 
-通过 uv 运行门禁，使自动化工具获得紧凑的 JSON 结果，而非编译器日志。所选门禁返回非零退出码即表示失败。
+通过全局安装的 `checkflow` 命令运行门禁，使自动化工具获得紧凑的 JSON 结果，而非编译器日志。所选门禁返回非零退出码即表示失败。
 
 ```sh
-uv run --quiet python tools/check.py fast
-uv run --quiet python tools/check.py full
-uv run --quiet python tools/check.py hardening
+checkflow fast
+checkflow full
+checkflow hardening
+checkflow doctor
 ```
-
-### 可复用的 check fixture
-
-[`tools/check_test`](tools/check_test/README.md) 是一个独立的 C++20/CMake
-demo 工程，用于验证 `check.py` 的公共契约。它拥有自己的源码、测试、CMake
-预设和架构策略，不链接 Axiom。可在不修改 Axiom 源码的情况下验证 Python
-报告解析器和拦截语义：
-
-```sh
-uv run --quiet python tools/check_test/verify.py \
-  --report build-quality/reports/check-test-integration.json
-uv run --quiet python tools/check.py --project-root tools/check_test fast
-```
-
-`--project-root` 会让命令执行、源码发现、构建产物和报告目录都相对于所选
-CMake 项目。各项目通过自己的 `quality/check_profile.json` 声明源码目录、
-预设名、构建目录、策略路径、缓存选项、报告 schema 与质量阈值。fixture
-刻意使用了不同于 Axiom 的命名。测试会先运行干净工程的 `full` 与
-`hardening` 基准，再为当前系统支持的每个工具编译隔离的真实错误源码，包括
-ASan 与 UBSan。最终报告会分别列出工具支持状态、成功检出的错误、干净基准、
-不支持的能力和意外失败。仅需无依赖的快速契约测试时使用 `--quick`。
 
 在门禁名称前或后添加 `-v` / `--verbose`，可将执行的命令、合并后的输出及退出码打印到 stderr；JSON 报告始终输出到 stdout。
 
-使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 会只读检查全部项目源码的格式，仅报告需要 clang-format 的文件列表而不修改源码，再对所有项目编译单元执行 cppcheck 和 clang-tidy。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
+使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 校验架构、配置并构建
+`quality-fast`，运行 CTest 和 LLVM 覆盖率。`full` 另外运行全项目复杂度、cppcheck、
+clang-tidy 和只读格式检查，再运行 CTest 与覆盖率。安装消费测试只在 `quality-fast`
+预设中启用，但不是 CheckFlow flow 的步骤；需要时请显式设置
+`-DAXIOM_BUILD_INSTALL_TEST=ON` 后运行 CTest。`hardening` 在启用 AddressSanitizer
+与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目
+源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在
+`build-quality/mutation/mull/` 下。
 
 `fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成面向 agent 的紧凑 `coverage-export.json`。该文件使用仓库相对路径、按命中次数合并的连续行区间、分组后的分支命中次数，并内置数组字段图例；所有有效统计项均达到 100% 的文件会被省略，只记录省略数量。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
 
 仅用于诊断、不会宣称门禁通过的命令：
 
 ```sh
-uv run --quiet python tools/check.py inspect format
-uv run --quiet python tools/check.py inspect tests --preset quality-fast
-uv run --quiet python tools/check.py inspect coverage
-uv run --quiet python tools/check.py inspect cppcheck
-uv run --quiet python tools/check.py inspect clang-tidy
-uv run --quiet python tools/check.py --list
+checkflow doctor
+checkflow doctor fast
+checkflow fast --diagnostic
 ```
 
 分析器诊断以及 `full` 门禁都会从 CMake 编译数据库中扫描所有项目编译单元。
@@ -117,7 +116,11 @@ uv run --quiet python tools/check.py --list
 
 存在构建产物依赖关系的检查会顺序执行。configure 失败会阻断 build、测试、覆盖率和依赖编译数据库的分析器；build 失败也会阻断其下游检查。如果这些前置步骤所需的可执行文件不存在，则前置步骤和下游步骤都会跳过，避免误用旧的构建产物。格式化、复杂度和各个独立分析器则只在自身所需工具缺失时跳过。
 
-在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 95、105 和 90。`fast` 包含架构（10）、configure（10）、build（20）、复杂度（10）、cppcheck（10）、clang-tidy（10）、测试（15）和覆盖率（10）。`full` 还会检查整个项目的格式。`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull configure-build-mutation 路径组成。
+在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 75、105 和 90。
+`fast` 包含架构（10）、configure（10）、build（20）、测试（15）和覆盖率（10）。
+`full` 另外检查格式（10）、复杂度（10）、cppcheck（10）和 clang-tidy（10）。
+`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull
+configure-build-mutation 路径组成。
 
 ### 架构规则
 
@@ -131,7 +134,7 @@ uv run --quiet python tools/check.py --list
 
 | 工具 | 用途 | 何时需要 |
 | --- | --- | --- |
-| uv 与 Python 3.10+ | 运行质量检查脚本 | 质量门禁 |
+| CheckFlow | 运行仓库质量门禁 | 质量门禁 |
 | CMake 3.25+ 与 Ninja | 配置和构建 | 构建和质量门禁 |
 | 支持 C++20 的编译器 | 构建项目 | 构建 |
 | LLVM/Clang | `clang++`、`clang-tidy`、`clang-format`、clangd、AddressSanitizer、UndefinedBehaviorSanitizer | 所有质量门禁 |
@@ -145,7 +148,7 @@ uv run --quiet python tools/check.py --list
 `clang-tidy`、`clang-format`、`llvm-profdata` 和 `llvm-cov` 随 LLVM 一同提供。`full` 与 `inspect format` 都使用只读的 `--dry-run --Werror`；JSON 结果只列出需要格式化的文件，不包含 clang-format 的逐行诊断，也不会修改源码。
 
 `quality-hardening` 配置使用 LLVM 的编译器与运行时。在 Windows 上，构建在可用时会把 AddressSanitizer 的运行时 DLL 复制到可执行文件旁。独立的 `quality-mutation` 配置会启用 Mull 的 LLVM IR frontend。检查脚本会从 `PATH` 中自动配对无后缀工具，或 `mull-runner-22` 与 `mull-ir-frontend-22` 这类带 LLVM 版本后缀的工具；Mull 版本必须与所用 LLVM 工具链匹配。
-Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `uv run --quiet python tools/check.py hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
+Mull 0.34 不支持原生 Windows；请在 WSL、Linux 或 macOS 中运行 `hardening` 门禁。此机器需要先为 WSL 安装 Linux 发行版，再在其中构建并安装 Mull 源码，然后在 Axiom 的 Linux 工作目录中执行 `checkflow hardening`。带版本后缀的 runner 与 frontend 插件必须和 `clang++` 使用相同的 LLVM 主版本。
 
 ### Lizard 圈复杂度分析
 
@@ -186,6 +189,6 @@ ctest --preset quality-fast
 
 ## 门禁回归测试
 
-分析器与编排的故意失败场景统一放在 `tools/check_test`，不再污染生产 demo
-源码。先运行 `python tools/check_test/verify.py` 验证反向用例，再运行
-`python tools/check.py full` 验证真实工程的全绿基准。
+修改 `checkflow.json` 或 `.checkflow/tools/` 后，先运行
+`checkflow doctor`，再根据变更范围运行 `fast`、`full` 或
+`hardening`。
