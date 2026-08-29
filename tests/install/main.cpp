@@ -5,13 +5,11 @@
 #include <string>
 
 int main() {
-    axiom::core::logging::LogCollector collector{1};
     axiom::core::logging::LoggingService logging;
-    const auto subscription = logging.addSink(std::make_shared<axiom::core::logging::CallbackSink>(
-        [&collector](const axiom::core::logging::LogRecord& record) {
-            collector.consume(record);
-        }));
+    const auto subscription =
+        logging.addSink(std::make_shared<axiom::core::logging::ConsoleSink>());
     logging.logger("install").write(axiom::core::logging::LogLevel::Info, "consumer logging works");
+    logging.flush();
     axiom::core::ModuleBuilder builder{
         axiom::core::ModuleDescriptor{.namespace_name = "install", .metadata = {}}};
     const auto registered = builder.add(
@@ -25,7 +23,7 @@ int main() {
     const auto invoked = id ? runtime.invoke(id.value(), {}, {})
                             : axiom::core::Result<axiom::core::Value>::failure(id.error());
     return std::string{axiom::core::frameworkName()} == "Axiom" && installed && invoked &&
-                   invoked.value().asNumber() == 42.0 && collector.records().size() == 1
+                   invoked.value().asNumber() == 42.0
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

@@ -70,7 +70,12 @@ namespace {
                : logging::LogLevel::Warning;
 }
 
-[[nodiscard]] Value::Object invocationContextFields(const InvocationContext& context) {
+[[nodiscard]] Value::Object invocationFields(const ActionId& id) {
+    return {{"module", Value{std::string{id.module()}}}, {"action", Value{std::string{id.str()}}}};
+}
+
+[[nodiscard]] Value::Object invocationContextFields(const InvocationContext& context,
+                                                    const ActionId& id) {
     Value::Object fields;
     for(const auto& [key, value] : context.metadata) {
         fields.insert_or_assign(key, Value{value});
@@ -84,11 +89,10 @@ namespace {
     if(!context.caller.empty()) {
         fields.insert_or_assign("caller", Value{context.caller});
     }
+    for(auto& [key, value] : invocationFields(id)) {
+        fields.insert_or_assign(key, std::move(value));
+    }
     return fields;
-}
-
-[[nodiscard]] Value::Object invocationFields(const ActionId& id) {
-    return {{"module", Value{std::string{id.module()}}}, {"action", Value{std::string{id.str()}}}};
 }
 
 } // namespace
@@ -183,7 +187,7 @@ Result<Value> Runtime::invoke(const ActionId& id,
     logging::Logger invocation_logger;
     try {
         scoped_context =
-            state_->action_logger.scopedContext(detail::invocationContextFields(context));
+            state_->action_logger.scopedContext(detail::invocationContextFields(context, id));
     } catch(...) {
     }
     try {
