@@ -1,4 +1,4 @@
-add_library(axiom_core STATIC src/core.cpp src/base/type_descriptor.cpp src/action/descriptor.cpp src/dispatcher.cpp src/module_builder.cpp src/registry.cpp src/runtime.cpp)
+add_library(axiom_core STATIC src/core.cpp src/base/type_descriptor.cpp src/action/descriptor.cpp src/dispatcher.cpp src/module_builder.cpp src/registry.cpp src/runtime.cpp src/logging/logging_service.cpp)
 add_library(Axiom::Core ALIAS axiom_core)
 
 axiom_configure_language_diagnostics(axiom_core)

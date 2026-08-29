@@ -10,6 +10,13 @@
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/logging/log_filter.hpp>
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_query.hpp>
+#include <axiom/core/logging/log_record.hpp>
+#include <axiom/core/logging/log_sink.hpp>
+#include <axiom/core/logging/logger.hpp>
+#include <axiom/core/logging/logging_service.hpp>
 
 #include <string_view>
 
