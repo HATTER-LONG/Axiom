@@ -1,6 +1,6 @@
 # Axiom Core 结构化 Logging 子系统设计
 
-> 状态：提案
+> 状态：实施中（基础 logging 与首期 Sink 已交付）
 > 范围：在 `Axiom::Core` 中引入 `axiom::core::logging`
 
 ## 1. 目标与边界
@@ -14,8 +14,8 @@
 不提供进程级全局 Logger。默认构造的 Logger 是安全的 no-op，因此现有 Runtime 的默认行为
 与无日志输出保持不变。
 
-第一阶段交付 Console、Callback 和内存 Collector。文件及轮转文件通过同一 `ILogSink` 扩展，
-不在首期实现。
+第一阶段已经交付 Console、Callback 和内存 Collector。文件及轮转文件通过同一 `ILogSink`
+扩展，不在首期实现。
 
 ## 2. 分层与目录
 
@@ -104,8 +104,9 @@ AXIOM_LOG(logger, level, fields, "action {} finished", id);
 
 ### 4.1 ConsoleSink
 
-`ConsoleSink` 使用私有、固定版本的 spdlog，实现 stderr 彩色输出。输出包含 UTC 时间、级别、
-category、message、source 和确定性排序的结构化字段。
+`ConsoleSink` 使用私有、固定版本的 spdlog 1.17.0，实现 stderr 彩色输出。输出包含毫秒精度
+UTC 时间、级别、category、message、source 和确定性排序的结构化字段。`Value::Object` 按键
+排序，嵌套 Object 也以相同顺序递归输出。
 
 spdlog 仅以私有头文件实现编入 `Axiom::Core`，不得出现在公开头、导出 target 或安装消费者
 依赖中。版本固定为官方当前稳定版 [spdlog 1.17.0](https://github.com/gabime/spdlog/releases)。

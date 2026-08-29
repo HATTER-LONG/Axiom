@@ -11,6 +11,9 @@
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
 #include <axiom/core/logging/log_filter.hpp>
+#include <axiom/core/logging/callback_sink.hpp>
+#include <axiom/core/logging/console_sink.hpp>
+#include <axiom/core/logging/log_collector.hpp>
 #include <axiom/core/logging/log_level.hpp>
 #include <axiom/core/logging/log_query.hpp>
 #include <axiom/core/logging/log_record.hpp>

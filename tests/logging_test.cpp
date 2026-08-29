@@ -1,9 +1,14 @@
+#include <axiom/core/logging/callback_sink.hpp>
+#include <axiom/core/logging/console_sink.hpp>
+#include <axiom/core/logging/log_collector.hpp>
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -16,11 +21,15 @@
 namespace {
 
 using axiom::core::Value;
+using axiom::core::logging::CallbackSink;
+using axiom::core::logging::ConsoleSink;
 using axiom::core::logging::ILogSink;
+using axiom::core::logging::LogCollector;
 using axiom::core::logging::LogFilter;
-using axiom::core::logging::LogLevel;
-using axiom::core::logging::LogRecord;
 using axiom::core::logging::LoggingService;
+using axiom::core::logging::LogLevel;
+using axiom::core::logging::LogQuery;
+using axiom::core::logging::LogRecord;
 
 class RecordingSink final : public ILogSink {
 public:
@@ -55,6 +64,18 @@ public:
 private:
     axiom::core::logging::Logger logger_;
 };
+
+LogRecord record(std::string message,
+                 const LogLevel level = LogLevel::Info,
+                 std::string category = "runtime") {
+    return {.level = level,
+            .message = std::move(message),
+            .timestamp = std::chrono::system_clock::time_point{},
+            .category = std::move(category),
+            .source_file = "logging_test.cpp",
+            .source_function = "record",
+            .source_line = 1};
+}
 
 TEST(LogFilter, MatchesOnlyWholeCategorySegments) {
     const LogFilter filter{.minimum_level = LogLevel::Info, .category_prefixes = {"runtime"}};
@@ -263,6 +284,139 @@ TEST(LoggingService, FlushesSinksWithoutThrowing) {
     service.flush();
 
     EXPECT_EQ(sink->flushes, 1U);
+}
+
+TEST(ConsoleSink, WritesColorizedUtcStructuredRecordsToStandardError) {
+    ConsoleSink sink;
+    auto logged = record("created", LogLevel::Warning, "runtime.action");
+    logged.timestamp += std::chrono::milliseconds{123};
+    logged.source_line = 42;
+    logged.source_function = "invoke";
+    logged.fields = {{"alpha", Value{std::int64_t{1}}},
+                     {"nested", Value{Value::Object{{"a", Value{true}}, {"z", Value{"last"}}}}}};
+
+    testing::internal::CaptureStderr();
+    sink.consume(logged);
+    sink.flush();
+    const auto output = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(output.find("\x1B["), std::string::npos);
+    EXPECT_NE(output.find("1970-01-01T00:00:00.123Z [warning] [runtime.action] created"),
+              std::string::npos);
+    EXPECT_NE(output.find("(logging_test.cpp:42 invoke)"), std::string::npos);
+    EXPECT_NE(output.find("{alpha=1, nested={a=true, z=\"last\"}}"), std::string::npos);
+}
+
+TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
+    ConsoleSink sink;
+    const Value::Array array{Value{nullptr}, Value{false}, Value{2.5}, Value{"quote\\\""}};
+    const std::array<LogLevel, 6> levels{LogLevel::Trace,   LogLevel::Debug, LogLevel::Info,
+                                         LogLevel::Warning, LogLevel::Error, LogLevel::Critical};
+
+    testing::internal::CaptureStderr();
+    sink.consume(record("without fields", levels.front()));
+    for(const auto level : levels) {
+        auto logged = record("all shapes", level);
+        logged.fields = {{"array", Value{array}}, {"null", Value{nullptr}}};
+        sink.consume(logged);
+    }
+    sink.flush();
+    const auto output = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(output.find("[trace]"), std::string::npos);
+    EXPECT_NE(output.find("[debug]"), std::string::npos);
+    EXPECT_NE(output.find("[info]"), std::string::npos);
+    EXPECT_NE(output.find("[warning]"), std::string::npos);
+    EXPECT_NE(output.find("[error]"), std::string::npos);
+    EXPECT_NE(output.find("[critical]"), std::string::npos);
+    EXPECT_NE(output.find("[null, false, 2.500000, \"quote\\\\\\\"\"]"), std::string::npos);
+}
+
+TEST(CallbackSink, LetsLoggingServiceIsolateCallbackExceptions) {
+    LoggingService service;
+    const auto collected = std::make_shared<LogCollector>();
+    auto throwing = service.addSink(std::make_shared<CallbackSink>(
+        [](const LogRecord&) { throw std::runtime_error{"callback failure"}; }));
+    auto collector = service.addSink(collected);
+
+    service.logger("runtime").write(LogLevel::Error, "still collected");
+
+    const auto records = collected->records();
+    ASSERT_EQ(records.size(), 1U);
+    EXPECT_EQ(records.front().message, "still collected");
+}
+
+TEST(CallbackSink, AcceptsAnEmptyCallback) {
+    CallbackSink callback{std::function<void(const LogRecord&)>{}};
+
+    callback.consume(record("ignored"));
+    callback.flush();
+}
+
+TEST(LogCollector, UsesDefaultAndConfiguredCapacities) {
+    LogCollector defaults;
+    LogCollector disabled{0};
+    LogCollector custom{2};
+
+    defaults.consume(record("default"));
+    disabled.consume(record("discarded"));
+    custom.consume(record("first"));
+    custom.consume(record("second"));
+    custom.consume(record("third"));
+
+    EXPECT_EQ(defaults.capacity(), 1000U);
+    EXPECT_EQ(disabled.capacity(), 0U);
+    EXPECT_TRUE(disabled.records().empty());
+    const auto retained = custom.records();
+    ASSERT_EQ(retained.size(), 2U);
+    EXPECT_EQ(retained.at(0).message, "second");
+    EXPECT_EQ(retained.at(1).message, "third");
+}
+
+TEST(LogCollector, QueriesLatestMatchesInCollectionOrder) {
+    LogCollector collector{8};
+    collector.consume(record("trace", LogLevel::Trace, "runtime"));
+    collector.consume(record("first", LogLevel::Warning, "runtime.action"));
+    collector.consume(record("other", LogLevel::Error, "runtime2"));
+    collector.consume(record("second", LogLevel::Error, "runtime.action.child"));
+    collector.consume(record("third", LogLevel::Critical, "runtime.action"));
+
+    const auto matching = collector.records(
+        {.minimum_level = LogLevel::Warning, .category_prefixes = {"runtime.action"}, .limit = 2});
+
+    ASSERT_EQ(matching.size(), 2U);
+    EXPECT_EQ(matching.at(0).message, "second");
+    EXPECT_EQ(matching.at(1).message, "third");
+}
+
+TEST(LogCollector, SupportsConcurrentConsumptionAndQueries) {
+    LogCollector collector{128};
+    std::atomic<bool> started{false};
+    std::vector<std::thread> writers;
+    for(int writer = 0; writer < 4; ++writer) {
+        writers.emplace_back([&collector, &started, writer] {
+            while(!started.load(std::memory_order_acquire)) {
+            }
+            for(int index = 0; index < 100; ++index) {
+                collector.consume(record(std::to_string(writer) + "." + std::to_string(index)));
+            }
+        });
+    }
+    std::thread reader{[&collector, &started] {
+        while(!started.load(std::memory_order_acquire)) {
+        }
+        for(int index = 0; index < 100; ++index) {
+            EXPECT_LE(collector.records().size(), 128U);
+        }
+    }};
+
+    started.store(true, std::memory_order_release);
+    for(auto& writer : writers) {
+        writer.join();
+    }
+    reader.join();
+
+    EXPECT_EQ(collector.records().size(), 128U);
 }
 
 } // namespace
