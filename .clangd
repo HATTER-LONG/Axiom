@@ -33,7 +33,7 @@ Documentation:
 ---
 # Don't background-index CPM downloaded third-party translation units.
 If:
-  PathMatch: \.cache/CPM/.*
+  PathMatch: .*/\.cache/CPM/.*
 
 Index:
   Background: Skip

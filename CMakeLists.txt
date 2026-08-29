@@ -27,9 +27,9 @@ set(AXIOM_STATIC_ANALYZERS
     CACHE STRING "Static analyzers: clang-tidy, cppcheck, or a semicolon-separated list")
 option(AXIOM_USE_CCACHE "Enable ccache compiler launcher" OFF)
 
-if (NOT CPM_SOURCE_CACHE)
+if (NOT CPM_SOURCE_CACHE OR CPM_SOURCE_CACHE STREQUAL "${PROJECT_SOURCE_DIR}/.cache/CPM")
     set(CPM_SOURCE_CACHE
-        "${PROJECT_SOURCE_DIR}/.cache/CPM"
+        "$ENV{HOME}/.cache/CPM"
         CACHE PATH "Persistent CPM package source cache" FORCE)
 endif ()
 

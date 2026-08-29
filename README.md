@@ -233,7 +233,8 @@ difficulty, and `misc-include-cleaner` performs semantic include diagnostics.
 
 ### CPM-managed dependencies
 
-CPM downloads only project dependencies and CMake integrations into `.cache/`:
+CPM downloads only project dependencies and CMake integrations into the user
+cache directory `~/.cache/CPM`:
 
 - GoogleTest 1.18.0, when `BUILD_TESTING=ON`;
 - CPM.cmake itself when a CPM-managed feature is configured;
