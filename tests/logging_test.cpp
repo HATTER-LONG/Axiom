@@ -169,12 +169,15 @@ TEST(Logger, KeepsScopedContextThreadLocal) {
     const auto logger = service.logger("runtime");
 
     auto context = service.scopedContext({{"request", Value{"main"}}});
-    std::thread worker{[logger] { logger.write(LogLevel::Info, "worker"); }};
+    std::thread worker{[&service, logger] {
+        auto worker_context = service.scopedContext({{"request", Value{"worker"}}});
+        logger.write(LogLevel::Info, "worker");
+    }};
     worker.join();
     logger.write(LogLevel::Info, "main");
 
     ASSERT_EQ(sink->records.size(), 2U);
-    EXPECT_FALSE(sink->records.at(0).fields.contains("request"));
+    EXPECT_EQ(sink->records.at(0).fields.at("request").asString(), "worker");
     EXPECT_EQ(sink->records.at(1).fields.at("request").asString(), "main");
 }
 

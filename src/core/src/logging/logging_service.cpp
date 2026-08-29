@@ -102,7 +102,8 @@ struct ContextEntry {
 };
 
 thread_local std::vector<ContextEntry> contexts;
-std::uint64_t next_context_id{1};
+// Context entries are only ever compared within their owning thread-local stack.
+thread_local std::uint64_t next_context_id{1};
 
 [[nodiscard]] std::uint64_t pushContext(const std::shared_ptr<LoggingState>& state,
                                         Value::Object fields) {
