@@ -10,8 +10,7 @@ namespace {
 [[nodiscard]] bool matchesPrefix(const std::string_view category,
                                  const std::string_view prefix) noexcept {
     return prefix.empty() || category == prefix ||
-           (category.size() > prefix.size() && category.starts_with(prefix) &&
-            category[prefix.size()] == '.');
+           (category.starts_with(prefix) && category[prefix.size()] == '.');
 }
 
 } // namespace
@@ -47,8 +46,9 @@ std::vector<LogRecord> LogCollector::records(const LogQuery& query) const {
             result.push_back(record);
         }
     }
-    if(query.limit != 0 && result.size() > query.limit) {
-        result.erase(result.begin(), result.end() - static_cast<std::ptrdiff_t>(query.limit));
+    if(query.limit != 0) {
+        const auto first = result.size() - std::min(result.size(), query.limit);
+        result.erase(result.begin(), result.begin() + static_cast<std::ptrdiff_t>(first));
     }
     return result;
 }

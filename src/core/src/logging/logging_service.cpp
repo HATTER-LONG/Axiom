@@ -145,8 +145,7 @@ bool LogFilter::matches(const LogLevel level, const std::string_view category) c
     return category_prefixes.empty() ||
            std::ranges::any_of(category_prefixes, [category](const std::string& prefix) {
                return prefix.empty() || category == prefix ||
-                      (category.size() > prefix.size() && category.starts_with(prefix) &&
-                       category[prefix.size()] == '.');
+                      (category.starts_with(prefix) && category[prefix.size()] == '.');
            });
 }
 

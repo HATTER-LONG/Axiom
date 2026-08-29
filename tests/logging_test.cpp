@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <source_location>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -88,6 +89,15 @@ TEST(LogFilter, MatchesOnlyWholeCategorySegments) {
     EXPECT_TRUE(LogFilter{.category_prefixes = {""}}.matches(LogLevel::Trace, "any.category"));
 }
 
+TEST(LogFilter, RejectsCategoriesThatOnlyShareCharacterPrefixes) {
+    const LogFilter filter{.category_prefixes = {"runtime.action"}};
+
+    EXPECT_TRUE(filter.matches(LogLevel::Info, "runtime.action"));
+    EXPECT_TRUE(filter.matches(LogLevel::Info, "runtime.action.child"));
+    EXPECT_FALSE(filter.matches(LogLevel::Info, "runtime.actions"));
+    EXPECT_FALSE(filter.matches(LogLevel::Info, "runtime.act"));
+}
+
 static_assert(!std::is_copy_constructible_v<axiom::core::logging::LogSubscription>);
 static_assert(std::is_move_constructible_v<axiom::core::logging::LogSubscription>);
 
@@ -125,6 +135,49 @@ TEST(LoggingService, SupportsEmptyAndMovedSubscriptions) {
     ASSERT_EQ(first->records.size(), 1U);
     EXPECT_EQ(first->records.front().message, "only first");
     EXPECT_TRUE(second->records.empty());
+}
+
+TEST(LoggingService, RemovesMovedSubscriptionWhenItIsReset) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto original = service.addSink(sink);
+    auto replacement = std::move(original);
+
+    replacement.reset();
+    service.logger("runtime").write(LogLevel::Info, "not delivered");
+
+    EXPECT_TRUE(sink->records.empty());
+}
+
+TEST(LoggingService, ResetsTheRegistrationAcquiredByMoveAssignment) {
+    LoggingService service;
+    const auto retained = std::make_shared<RecordingSink>();
+    const auto replaced = std::make_shared<RecordingSink>();
+    auto original = service.addSink(retained);
+    auto owner = service.addSink(replaced);
+
+    owner = std::move(original);
+    service.logger("runtime").write(LogLevel::Info, "while registered");
+    owner.reset();
+    service.logger("runtime").write(LogLevel::Info, "after reset");
+
+    ASSERT_EQ(retained->records.size(), 1U);
+    EXPECT_EQ(retained->records.front().message, "while registered");
+    EXPECT_TRUE(replaced->records.empty());
+}
+
+TEST(LoggingService, RemovesSubscriptionWhenItsScopeEnds) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    {
+        auto subscription = service.addSink(sink);
+        service.logger("runtime").write(LogLevel::Info, "delivered");
+    }
+
+    service.logger("runtime").write(LogLevel::Info, "not delivered");
+
+    ASSERT_EQ(sink->records.size(), 1U);
+    EXPECT_EQ(sink->records.front().message, "delivered");
 }
 
 TEST(LoggingService, KeepsMovedFromServicesSafeToUseAsNoOps) {
@@ -218,6 +271,60 @@ TEST(Logger, MovesScopedContextWithoutLeavingTheOldGuardActive) {
     EXPECT_FALSE(sink->records.front().fields.contains("second"));
 }
 
+TEST(Logger, RemovesContextAfterAMovedGuardIsDestroyed) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto subscription = service.addSink(sink);
+    const auto logger = service.logger("runtime");
+
+    {
+        auto source = service.scopedContext({{"request", Value{"active"}}});
+        auto owner = std::move(source);
+        logger.write(LogLevel::Info, "while active");
+    }
+    logger.write(LogLevel::Info, "after scope");
+
+    ASSERT_EQ(sink->records.size(), 2U);
+    EXPECT_EQ(sink->records.at(0).fields.at("request").asString(), "active");
+    EXPECT_FALSE(sink->records.at(1).fields.contains("request"));
+}
+
+TEST(Logger, RemovesContextWhenTheGuardIsDestroyed) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto subscription = service.addSink(sink);
+    const auto logger = service.logger("runtime");
+    {
+        auto context = service.scopedContext({{"request", Value{"scoped"}}});
+        logger.write(LogLevel::Info, "inside scope");
+    }
+
+    logger.write(LogLevel::Info, "outside scope");
+
+    ASSERT_EQ(sink->records.size(), 2U);
+    EXPECT_EQ(sink->records.at(0).fields.at("request").asString(), "scoped");
+    EXPECT_FALSE(sink->records.at(1).fields.contains("request"));
+}
+
+TEST(Logger, RemovesTheContextAcquiredByMoveAssignmentAtScopeExit) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto subscription = service.addSink(sink);
+    const auto logger = service.logger("runtime");
+    {
+        auto original = service.scopedContext({{"request", Value{"original"}}});
+        auto replacement = service.scopedContext({{"request", Value{"replacement"}}});
+        replacement = std::move(original);
+        logger.write(LogLevel::Info, "while active");
+    }
+
+    logger.write(LogLevel::Info, "after scope");
+
+    ASSERT_EQ(sink->records.size(), 2U);
+    EXPECT_EQ(sink->records.at(0).fields.at("request").asString(), "original");
+    EXPECT_FALSE(sink->records.at(1).fields.contains("request"));
+}
+
 TEST(Logger, IgnoresFailingSinksAndCapturesMacroCallSite) {
     LoggingService service;
     const auto good_sink = std::make_shared<RecordingSink>();
@@ -233,6 +340,23 @@ TEST(Logger, IgnoresFailingSinksAndCapturesMacroCallSite) {
     EXPECT_EQ(record.category, "runtime.action");
     EXPECT_NE(record.source_line, 0U);
     EXPECT_FALSE(record.source_file.empty());
+}
+
+TEST(Logger, PreservesTheExplicitSourceLocationInTheRecord) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto subscription = service.addSink(sink);
+    const auto logger = service.logger("runtime");
+    const auto expected_location = std::source_location::current();
+
+    logger.write(LogLevel::Info, "located", {}, expected_location);
+
+    ASSERT_EQ(sink->records.size(), 1U);
+    const auto& logged = sink->records.front();
+    EXPECT_EQ(logged.source_file, expected_location.file_name());
+    EXPECT_EQ(logged.source_line, expected_location.line());
+    EXPECT_EQ(logged.source_column, expected_location.column());
+    EXPECT_EQ(logged.source_function, expected_location.function_name());
 }
 
 TEST(Logger, ProvidesAllSixLevelShortcuts) {
@@ -346,6 +470,19 @@ TEST(CallbackSink, LetsLoggingServiceIsolateCallbackExceptions) {
     EXPECT_EQ(records.front().message, "still collected");
 }
 
+TEST(CallbackSink, ForwardsTheConsumedRecordToItsCallback) {
+    std::vector<LogRecord> received;
+    CallbackSink callback{[&received](const LogRecord& logged) { received.push_back(logged); }};
+    const auto expected = record("forwarded", LogLevel::Critical, "runtime.callback");
+
+    callback.consume(expected);
+
+    ASSERT_EQ(received.size(), 1U);
+    EXPECT_EQ(received.front().message, "forwarded");
+    EXPECT_EQ(received.front().level, LogLevel::Critical);
+    EXPECT_EQ(received.front().category, "runtime.callback");
+}
+
 TEST(CallbackSink, AcceptsAnEmptyCallback) {
     CallbackSink callback{std::function<void(const LogRecord&)>{}};
 
@@ -387,6 +524,32 @@ TEST(LogCollector, QueriesLatestMatchesInCollectionOrder) {
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "second");
     EXPECT_EQ(matching.at(1).message, "third");
+}
+
+TEST(LogCollector, FiltersWholeCategorySegmentsAndKeepsAnOversizedLimit) {
+    LogCollector collector{4};
+    collector.consume(record("exact", LogLevel::Info, "runtime.action"));
+    collector.consume(record("child", LogLevel::Info, "runtime.action.child"));
+    collector.consume(record("similar", LogLevel::Info, "runtime.actions"));
+
+    const auto matching = collector.records(
+        {.category_prefixes = {"runtime.action"}, .limit = 4});
+
+    ASSERT_EQ(matching.size(), 2U);
+    EXPECT_EQ(matching.at(0).message, "exact");
+    EXPECT_EQ(matching.at(1).message, "child");
+}
+
+TEST(LogCollector, PreservesEveryMatchWhenTheLimitEqualsTheMatchCount) {
+    LogCollector collector{4};
+    collector.consume(record("first", LogLevel::Info, "runtime"));
+    collector.consume(record("second", LogLevel::Info, "runtime"));
+
+    const auto matching = collector.records({.limit = 2});
+
+    ASSERT_EQ(matching.size(), 2U);
+    EXPECT_EQ(matching.at(0).message, "first");
+    EXPECT_EQ(matching.at(1).message, "second");
 }
 
 TEST(LogCollector, SupportsConcurrentConsumptionAndQueries) {

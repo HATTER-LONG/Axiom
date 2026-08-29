@@ -496,6 +496,28 @@ TEST(Runtime, RecordsExpectedRegistrationFailuresAsWarnings) {
     EXPECT_EQ(recordAt(*sink, 2U).level, LogLevel::Warning);
 }
 
+TEST(Runtime, LogsAnEmptyBuilderRegistrationFailureWithoutAModuleField) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder source{
+        axiom::core::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
+    ModuleBuilder empty{std::move(source)};
+
+    const auto result = runtime.registerModule(std::move(source));
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument);
+    ASSERT_EQ(sink->records.size(), 1U);
+    const auto& logged = recordAt(*sink, 0U);
+    EXPECT_EQ(logged.category, "runtime.module");
+    EXPECT_EQ(logged.level, LogLevel::Warning);
+    EXPECT_EQ(logged.message, "module registration failed: invalid_argument");
+    EXPECT_FALSE(logged.fields.contains("module"));
+    static_cast<void>(empty);
+}
+
 TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     LoggingService logging;
     const auto sink = std::make_shared<RuntimeRecordingSink>();
@@ -534,6 +556,39 @@ TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     EXPECT_EQ(finish.fields.at("action").asString(), "context.emit");
     EXPECT_EQ(finish.fields.at("status").asString(), "success");
     EXPECT_GE(finish.fields.at("duration_ms").asInteger(), 0);
+}
+
+TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder builder{
+        axiom::core::ModuleDescriptor{.namespace_name = "context_fields", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext populated{.request_id = "request-1",
+                                      .trace_id = "trace-2",
+                                      .caller = "caller-3",
+                                      .metadata = {{"tenant", "north"}}};
+    ASSERT_TRUE(runtime.invoke(id("context_fields.run"), {}, populated));
+    ASSERT_TRUE(runtime.invoke(id("context_fields.run"), {}, {}));
+
+    ASSERT_EQ(sink->records.size(), 5U);
+    const auto& populated_start = recordAt(*sink, 1U);
+    EXPECT_EQ(populated_start.fields.at("request_id").asString(), "request-1");
+    EXPECT_EQ(populated_start.fields.at("trace_id").asString(), "trace-2");
+    EXPECT_EQ(populated_start.fields.at("caller").asString(), "caller-3");
+    EXPECT_EQ(populated_start.fields.at("tenant").asString(), "north");
+
+    const auto& empty_start = recordAt(*sink, 3U);
+    EXPECT_FALSE(empty_start.fields.contains("request_id"));
+    EXPECT_FALSE(empty_start.fields.contains("trace_id"));
+    EXPECT_FALSE(empty_start.fields.contains("caller"));
+    EXPECT_FALSE(empty_start.fields.contains("tenant"));
+    EXPECT_EQ(empty_start.fields.at("module").asString(), "context_fields");
+    EXPECT_EQ(empty_start.fields.at("action").asString(), "context_fields.run");
 }
 
 TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
