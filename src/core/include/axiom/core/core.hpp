@@ -17,6 +17,7 @@
 #include <axiom/core/logging/log_sink.hpp>
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/logging_service.hpp>
+#include <axiom/core/logging/scoped_log_context.hpp>
 
 #include <string_view>
 

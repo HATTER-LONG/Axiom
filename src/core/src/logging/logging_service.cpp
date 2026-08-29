@@ -39,12 +39,14 @@ public:
         }
     }
 
-    [[nodiscard]] bool enabled(const LogLevel level, const std::string_view category) const noexcept {
+    [[nodiscard]] bool enabled(const LogLevel level,
+                               const std::string_view category) const noexcept {
         try {
             std::lock_guard lock{mutex_};
-            return std::ranges::any_of(sinks_, [level, category](const SinkRegistration& registration) {
-                return registration.filter.matches(level, category);
-            });
+            return std::ranges::any_of(sinks_,
+                                       [level, category](const SinkRegistration& registration) {
+                                           return registration.filter.matches(level, category);
+                                       });
         } catch(...) {
             return false;
         }
@@ -113,9 +115,10 @@ thread_local std::uint64_t next_context_id{1};
 }
 
 void popContext(const LoggingState* const state, const std::uint64_t id) noexcept {
-    const auto entry = std::find_if(contexts.rbegin(), contexts.rend(), [state, id](const ContextEntry& item) {
-        return item.state == state && item.id == id;
-    });
+    const auto entry =
+        std::find_if(contexts.rbegin(), contexts.rend(), [state, id](const ContextEntry& item) {
+            return item.state == state && item.id == id;
+        });
     if(entry != contexts.rend()) {
         contexts.erase(std::next(entry).base());
     }
@@ -147,7 +150,8 @@ bool LogFilter::matches(const LogLevel level, const std::string_view category) c
            });
 }
 
-LogSubscription::LogSubscription(std::weak_ptr<detail::LoggingState> state, const std::uint64_t id) noexcept
+LogSubscription::LogSubscription(std::weak_ptr<detail::LoggingState> state,
+                                 const std::uint64_t id) noexcept
     : state_(std::move(state)), id_(id) {}
 
 LogSubscription::~LogSubscription() noexcept { reset(); }
@@ -226,7 +230,9 @@ void LoggingService::flush() noexcept {
     }
 }
 
-Logger::Logger(std::shared_ptr<detail::LoggingState> state, std::string category, Value::Object fields)
+Logger::Logger(std::shared_ptr<detail::LoggingState> state,
+               std::string category,
+               Value::Object fields)
     : state_(std::move(state)), category_(std::move(category)), fields_(std::move(fields)) {}
 
 Logger Logger::child(const std::string_view category) const {
@@ -251,6 +257,13 @@ Logger Logger::withFields(Value::Object fields) const {
 
 bool Logger::enabled(const LogLevel level) const noexcept {
     return state_ && state_->enabled(level, category_);
+}
+
+ScopedLogContext Logger::scopedContext(Value::Object fields) const {
+    if(!state_) {
+        return {};
+    }
+    return ScopedLogContext{state_, detail::pushContext(state_, std::move(fields))};
 }
 
 void Logger::write(const LogLevel level,
