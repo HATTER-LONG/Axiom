@@ -1,10 +1,10 @@
 # Axiom
 
-A compact C++20 application framework built with CMake. It provides an
-installable `Axiom::Core` library, a small demo executable, integration tests,
-and reproducible quality gates. The public core API is deliberately small so
-new modules can be added incrementally without expanding the framework surface
-prematurely.
+A compact C++20 application framework built with CMake. Its current core is an
+installable synchronous capability runtime: typed C++ callables are registered
+as described `Module`/`Action` entries, discovered through metadata, and invoked
+through the dynamic `Value` boundary with structured `Result` errors. It also
+ships a small demo executable, tests, and reproducible quality gates.
 
 [中文文档](README.zh-CN.md)
 
@@ -49,6 +49,24 @@ The public header is available as:
 #include <axiom/core/core.hpp>
 ```
 
+## Core runtime model
+
+The public API is centered on `Value`/`Arguments` for ordered dynamic values,
+`ModuleBuilder` for staging typed callable Actions, `Runtime` for module
+registration, discovery and synchronous invocation, and `Error`/`Result<T>` for
+structured failures at the boundary. Action identifiers use canonical
+`module.action` syntax, with lowercase ASCII letters, digits, and underscores
+in each component.
+
+Supported callable conversions include `bool`, signed integers, floating-point
+values, `std::string`, recursive `std::vector<T>`, and string-keyed
+`std::map`/`std::unordered_map`. Integer inputs may widen to floating point;
+lossy and implicit string conversions are rejected. Optional parameters use
+validated `param(..., default_value)` values. The runtime is intentionally not
+thread-safe: registration, discovery, and invocation must not run concurrently.
+Core does not provide protocol adapters, JSON serialization, networking, plugins,
+logging, authorization, or asynchronous execution.
+
 ## Project layout
 
 | Path | Purpose |
@@ -77,9 +95,12 @@ Add `-v` or `--verbose` before or after the gate name to print each executed
 command, its combined output, and its exit code to stderr. The JSON report stays
 on stdout for machine consumption.
 
-`fast` validates architecture, configures and builds `quality-fast`, runs
-complexity, cppcheck, clang-tidy, CTest, and LLVM coverage. `full` adds a
-non-mutating clang-format check and the installed-package test. `hardening`
+`fast` validates architecture, configures and builds `quality-fast`, runs CTest,
+and measures LLVM coverage. `full` adds whole-project complexity, cppcheck,
+clang-tidy, and non-mutating clang-format checks before its CTest and coverage
+steps. The installed-package consumer is enabled by the `quality-fast` preset
+but is not a CheckFlow step; enable it explicitly with
+`-DAXIOM_BUILD_INSTALL_TEST=ON` when running CTest. `hardening`
 runs ASan/UBSan tests plus a separate Mull build with a 90% mutation threshold.
 Use `checkflow doctor` to validate the declared tools before executing a flow.
 
@@ -131,10 +152,10 @@ dependents are instead skipped to avoid running against stale build artifacts.
 Independent tools (formatting, complexity, and individual analyzers) are
 skipped only for their own missing tools.
 
-The nominal point totals, before skips, are 95 for `fast`, 105 for `full`, and
+The nominal point totals, before skips, are 75 for `fast`, 105 for `full`, and
 90 for `hardening`. `fast` checks architecture (10), configure (10), build
-(20), complexity (10), cppcheck (10), clang-tidy (10), tests (15), and coverage
-(10). `full` additionally checks whole-project formatting. `hardening`
+(20), tests (15), and coverage (10). `full` additionally checks formatting (10),
+complexity (10), cppcheck (10), and clang-tidy (10). `hardening`
 contains a 45-point ASan/UBSan configure-build-test path and a separate 45-point
 Mull configure-build-mutation path.
 

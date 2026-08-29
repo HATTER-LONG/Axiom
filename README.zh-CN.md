@@ -1,8 +1,9 @@
 # Axiom
 
-一个基于 CMake 的紧凑 C++20 应用框架，提供可安装的 `Axiom::Core` 库、简洁的
-demo 可执行程序、集成测试和可复现的质量门禁。核心公开 API 保持精简，以便逐步
-增加模块而不过早扩大框架接口。
+一个基于 CMake 的紧凑 C++20 应用框架。当前核心是一个可安装的同步能力运行时：
+将带类型的 C++ callable 注册为带描述的 `Module`/`Action`，通过元数据发现，并经由
+动态 `Value` 边界调用，同时以结构化 `Result` 返回错误。仓库还提供简洁的 demo、测试
+和可复现的质量门禁。
 
 [English README](README.md)
 
@@ -42,6 +43,19 @@ target_link_libraries(my_target PRIVATE Axiom::Core)
 #include <axiom/core/core.hpp>
 ```
 
+## 核心运行时模型
+
+公开 API 以 `Value`/`Arguments` 表示有序动态值，以 `ModuleBuilder` 暂存带类型的
+callable Action，以 `Runtime` 注册模块、发现描述符并同步调用，以 `Error`/`Result<T>`
+在边界传递结构化失败。Action ID 使用规范的 `module.action` 形式，两部分均只能包含
+小写 ASCII 字母、数字和下划线。
+
+当前支持 `bool`、有符号整数、浮点数、`std::string`、递归的 `std::vector<T>`，以及字符
+串键的 `std::map`/`std::unordered_map` 转换。整数输入可以转换为浮点数，但会拒绝有损
+转换和隐式字符串解析；可选参数通过经过校验的 `param(..., default_value)` 提供默认值。
+Runtime 有意不保证线程安全，注册、发现和调用不能并发执行。Core 当前不提供协议适配器、
+JSON 序列化、网络、插件、日志、鉴权或异步执行。
+
 ## 项目结构
 
 | 路径 | 用途 |
@@ -66,7 +80,14 @@ checkflow doctor
 
 在门禁名称前或后添加 `-v` / `--verbose`，可将执行的命令、合并后的输出及退出码打印到 stderr；JSON 报告始终输出到 stdout。
 
-使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 只对本次增量构建重新编译的源文件运行复杂度、cppcheck 和 clang-tidy，同时始终扫描整个项目的架构规则。`full` 会只读检查全部项目源码的格式，仅报告需要 clang-format 的文件列表而不修改源码，再对所有项目编译单元执行 cppcheck 和 clang-tidy。`hardening` 在启用 AddressSanitizer 与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在 `build-quality/mutation/mull/` 下。
+使用 `--report <path>` 可将报告保存给后续自动化流程。`fast` 校验架构、配置并构建
+`quality-fast`，运行 CTest 和 LLVM 覆盖率。`full` 另外运行全项目复杂度、cppcheck、
+clang-tidy 和只读格式检查，再运行 CTest 与覆盖率。安装消费测试只在 `quality-fast`
+预设中启用，但不是 CheckFlow flow 的步骤；需要时请显式设置
+`-DAXIOM_BUILD_INSTALL_TEST=ON` 后运行 CTest。`hardening` 在启用 AddressSanitizer
+与 UndefinedBehaviorSanitizer 后构建并运行测试套件，然后使用独立的插桩构建，要求项目
+源码的 Mull 变异分数不低于 90。Mutation Testing Elements 报告保存在
+`build-quality/mutation/mull/` 下。
 
 `fast` 与 `full` 使用 LLVM 源码级覆盖率插桩构建，测试套件行覆盖率低于 90% 时失败；报告中同时记录区域覆盖率与分支覆盖率，并在构建目录生成面向 agent 的紧凑 `coverage-export.json`。该文件使用仓库相对路径、按命中次数合并的连续行区间、分组后的分支命中次数，并内置数组字段图例；所有有效统计项均达到 100% 的文件会被省略，只记录省略数量。附加 `--coverage-html` 可在同目录额外生成可浏览的 `llvm-cov` HTML 报告（`coverage-html/`）。
 
@@ -95,7 +116,11 @@ checkflow fast --diagnostic
 
 存在构建产物依赖关系的检查会顺序执行。configure 失败会阻断 build、测试、覆盖率和依赖编译数据库的分析器；build 失败也会阻断其下游检查。如果这些前置步骤所需的可执行文件不存在，则前置步骤和下游步骤都会跳过，避免误用旧的构建产物。格式化、复杂度和各个独立分析器则只在自身所需工具缺失时跳过。
 
-在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 95、105 和 90。`fast` 包含架构（10）、configure（10）、build（20）、复杂度（10）、cppcheck（10）、clang-tidy（10）、测试（15）和覆盖率（10）。`full` 还会检查整个项目的格式。`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull configure-build-mutation 路径组成。
+在没有跳过项目时，`fast`、`full` 和 `hardening` 的名义总分分别是 75、105 和 90。
+`fast` 包含架构（10）、configure（10）、build（20）、测试（15）和覆盖率（10）。
+`full` 另外检查格式（10）、复杂度（10）、cppcheck（10）和 clang-tidy（10）。
+`hardening` 由 45 分的 ASan/UBSan configure-build-test 路径，以及独立的 45 分 Mull
+configure-build-mutation 路径组成。
 
 ### 架构规则
 
