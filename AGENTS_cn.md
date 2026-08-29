@@ -55,7 +55,7 @@
 每完成一个可独立验证的目标后，运行：
 
 ```bash
-uv run --quiet python tools/check.py fast
+uv run --quiet checkflow fast --report build-quality/reports/fast.json
 ```
 
 若失败：
@@ -68,16 +68,16 @@ uv run --quiet python tools/check.py fast
 对于较大任务，运行：
 
 ```bash
-uv run --quiet python tools/check.py hardening
+uv run --quiet checkflow hardening --report build-quality/reports/hardening.json
 ```
 
 合并或宣称整体任务完成前，运行：
 
 ```bash
-uv run --quiet python tools/check.py full
+uv run --quiet checkflow full --report build-quality/reports/full.json
 ```
 
-检查、阈值和工具参数的权威定义在 `tools/check.py`、`tools/checks/` 及 `quality/` 下的配置中。
+流程的权威定义在 `checkflow.json`；Axiom 专属 Tool 位于 `.checkflow/tools/`，策略仍位于 `quality/`。
 
 不要在本文件中重复这些细节。
 
@@ -148,18 +148,32 @@ quality/architecture_rules.json
 
 不同 Agent 应尽量使用独立且干净的上下文。
 
+### Git 管理的任务边界
+
+- 开始任务前先检查 `git status --short`，不得接管无关改动。
+- 每个 Agent 同时只拥有一个边界明确的任务。返回、切换任务或交接前，必须提交本任务的全部改动；任何任务边界都不得遗留未暂存或已暂存未提交的内容。
+- 每个 Agent 完成修改后、提交前，必须最终运行一次 `fast`。若失败，必须修复根因并重新运行；不得把失败任务作为完成状态提交。
+- 每个任务提交都必须使用简洁且可读的 log，说明任务产出；修复提交必须说明修复的具体问题，不能只写“fix”。
+- 不得把无关工作混入同一提交。提交历史是长期交接与 review 记录。
+
+### 基于提交的 Review 与跟进
+
+- 主 Agent 只 review 已提交的工作，绝不 review Agent 的未提交 diff。必须用 `git log` 检查任务提交，并使用 `git diff <base>..HEAD` 或 `git show` review 已提交范围。
+- 在交接中记录被 review 的提交范围；未提交的工作不能产生 review 结论。
+- reviewer 返回问题后，应保留并复用同一个 reviewer Agent。该 reviewer 必须检查修复提交，并继续 review 任务后续的新提交；比较对象应是上一次已 review 的提交范围，而不是未提交工作区。
+
 Agent 交接时，只传递继续工作所需的信息：
 
 - 当前任务目标
 - 验收标准
-- Git Diff
+- 已提交范围与简要 commit log
 - 测试结果
 - Quality Gate 报告
 - 未解决问题
 
 不要将一个 Agent 的完整长上下文直接交给下一个 Agent。
 
-仓库状态、代码改动、测试和确定性报告是主要共享事实来源。
+已提交的仓库历史、测试和确定性报告是主要共享事实来源。
 
 ## 8. 禁止事项
 

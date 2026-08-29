@@ -48,11 +48,14 @@ Then:
 - implement the assigned scope;
 - update tests and Doxygen-compatible documentation;
 - run and repair `fast` until it passes;
+- run one final `fast` after all changes, then commit the task before returning;
+- use a concise commit message that states the task outcome; repair commits must
+  identify the repaired problem;
 - fix root causes rather than suppress diagnostics.
 
 ### Reviewer
 
-One fresh read-only reviewer inspects the complete diff after `hardening` passes.
+One read-only reviewer inspects the committed task range after `hardening` passes.
 
 Review against:
 
@@ -73,6 +76,9 @@ If child agents and model assignment are available:
 - prefer Sol for review.
 
 Otherwise preserve the same role separation using available capabilities.
+
+Keep the reviewer agent available after it returns findings. Reuse that same reviewer
+to verify repair commits and review later commits in the task.
 
 If child agents are unavailable, execute sequentially and state that review was
 not independent.
@@ -103,6 +109,18 @@ Do not include solution design in the backlog.
 Start a subtask only after all dependencies pass. Independent ready subtasks may
 run in parallel.
 
+## Git Task Protocol
+
+1. Inspect `git status --short` before starting. Do not absorb unrelated work.
+2. An implementer may not return, hand off, or switch tasks with its changes
+   uncommitted. Each completed subtask is represented by one or more focused commits.
+3. The final commit follows a passing final `fast` run. Its concise log states the
+   task content; a repair commit also names the defect it repairs.
+4. The primary reviews only committed work: inspect `git log` and `git diff
+   <base>..HEAD` or `git show`, then record that range in the handoff.
+5. After findings, the same reviewer verifies the repair commits and reviews new
+   commits since its prior reviewed range. Never base a review on uncommitted diffs.
+
 ## Delivery Loop
 
 1. Confirm scope and owning module.
@@ -118,7 +136,7 @@ run in parallel.
    - clear subtask ownership → original implementer repairs;
    - cross-cutting/integration issue → fresh repair implementer.
 6. Rerun affected `fast` and `hardening` until clean.
-7. Start one fresh read-only reviewer.
+7. Start one read-only reviewer for the committed task range.
 8. Route review findings using the same ownership rule.
 9. After semantic changes, rerun `hardening` and review.
 10. Run `full` only after review is clean.
@@ -134,7 +152,7 @@ Primary-to-implementer handoffs contain only:
 - acceptance criteria;
 - scope boundary;
 - preserved behavior;
-- relevant files/diff;
+- relevant files and committed range;
 - relevant gate or review output;
 - unresolved issues.
 
@@ -148,6 +166,7 @@ Implementers return:
 - Public API changes;
 - tests/docs updated;
 - `fast` result;
+- commit IDs and concise log summary;
 - remaining issues.
 
 ## Completion

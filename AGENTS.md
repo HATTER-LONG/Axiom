@@ -55,7 +55,7 @@ Proceed to the next step
 After completing each independently verifiable goal, run:
 
 ```bash
-uv run --quiet python tools/check.py fast
+uv run --quiet checkflow fast --report build-quality/reports/fast.json
 ```
 
 If it fails:
@@ -68,17 +68,17 @@ If it fails:
 For larger tasks, run:
 
 ```bash
-uv run --quiet python tools/check.py hardening
+uv run --quiet checkflow hardening --report build-quality/reports/hardening.json
 ```
 
 Before merging or declaring the overall task complete, run:
 
 ```bash
-uv run --quiet python tools/check.py full
+uv run --quiet checkflow full --report build-quality/reports/full.json
 ```
 
-The authoritative definitions of checks, thresholds, and tool parameters live in
-`tools/check.py`, `tools/checks/`, and the configuration under `quality/`.
+The authoritative flow definitions live in `checkflow.json`; Axiom-specific tool
+implementations live in `.checkflow/tools/`, and policies remain under `quality/`.
 
 Do not duplicate those details in this document.
 
@@ -167,18 +167,46 @@ Never bypass or disable architecture checks.
 
 Different agents should preferably operate with separate, clean contexts.
 
+### Git-Managed Task Boundaries
+
+- Inspect `git status --short` before starting a task. Do not take ownership of
+  unrelated changes.
+- Each agent owns one bounded task at a time. Before returning, switching tasks,
+  or handing off work, it must leave its task changes committed; no task boundary
+  may leave unstaged or staged work behind.
+- Every agent must run one final `fast` gate after completing its changes and
+  before committing. If it fails, repair the root cause and rerun it; do not
+  commit a failed task as complete.
+- Every task commit must have a concise, descriptive log message that states the
+  task outcome. Repair commits must identify the problem repaired, not merely say
+  "fix".
+- Do not combine unrelated work in one commit. The commit history is the durable
+  handoff and review record.
+
+### Commit-Based Review and Follow-up
+
+- The primary reviews committed work, never an agent's uncommitted diff. It must
+  inspect the commits for the task with `git log` and review the committed range
+  with `git diff <base>..HEAD` or `git show`.
+- Record the reviewed commit range in the handoff. A review has no result until
+  the reviewed work is committed.
+- Keep the same reviewer agent available after it returns findings. That reviewer
+  must verify the repair commits and review subsequent commits in the task,
+  comparing them with the previously reviewed range rather than an uncommitted
+  working tree.
+
 When handing work from one agent to another, transfer only the information necessary to continue effectively:
 
 - Current task objective
 - Acceptance Criteria
-- Git Diff
+- Committed range and concise commit log
 - Test results
 - Quality Gate reports
 - Remaining unresolved issues
 
 Do not pass the complete long-running context of one agent directly to the next.
 
-The repository state, code changes, tests, and deterministic reports should serve as the primary shared source of truth.
+The committed repository history, tests, and deterministic reports should serve as the primary shared source of truth.
 
 ## 8. Prohibited Practices
 
