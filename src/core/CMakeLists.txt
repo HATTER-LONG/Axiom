@@ -17,7 +17,9 @@ set(axiom_core_sources
     src/logging/logging_service.cpp
     src/logging/console_sink.cpp
     src/logging/log_collector.cpp
-    src/resource/resource_id.cpp)
+    src/resource/resource_id.cpp
+    src/resource/resource_serial.cpp
+    src/resource/resource_registry.cpp)
 
 function (axiom_configure_core_compilation target_name)
     axiom_configure_language_diagnostics(${target_name})
