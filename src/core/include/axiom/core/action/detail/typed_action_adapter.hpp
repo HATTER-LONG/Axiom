@@ -4,11 +4,17 @@
 #include <axiom/core/action/detail/action.hpp>
 #include <axiom/core/action/detail/function_traits.hpp>
 #include <axiom/core/action/detail/value_converter.hpp>
+#include <axiom/core/action/invocation_context.hpp>
 #include <axiom/core/base/error.hpp>
+#include <axiom/core/base/result.hpp>
+#include <axiom/core/base/type_descriptor.hpp>
+#include <axiom/core/base/value.hpp>
 
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>

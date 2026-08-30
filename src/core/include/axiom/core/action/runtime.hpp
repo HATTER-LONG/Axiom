@@ -6,6 +6,7 @@
 #include <axiom/core/action/module.hpp>
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/logging/logger.hpp>
 
 #include <functional>
 #include <memory>
@@ -33,6 +34,16 @@ public:
      * @throws std::bad_alloc If Runtime state cannot be allocated.
      */
     Runtime();
+    /**
+     * @brief Creates an empty Runtime that emits side-channel records through @p logger.
+     *
+     * Runtime derives the `module` and `action` categories beneath @p logger. Logging
+     * failures never change registration or invocation behavior.
+     *
+     * @param logger Logger associated with the LoggingService that receives Runtime records.
+     * @throws std::bad_alloc If Runtime state cannot be allocated.
+     */
+    explicit Runtime(logging::Logger logger);
     /** @brief Destroys registered Action implementations. */
     ~Runtime() noexcept;
 

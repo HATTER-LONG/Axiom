@@ -4,6 +4,7 @@
 #include <axiom/core/action/descriptor.hpp>
 #include <axiom/core/action/detail/action.hpp>
 #include <axiom/core/action/module.hpp>
+#include <axiom/core/base/result.hpp>
 
 #include <functional>
 #include <map>

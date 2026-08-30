@@ -1,9 +1,15 @@
 #include <axiom/core/core.hpp>
 
 #include <cstdlib>
+#include <memory>
 #include <string>
 
 int main() {
+    axiom::core::logging::LoggingService logging;
+    const auto subscription =
+        logging.addSink(std::make_shared<axiom::core::logging::ConsoleSink>());
+    logging.logger("install").write(axiom::core::logging::LogLevel::Info, "consumer logging works");
+    logging.flush();
     axiom::core::ModuleBuilder builder{
         axiom::core::ModuleDescriptor{.namespace_name = "install", .metadata = {}}};
     const auto registered = builder.add(

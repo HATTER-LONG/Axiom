@@ -2,6 +2,7 @@
 
 #include <axiom/core/base/result.hpp>
 
+#include <functional>
 #include <map>
 #include <string>
 

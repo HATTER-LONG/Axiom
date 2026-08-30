@@ -3,6 +3,7 @@
 #include <axiom/core/base/result.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>

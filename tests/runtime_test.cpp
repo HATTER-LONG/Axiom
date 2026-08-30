@@ -1,5 +1,6 @@
 #include <axiom/core/action/action_id.hpp>
 #include <axiom/core/action/detail/typed_action_adapter.hpp>
+#include <axiom/core/action/invocation_context.hpp>
 #include <axiom/core/action/module.hpp>
 #include <axiom/core/action/module_builder.hpp>
 #include <axiom/core/action/runtime.hpp>
@@ -7,6 +8,10 @@
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/logging/log_level.hpp>
+#include <axiom/core/logging/log_record.hpp>
+#include <axiom/core/logging/log_sink.hpp>
+#include <axiom/core/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
 
@@ -28,11 +33,31 @@ namespace {
 using axiom::core::ActionId;
 using axiom::core::Arguments;
 using axiom::core::ErrorCode;
+using axiom::core::InvocationContext;
 using axiom::core::ModuleBuilder;
 using axiom::core::param;
 using axiom::core::Result;
 using axiom::core::Runtime;
 using axiom::core::Value;
+using axiom::core::logging::ILogSink;
+using axiom::core::logging::LoggingService;
+using axiom::core::logging::LogLevel;
+using axiom::core::logging::LogRecord;
+
+class RuntimeRecordingSink final : public ILogSink {
+public:
+    void consume(const LogRecord& record) override { records.push_back(record); }
+
+    std::vector<LogRecord> records;
+};
+
+class RuntimeThrowingSink final : public ILogSink {
+public:
+    void consume(const LogRecord& record) override {
+        static_cast<void>(record);
+        throw std::runtime_error{"sink failure"};
+    }
+};
 
 int add(const int left, const int right) { return left + right; }
 
@@ -60,6 +85,8 @@ void throwStandard() { throw std::runtime_error{"unexpected"}; }
 void throwUnknown() { throw 7; }
 void plainVoid() {}
 int rvalueOnly(std::string&& value);
+
+template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 double sumMap(const std::map<std::string, double>& values) {
     double total = 0.0;
     for(const auto& [name, value] : values) {
@@ -253,6 +280,11 @@ Result<void> addLateAction(ModuleBuilder& builder) {
     return builder.add("late", "Rejected after ownership transfer", [] { return 1; });
 }
 
+const LogRecord& recordAt(const RuntimeRecordingSink& sink, const std::size_t index) {
+    EXPECT_LT(index, sink.records.size());
+    return sink.records.at(index);
+}
+
 } // namespace
 
 TEST(Runtime, InvokesTypedFunctionsAndDiscoversStableDescriptors) {
@@ -383,6 +415,229 @@ TEST(Runtime, RejectsDuplicateAndInvalidModuleRegistrationsWithoutChangingRuntim
     EXPECT_EQ(invalid_result.error().code, ErrorCode::InvalidDescriptor);
     EXPECT_EQ(runtime.discoverModules().size(), 1U);
     EXPECT_EQ(runtime.discoverActions().size(), 7U);
+}
+
+TEST(Runtime, EmitsStructuredRegistrationAndInvocationOutcomes) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    configureRuntime(runtime);
+
+    const auto success =
+        runtime.invoke(id("math.add"), Arguments{{"left", Value{2}}, {"right", Value{3}}}, {});
+    const auto expected_failure = runtime.invoke(id("math.checked"), {{"value", Value{-1}}}, {});
+    const auto exception_failure = runtime.invoke(id("math.standard"), {}, {});
+    const auto unknown_exception_failure = runtime.invoke(id("math.unknown"), {}, {});
+
+    ASSERT_TRUE(success);
+    EXPECT_EQ(success.value().asInteger(), 5);
+    ASSERT_FALSE(expected_failure);
+    EXPECT_EQ(expected_failure.error().code, ErrorCode::InvalidArgument);
+    ASSERT_FALSE(exception_failure);
+    EXPECT_EQ(exception_failure.error().code, ErrorCode::InvocationFailed);
+    ASSERT_FALSE(unknown_exception_failure);
+    EXPECT_EQ(unknown_exception_failure.error().code, ErrorCode::InternalError);
+
+    ASSERT_EQ(sink->records.size(), 9U);
+    const auto& registration = recordAt(*sink, 0U);
+    EXPECT_EQ(registration.category, "runtime.module");
+    EXPECT_EQ(registration.level, LogLevel::Info);
+    EXPECT_EQ(registration.fields.at("module").asString(), "math");
+
+    const auto& start = recordAt(*sink, 1U);
+    EXPECT_EQ(start.category, "runtime.action");
+    EXPECT_EQ(start.level, LogLevel::Debug);
+    EXPECT_EQ(start.fields.at("module").asString(), "math");
+    EXPECT_EQ(start.fields.at("action").asString(), "math.add");
+
+    const auto& successful_end = recordAt(*sink, 2U);
+    EXPECT_EQ(successful_end.level, LogLevel::Info);
+    EXPECT_EQ(successful_end.fields.at("status").asString(), "success");
+    EXPECT_EQ(successful_end.fields.at("module").asString(), "math");
+    EXPECT_EQ(successful_end.fields.at("action").asString(), "math.add");
+    EXPECT_GE(successful_end.fields.at("duration_ms").asInteger(), 0);
+
+    const auto& expected_end = recordAt(*sink, 4U);
+    EXPECT_EQ(expected_end.level, LogLevel::Warning);
+    EXPECT_EQ(expected_end.fields.at("status").asString(), "invalid_argument");
+
+    const auto& exception_end = recordAt(*sink, 6U);
+    EXPECT_EQ(exception_end.level, LogLevel::Error);
+    EXPECT_EQ(exception_end.fields.at("status").asString(), "invocation_failed");
+
+    const auto& unknown_exception_end = recordAt(*sink, 8U);
+    EXPECT_EQ(unknown_exception_end.level, LogLevel::Error);
+    EXPECT_EQ(unknown_exception_end.fields.at("status").asString(), "internal_error");
+}
+
+TEST(Runtime, RecordsExpectedRegistrationFailuresAsWarnings) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder invalid{
+        axiom::core::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
+    ModuleBuilder first{
+        axiom::core::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
+    ModuleBuilder duplicate{
+        axiom::core::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
+    ASSERT_TRUE(first.add("first", "First action", [] { return 1; }));
+    ASSERT_TRUE(duplicate.add("second", "Second action", [] { return 2; }));
+
+    const auto invalid_result = runtime.registerModule(std::move(invalid));
+    ASSERT_TRUE(runtime.registerModule(std::move(first)));
+    const auto duplicate_result = runtime.registerModule(std::move(duplicate));
+
+    ASSERT_FALSE(invalid_result);
+    EXPECT_EQ(invalid_result.error().code, ErrorCode::InvalidDescriptor);
+    ASSERT_FALSE(duplicate_result);
+    EXPECT_EQ(duplicate_result.error().code, ErrorCode::AlreadyExists);
+    ASSERT_EQ(sink->records.size(), 3U);
+    EXPECT_EQ(recordAt(*sink, 0U).category, "runtime.module");
+    EXPECT_EQ(recordAt(*sink, 0U).level, LogLevel::Warning);
+    EXPECT_EQ(recordAt(*sink, 1U).level, LogLevel::Info);
+    EXPECT_EQ(recordAt(*sink, 2U).level, LogLevel::Warning);
+}
+
+TEST(Runtime, LogsAnEmptyBuilderRegistrationFailureWithoutAModuleField) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder source{
+        axiom::core::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
+    ModuleBuilder empty{transferOwnership(source)};
+
+    const auto result = runtime.registerModule(std::move(source));
+
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument);
+    ASSERT_EQ(sink->records.size(), 1U);
+    const auto& logged = recordAt(*sink, 0U);
+    EXPECT_EQ(logged.category, "runtime.module");
+    EXPECT_EQ(logged.level, LogLevel::Warning);
+    EXPECT_EQ(logged.message, "module registration failed: invalid_argument");
+    EXPECT_FALSE(logged.fields.contains("module"));
+    static_cast<void>(empty);
+}
+
+TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    const auto business_logger = logging.logger("business");
+    ModuleBuilder builder{
+        axiom::core::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
+    ASSERT_TRUE(builder.add("emit", "Emits a business record", [business_logger] {
+        business_logger.write(LogLevel::Info, "business event");
+        return 42;
+    }));
+    Runtime runtime{logging.logger("runtime")};
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext context{.request_id = "request-7",
+                                    .trace_id = "trace-9",
+                                    .caller = "client",
+                                    .metadata = {{"tenant", "north"},
+                                                 {"module", "metadata-module"},
+                                                 {"action", "metadata-action"},
+                                                 {"status", "metadata-status"},
+                                                 {"duration_ms", "metadata-duration"}}};
+    const auto result = runtime.invoke(id("context.emit"), {}, context);
+
+    ASSERT_TRUE(result);
+    ASSERT_EQ(sink->records.size(), 4U);
+    const auto& business_record = recordAt(*sink, 2U);
+    EXPECT_EQ(business_record.category, "business");
+    EXPECT_EQ(business_record.fields.at("request_id").asString(), "request-7");
+    EXPECT_EQ(business_record.fields.at("trace_id").asString(), "trace-9");
+    EXPECT_EQ(business_record.fields.at("caller").asString(), "client");
+    EXPECT_EQ(business_record.fields.at("tenant").asString(), "north");
+    EXPECT_EQ(business_record.fields.at("module").asString(), "context");
+    EXPECT_EQ(business_record.fields.at("action").asString(), "context.emit");
+    EXPECT_FALSE(business_record.fields.contains("status"));
+    EXPECT_FALSE(business_record.fields.contains("duration_ms"));
+
+    const auto& finish = recordAt(*sink, 3U);
+    EXPECT_EQ(finish.fields.at("module").asString(), "context");
+    EXPECT_EQ(finish.fields.at("action").asString(), "context.emit");
+    EXPECT_EQ(finish.fields.at("status").asString(), "success");
+    EXPECT_GE(finish.fields.at("duration_ms").asInteger(), 0);
+}
+
+TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder builder{
+        axiom::core::ModuleDescriptor{.namespace_name = "context_fields", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext populated{.request_id = "request-1",
+                                      .trace_id = "trace-2",
+                                      .caller = "caller-3",
+                                      .metadata = {{"tenant", "north"}}};
+    ASSERT_TRUE(runtime.invoke(id("context_fields.run"), {}, populated));
+    ASSERT_TRUE(runtime.invoke(id("context_fields.run"), {}, {}));
+
+    ASSERT_EQ(sink->records.size(), 5U);
+    const auto& populated_start = recordAt(*sink, 1U);
+    EXPECT_EQ(populated_start.fields.at("request_id").asString(), "request-1");
+    EXPECT_EQ(populated_start.fields.at("trace_id").asString(), "trace-2");
+    EXPECT_EQ(populated_start.fields.at("caller").asString(), "caller-3");
+    EXPECT_EQ(populated_start.fields.at("tenant").asString(), "north");
+
+    const auto& empty_start = recordAt(*sink, 3U);
+    EXPECT_FALSE(empty_start.fields.contains("request_id"));
+    EXPECT_FALSE(empty_start.fields.contains("trace_id"));
+    EXPECT_FALSE(empty_start.fields.contains("caller"));
+    EXPECT_FALSE(empty_start.fields.contains("tenant"));
+    EXPECT_EQ(empty_start.fields.at("module").asString(), "context_fields");
+    EXPECT_EQ(empty_start.fields.at("action").asString(), "context_fields.run");
+}
+
+TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
+    LoggingService logging;
+    const auto good_sink = std::make_shared<RuntimeRecordingSink>();
+    auto bad_subscription = logging.addSink(std::make_shared<RuntimeThrowingSink>());
+    auto good_subscription = logging.addSink(good_sink);
+    int invocations = 0;
+    ModuleBuilder builder{
+        axiom::core::ModuleDescriptor{.namespace_name = "resilient", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
+        ++invocations;
+        return 7;
+    }));
+    Runtime runtime{logging.logger("runtime")};
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto result = runtime.invoke(id("resilient.run"), {}, {});
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value().asInteger(), 7);
+    EXPECT_EQ(invocations, 1);
+    EXPECT_EQ(good_sink->records.size(), 3U);
+}
+
+TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
+    int invocations = 0;
+    ModuleBuilder builder{
+        axiom::core::ModuleDescriptor{.namespace_name = "silent", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
+        ++invocations;
+        return 11;
+    }));
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto result = runtime.invoke(id("silent.run"), {}, {});
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value().asInteger(), 11);
+    EXPECT_EQ(invocations, 1);
 }
 
 TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {

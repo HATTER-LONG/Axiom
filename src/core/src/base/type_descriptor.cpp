@@ -106,6 +106,7 @@ struct PendingNode {
 } // namespace
 
 Result<void> validate(const TypeDescriptor& descriptor) {
+    // Iterative DFS with Visiting/Visited marks detects cycles without recursion.
     std::unordered_map<const TypeDescriptor*, VisitState> visits;
     std::vector<PendingNode> pending{{.descriptor = &descriptor, .finish = false}};
     while(!pending.empty()) {
@@ -128,6 +129,7 @@ Result<void> validate(const TypeDescriptor& descriptor) {
         if(!result) {
             return result;
         }
+        // Schedule finish after children so cycle detection spans the whole subtree.
         pending.push_back({.descriptor = node.descriptor, .finish = true});
         std::ranges::transform(children | std::views::reverse, std::back_inserter(pending),
                                [](const TypeDescriptor* child) {

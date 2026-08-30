@@ -11,7 +11,9 @@ Checks: "-*,
     -modernize-use-trailing-return-type,
     -readability-magic-numbers,
     -readability-identifier-length"
-SystemHeaders: false
+HeaderFileExtensions:         ['', 'h','hh','hpp','hxx']
+ImplementationFileExtensions: ['c','cc','cpp','cxx']
+HeaderFilterRegex:            '.*'
 CheckOptions:
   # =========================
   # Types

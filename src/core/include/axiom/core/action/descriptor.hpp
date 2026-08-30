@@ -1,7 +1,9 @@
 #pragma once
 
 #include <axiom/core/action/action_id.hpp>
+#include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
+#include <axiom/core/base/value.hpp>
 
 #include <optional>
 #include <string>

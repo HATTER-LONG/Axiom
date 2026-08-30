@@ -10,6 +10,11 @@
       "id": "core-base-must-not-depend-on-action",
       "from": ["src/core/include/axiom/core/base/", "src/core/src/base/"],
       "forbidden": ["axiom/core/action/"]
+    },
+    {
+      "id": "core-logging-must-not-depend-on-upper-layers",
+      "from": ["src/core/include/axiom/core/logging/", "src/core/src/logging/"],
+      "forbidden": ["axiom/core/action/", "apps/", "Qt", "Q", "axiom/agent/", "agent/"]
     }
   ]
 }

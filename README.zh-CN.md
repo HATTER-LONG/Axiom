@@ -168,7 +168,7 @@ lizard -l cpp -C 10 -L 80 -a 5 src apps tests
 
 ### CPM 自动管理的依赖
 
-CPM 只会将项目依赖与 CMake 集成下载到 `.cache/`：
+CPM 只会将项目依赖与 CMake 集成下载到用户缓存目录 `~/.cache/CPM`：
 
 - `BUILD_TESTING=ON` 时下载 GoogleTest 1.18.0；
 - 配置 CPM 管理功能时下载 CPM.cmake 本身；

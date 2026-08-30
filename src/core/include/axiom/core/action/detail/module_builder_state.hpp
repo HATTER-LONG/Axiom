@@ -1,6 +1,7 @@
 #pragma once
 
 #include <axiom/core/action/detail/registry.hpp>
+#include <axiom/core/action/module.hpp>
 
 #include <vector>
 
