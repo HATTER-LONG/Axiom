@@ -2,12 +2,12 @@ include_guard(GLOBAL)
 
 # Runtime deployment is private to executables. The generated script handles an empty DLL list and
 # avoids copy -t, which is unavailable in CMake 3.25.
-function (testlib_deploy_runtime target_name)
+function (axiom_deploy_runtime target_name)
     if (NOT WIN32)
         return()
     endif ()
     set(runtime_files "$<TARGET_RUNTIME_DLLS:${target_name}>")
-    if ("Address" IN_LIST TESTLIB_SANITIZERS)
+    if ("Address" IN_LIST AXIOM_SANITIZERS)
         execute_process(
             COMMAND "${CMAKE_CXX_COMPILER}" --print-runtime-dir
             OUTPUT_VARIABLE runtime_dir
