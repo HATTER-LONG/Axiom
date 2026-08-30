@@ -1,200 +1,59 @@
 # Axiom Agent 开发指南
 
-本文件定义 Axiom 开发 Agent 必须遵守的工程、设计、测试与质量原则。
+以小而可验证的增量构建 Axiom。优先复用现有设计，保持 Public API 精简；不得为了通过检查而降低质量要求。
 
+## 设计与范围
 
-## 1. 核心原则
+- 优先采用 **薄接口、深模块**。Public interface 只暴露调用方真正需要的操作、数据和失败语义；协调、表示选择、缓存与平台细节应由实现内部吸收。
+- 用模块为调用方消除的复杂度衡量其深度，而不是用代码行数衡量。相关 policy 和 state 应由一个内聚 owner 管理，不能让调用方自行按正确顺序拼接多个浅层 helper。
+- 只有当前调用方确实需要时，才新增 public type、method、option、callback 或 template parameter。优先使用 private helper、value type 与实现细节，不要通过大量配置项泄漏内部决策。
+- Public API 必须少、稳定、清晰，并隐藏内部复杂性。边界处应明确 ownership、生命周期、线程安全、顺序、错误和 no-op 契约；不得要求调用方了解内部状态或调用顺序。
+- 避免泄漏抽象：除非模块明确是适配层，否则不得暴露 storage、第三方类型、平台 handle、可变内部 collection 或实现专用错误细节。
+- 行为放在真正拥有职责的模块中；保持单向依赖：Core 不依赖 UI，Library 不依赖 Application，生产代码不依赖测试代码。
+- 优先 RAII、清晰的 ownership 和组合；除适配层外，不跨模块暴露 Qt、OCC、Boost 等第三方实现类型。
+- 优先修改实现，而不是扩展 Public API。不创建推测性抽象、`utils`、`common`、`manager` 等职责模糊的万能模块，也不做无关重构。
+- 修改前确认：所属模块、可复用接口、API 变更是否必要、必须保持的行为，以及验证方案。
 
-- 保持修改小而聚焦，每一步都应可独立验证。
-- 优先增量开发，不做大规模前期设计后一次性实现。
-- 优先复用现有设计，避免不必要的新抽象和新接口。
-- Prompt 负责判断与实现，确定性工具负责质量验证。
-- 不得为了通过任务而跳过、禁用、绕过或降低任何质量检查。
+## 跨平台支持
 
-## 2. 代码设计
+Windows、Linux、macOS 都是支持目标。平台差异必须收敛在小型可移植边界中，并使用 CMake 平台/编译器条件（`WIN32`、`APPLE`、`UNIX`、`MSVC`）选择，不能假设当前宿主环境。
 
-- 优先采用 **薄接口、深模块**。
-- Public API 应尽量少、稳定、清晰，并隐藏内部复杂性。
-- 优先修改模块内部实现，而不是扩展 Public API。
-- 行为应放在真正拥有该职责的模块中，而不是放在“修改最方便”的位置。
-- 保持单向依赖：
-  - 低层模块不得依赖高层模块；
-  - Domain/Core 不得依赖 UI；
-  - Library 不得依赖 Application；
-  - Production code 不得依赖 Test code。
-- 除非模块本身是适配层，否则不要跨模块边界暴露 Qt、OCC、Boost 等第三方实现类型。
-- 优先使用 RAII、明确 ownership 和生命周期。
-- 优先组合而不是复杂继承。
-- 不为假想的未来需求提前设计复杂抽象。
-- 不进行与当前任务无关的大范围重构。
-- 避免创建 `utils`、`common`、`manager` 等职责模糊的万能模块。
+- 优先标准 C++；只有确有必要时才引入操作系统头文件或 API。
+- 共享库 Public API 使用模块导出宏。`AXIOM_CORE_API` 在 Windows 映射为 `__declspec(dllexport/dllimport)`，在 Linux/macOS 映射为默认可见性；不得让未防护的 Windows 专用声明出现在其他平台。
+- 必须保持静态库默认构建可用。修改构建或安装行为时，同时验证 `-DBUILD_SHARED_LIBS=ON` 和已安装包使用方。
+- 优先 CMake target 属性和 generator expression，避免硬编码路径、shell 命令或文件扩展名。路径分隔符、可执行文件后缀、动态库加载、文本编码和运行时部署都属于需要显式设计与测试的平台差异。
 
-## 3. 修改前
+## 实现与测试
 
-编码前确认：
+- 实现满足需求的最小正确方案；控制流、状态、错误处理、ownership 和生命周期必须清晰，不得无契约地静默吞掉失败。
+- 单元和集成测试使用 GoogleTest。新增行为必须测试，Bug 修复必须有回归测试；测试必须确定、独立，并优先验证外部可观察行为。
+- 默认使用 `EXPECT_*`；只有后续逻辑依赖条件成立时才使用 `ASSERT_*`。
 
-1. 哪个模块拥有所请求的行为。
-2. 现有接口是否已经可以满足需求。
-3. Public API 修改是否确有必要。
-4. 哪些既有行为必须保持不变。
-5. 如何通过测试证明修改正确。
+## 文档
 
-只读取完成当前任务真正需要的代码与上下文。
+Public header 的每个 public type、free function 和 public method 都使用 Doxygen 注释描述 API contract。记录不明显的不变量、ownership、生命周期、顺序与状态转换；注释解释 why，不重复明显控制流。文档必须与实现同步。
 
-## 4. 实现原则
-
-- 实现满足当前需求的最小正确方案。
-- 保持命名、控制流、状态和 ownership 清晰。
-- 遇到深层嵌套、大函数、多重职责或复杂状态时，优先改善结构，而不是提高复杂度阈值。
-- 错误处理必须明确；不得无理由吞掉异常或静默忽略失败。
-- 注释用于解释契约、约束和 Why，不要重复代码本身已经表达的 What。
-
-## 5. 测试原则
-
-所有单元与集成测试使用 GoogleTest。
-
-- 新增行为必须有对应测试。
-- Bug 修复必须包含能够复现原问题的回归测试。
-- 优先测试外部可观察行为，而不是内部实现细节。
-- 一个测试聚焦一个主要行为，名称应描述所验证的行为。
-- 默认使用 `EXPECT_*`；仅当后续代码依赖当前条件成立时使用 `ASSERT_*`。
-- 使用最符合比较语义的 GoogleTest assertion。
-- 测试必须确定、独立，可单独运行且不依赖执行顺序。
-- Fixture 只用于真正共享的测试环境；测试资源使用 RAII 管理。
-- 避免过度 Mock，优先测试真实对象的小规模协作。
-- 覆盖率用于发现未测试代码，不代表测试有效性。
-- 不得为了提高覆盖率编写无意义或断言薄弱的测试。
-
-## 6. 文档
-
-Public API，以及不直观的内部类型、函数、不变量、ownership、生命周期和状态转换，应使用兼容 Doxygen 的注释。
-
-注释应描述 API contract 和外部可观察行为。
-
-必要时使用：
-
-```text
-@param
-@return
-@throws
-@pre
-@post
-@note
-@warning
+```cpp
+/**
+ * @brief 注册 sink，并返回析构时自动注销的 RAII subscription。
+ *
+ * @param sink 共享所有权，subscription 存活期间保留。
+ * @param filter consume() 前应用的筛选条件。
+ * @return move-only subscription；销毁时移除 sink。
+ * @throws std::bad_alloc 注册存储分配失败时抛出。
+ * @note 当前实现同步分发。
+ */
+[[nodiscard]] LogSubscription addSink(std::shared_ptr<ILogSink> sink, LogFilter filter = {});
 ```
 
-文档必须与实现行为保持同步。
+Public header 使用 `@file` 与 `@brief`；当契约需要时补充 `@tparam`、`@param`、`@return`、`@throws`、`@pre`、`@post`、`@note` 或 `@warning`。
 
-## 7. 静态分析与架构检查
+## 质量与工作区
 
-静态分析问题默认应通过修改代码解决。
+在仓库根目录使用全局 `checkflow`，不要创建项目级 Python 环境。每个可验证步骤后运行 `fast`，主体完成后运行 `hardening`，交付前运行 `full`。门禁失败时修复根因；不得用 suppression、排除项、禁用测试或降低规则绕过。架构规则位于 `quality/architecture_rules.json`。
 
-不得仅为了通过检查而使用：
+修改前运行 `git status --short`，保留无关既有修改。Agent 可读写 `~/.cache/CPM`，但仅将它用于 CPM 的持久化依赖缓存；不得将其作为项目源码，也不得整体删除其内容。
 
-```text
-NOLINT
-NOLINTNEXTLINE
-NOLINTBEGIN
-compiler pragma
-```
+## 完成定义
 
-只有确认代码正确且诊断确属误报或规则不适用时才能 suppress。
-
-Suppress 必须：
-
-- 指定具体 check；
-- 限制在最小作用域；
-- 写明明确且可验证的原因。
-
-架构规则以：
-
-```text
-quality/architecture_rules.json
-```
-
-为准。
-
-架构违规应通过调整职责、接口或依赖方向解决，不得绕过检查。
-
-## 8. Quality Gate
-
-CheckFlow 是仓库质量检查的统一入口。
-
-在仓库根目录使用全局安装的 `checkflow` 命令运行门禁；不要为 CheckFlow 创建项目级 Python 环境。
-
-权威配置位于：
-
-```text
-checkflow.json
-```
-
-项目 Tool 位于：
-
-```text
-.checkflow/tools/
-```
-
-质量策略位于：
-
-```text
-quality/
-```
-
-开发过程中：
-
-- 每完成一个可独立验证的小目标，应运行 `fast`。
-- 较大任务完成主体实现后应运行 `hardening`。
-- 最终交付或合并前必须运行 `full`。
-
-若 Quality Gate 失败：
-
-1. 阅读报告；
-2. 找出根因；
-3. 修复问题；
-4. 重新运行。
-
-不得通过降低规则、跳过测试或增加排除项来使 Gate 通过。
-
-## 9. Git 与工作区
-
-开始修改前检查：
-
-```bash
-git status --short
-```
-
-已有无关修改应视为用户或其他任务拥有的工作。
-
-不得覆盖、回滚或顺手修改与当前任务无关的内容。
-
-## 10. 禁止事项
-
-不得：
-
-- 未通过必要 Quality Gate 就宣称完成；
-- 为通过检查降低质量标准；
-- 无合理需求扩展 Public API；
-- 引入错误依赖方向；
-- 无必要泄漏第三方实现类型；
-- 为假想需求设计复杂抽象；
-- 进行大量无关重构；
-- 编写无意义测试提高覆盖率；
-- 使用 suppress 隐藏真实问题；
-- 修改当前任务之外的用户工作。
-
-## 11. 完成定义
-
-一个开发目标只有在以下条件满足时才算完成：
-
-- 所请求行为正确实现；
-- 修改范围最小且聚焦；
-- 代码位于正确模块；
-- Public API 变更确有必要；
-- 模块依赖方向正确；
-- ownership 与生命周期清晰；
-- 新行为有对应测试；
-- Bug 修复有回归测试；
-- 文档与行为一致；
-- 所需 Quality Gate 已通过。
-
-最终目标不是让 Agent 尽快生成代码，而是在明确架构边界、有效测试和确定性质量门禁下，持续交付可靠、可维护、可演进的软件。
+只有当请求行为在正确模块实现、测试和文档同步、依赖方向与生命周期清晰，并且所需质量门禁全部通过后，才能交付。

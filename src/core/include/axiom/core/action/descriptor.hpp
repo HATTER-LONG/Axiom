@@ -4,6 +4,7 @@
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/export.hpp>
 
 #include <optional>
 #include <string>
@@ -54,6 +55,6 @@ struct ActionDescriptor {
  * @return Success when all parameter names, nested descriptors, version, and defaults
  *         are coherent; otherwise an InvalidDescriptor error.
  */
-[[nodiscard]] Result<void> validate(const ActionDescriptor& descriptor);
+[[nodiscard]] AXIOM_CORE_API Result<void> validate(const ActionDescriptor& descriptor);
 
 } // namespace axiom::core

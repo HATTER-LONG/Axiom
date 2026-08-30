@@ -5,6 +5,7 @@
  * @brief Colorized stderr sink that formats LogRecord values without exposing spdlog.
  */
 
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_record.hpp>
 #include <axiom/core/logging/log_sink.hpp>
 
@@ -18,7 +19,7 @@ namespace axiom::core::logging {
  * spdlog is intentionally hidden behind this implementation boundary so users of
  * Axiom::Core never need to find or link it.
  */
-class ConsoleSink final : public ILogSink {
+class AXIOM_CORE_API ConsoleSink final : public ILogSink {
 public:
     /**
      * @brief Creates a sink writing colorized UTC records to standard error.

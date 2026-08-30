@@ -6,6 +6,7 @@
 #include <axiom/core/action/module.hpp>
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/logger.hpp>
 
 #include <functional>
@@ -27,7 +28,7 @@ class RuntimeState;
  * must not run concurrently. Registering a ModuleBuilder validates its entire pending
  * contents before mutation, so expected registration failures leave Runtime unchanged.
  */
-class Runtime {
+class AXIOM_CORE_API Runtime {
 public:
     /**
      * @brief Creates an empty synchronous Runtime.

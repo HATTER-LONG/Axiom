@@ -1,5 +1,7 @@
 #pragma once
 
+#include <axiom/core/export.hpp>
+
 /**
  * @file scoped_log_context.hpp
  * @brief RAII guard that pushes thread-local structured fields for a LoggingService.
@@ -23,7 +25,7 @@ class LoggingState;
  *
  * @note A default-constructed guard is a no-op and is safe to destroy on any thread.
  */
-class ScopedLogContext {
+class AXIOM_CORE_API ScopedLogContext {
 public:
     /** @brief Creates an inert guard that holds no context. */
     ScopedLogContext() noexcept = default;

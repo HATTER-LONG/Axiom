@@ -5,6 +5,7 @@
  * @brief Thread-safe, bounded in-memory ILogSink for tests and diagnostics.
  */
 
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_query.hpp>
 #include <axiom/core/logging/log_record.hpp>
 #include <axiom/core/logging/log_sink.hpp>
@@ -22,7 +23,7 @@ namespace axiom::core::logging {
  * zero capacity accepts records without retaining them. When the ring buffer is full,
  * the oldest retained record is overwritten.
  */
-class LogCollector final : public ILogSink {
+class AXIOM_CORE_API LogCollector final : public ILogSink {
 public:
     /**
      * @brief Creates a collector retaining up to @p capacity records.

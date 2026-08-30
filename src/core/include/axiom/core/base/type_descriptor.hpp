@@ -1,6 +1,7 @@
 #pragma once
 
 #include <axiom/core/base/result.hpp>
+#include <axiom/core/export.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -120,6 +121,6 @@ struct TypeDescriptor {
  * @return Success when its nested descriptors, array element, and object fields
  *         are coherent; otherwise an InvalidDescriptor error.
  */
-[[nodiscard]] Result<void> validate(const TypeDescriptor& descriptor);
+[[nodiscard]] AXIOM_CORE_API Result<void> validate(const TypeDescriptor& descriptor);
 
 } // namespace axiom::core
