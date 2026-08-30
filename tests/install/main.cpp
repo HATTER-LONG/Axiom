@@ -1,10 +1,14 @@
+#include "install_widget.hpp"
+
 #include <axiom/core/core.hpp>
 
 #include <cstdlib>
 #include <memory>
 #include <string>
 
-int main() {
+namespace {
+
+[[nodiscard]] bool checkInstalledLoggingAndAction() {
     axiom::core::logging::LoggingService logging;
     const auto subscription =
         logging.addSink(std::make_shared<axiom::core::logging::ConsoleSink>());
@@ -23,7 +27,12 @@ int main() {
     const auto invoked = id ? runtime.invoke(id.value(), {}, {})
                             : axiom::core::Result<axiom::core::Value>::failure(id.error());
     return std::string{axiom::core::frameworkName()} == "Axiom" && installed && invoked &&
-                   invoked.value().asNumber() == 42.0
-               ? EXIT_SUCCESS
-               : EXIT_FAILURE;
+           invoked.value().asNumber() == 42.0;
+}
+
+} // namespace
+
+int main() {
+    return checkInstalledLoggingAndAction() && checkInstalledResource() ? EXIT_SUCCESS
+                                                                        : EXIT_FAILURE;
 }

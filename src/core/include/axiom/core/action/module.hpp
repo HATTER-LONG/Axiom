@@ -1,6 +1,12 @@
 #pragma once
 
+/**
+ * @file module.hpp
+ * @brief Module namespace metadata and validation.
+ */
+
 #include <axiom/core/base/result.hpp>
+#include <axiom/core/export.hpp>
 
 #include <functional>
 #include <map>
@@ -25,6 +31,6 @@ struct ModuleDescriptor {
  * @param descriptor Description to inspect without modifying registration state.
  * @return Success when the namespace is valid; otherwise an InvalidDescriptor error.
  */
-[[nodiscard]] Result<void> validate(const ModuleDescriptor& descriptor);
+[[nodiscard]] AXIOM_CORE_API Result<void> validate(const ModuleDescriptor& descriptor);
 
 } // namespace axiom::core

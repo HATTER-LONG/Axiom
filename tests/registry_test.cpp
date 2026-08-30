@@ -51,7 +51,13 @@ ActionId actionId(const std::string_view text) {
     return std::move(result.value());
 }
 
-TypeDescriptor integerType() { return {.kind = TypeDescriptor::Kind::Integer}; }
+TypeDescriptor integerType() {
+    return {.kind = TypeDescriptor::Kind::Integer,
+            .description = {},
+            .element_type = {},
+            .fields = {},
+            .value_type = {}};
+}
 
 ActionDescriptor action(const std::string_view id) {
     return {
@@ -102,7 +108,11 @@ TEST(Registry, DeepCopiesNestedDescriptorsIntoRecursivelyReadOnlyStorage) {
     ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
     auto mutable_leaf = std::make_shared<TypeDescriptor>(integerType());
     auto descriptor = action("math.describe");
-    descriptor.return_type = {.kind = TypeDescriptor::Kind::Array, .element_type = mutable_leaf};
+    descriptor.return_type = {.kind = TypeDescriptor::Kind::Array,
+                              .description = {},
+                              .element_type = mutable_leaf,
+                              .fields = {},
+                              .value_type = {}};
 
     ASSERT_TRUE(registry.registerAction(descriptor, implementation(destruction_count)));
     mutable_leaf->kind = TypeDescriptor::Kind::String;
@@ -139,7 +149,11 @@ TEST(Registry, RejectsInvalidAndConflictingRegistrationsWithoutChangingState) {
     const auto duplicate_module =
         registry.registerModule({.namespace_name = "math", .metadata = {}});
     auto invalid_action = action("math.invalid");
-    invalid_action.return_type = {.kind = TypeDescriptor::Kind::Array};
+    invalid_action.return_type = {.kind = TypeDescriptor::Kind::Array,
+                                  .description = {},
+                                  .element_type = {},
+                                  .fields = {},
+                                  .value_type = {}};
     const auto invalid_action_result =
         registry.registerAction(invalid_action, implementation(destruction_count));
     const auto unknown_module =
@@ -235,7 +249,11 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     Registry invalid_descriptor_registry;
     std::vector<PendingAction> invalid_descriptor;
     invalid_descriptor.emplace_back(pendingAction("math.invalid", destruction_count));
-    invalid_descriptor.front().descriptor->return_type = {.kind = TypeDescriptor::Kind::Array};
+    invalid_descriptor.front().descriptor->return_type = {.kind = TypeDescriptor::Kind::Array,
+                                                          .description = {},
+                                                          .element_type = {},
+                                                          .fields = {},
+                                                          .value_type = {}};
 
     const auto invalid_descriptor_result =
         invalid_descriptor_registry.registerModuleWithActions(module, invalid_descriptor);

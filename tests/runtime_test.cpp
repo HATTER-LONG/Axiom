@@ -84,7 +84,7 @@ Result<void> checkedVoid(const bool allowed) {
 void throwStandard() { throw std::runtime_error{"unexpected"}; }
 void throwUnknown() { throw 7; }
 void plainVoid() {}
-int rvalueOnly(std::string&& value);
+using RvalueOnly = int (*)(std::string&&);
 
 template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 double sumMap(const std::map<std::string, double>& values) {
@@ -186,23 +186,23 @@ using PolicyMap = std::map<std::string, int, NonDefaultConstructibleCompare>;
 using PolicyHashMap = std::unordered_map<std::string, int, NonDefaultConstructibleHash>;
 using PolicyVector = std::vector<int, NonDefaultConstructibleAllocator<int>>;
 
-int countPolicyEntries(const PolicyMap& values);
-int sumPolicyHashMap(const PolicyHashMap& values);
-int sumPolicyVector(const PolicyVector& values);
+using PolicyEntriesCallable = int (*)(const PolicyMap&);
+using PolicyHashMapCallable = int (*)(const PolicyHashMap&);
+using PolicyVectorCallable = int (*)(const PolicyVector&);
 
 static_assert(PubliclyAddable<decltype(add)&, ParameterDoc, ParameterDoc>);
 static_assert(PubliclyAddable<decltype(&add), ParameterDoc, ParameterDoc>);
 static_assert(PubliclyAddable<CopyableLambda, ParameterDoc>);
-static_assert(!PubliclyAddable<decltype(&rvalueOnly), ParameterDoc>);
+static_assert(!PubliclyAddable<RvalueOnly, ParameterDoc>);
 static_assert(!PubliclyAddable<decltype([](const auto value) { return value; }), ParameterDoc>);
 static_assert(!PubliclyAddable<OverloadedCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<NonCopyableCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<decltype(&Multiplier::multiply), ParameterDoc>);
 static_assert(!PubliclyAddable<std::function<int(int)>, ParameterDoc>);
-static_assert(!PubliclyAddable<decltype(&countPolicyEntries), ParameterDoc>);
-static_assert(!PubliclyAddable<decltype(&sumPolicyHashMap), ParameterDoc>);
-static_assert(!PubliclyAddable<decltype(&sumPolicyVector), ParameterDoc>);
-static_assert(!axiom::core::detail::isAdaptableCallable<decltype(&countPolicyEntries)>());
+static_assert(!PubliclyAddable<PolicyEntriesCallable, ParameterDoc>);
+static_assert(!PubliclyAddable<PolicyHashMapCallable, ParameterDoc>);
+static_assert(!PubliclyAddable<PolicyVectorCallable, ParameterDoc>);
+static_assert(!axiom::core::detail::isAdaptableCallable<PolicyEntriesCallable>());
 
 ActionId id(const std::string_view text) {
     const auto parsed = ActionId::parse(text);
@@ -643,11 +643,12 @@ TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
 TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {
     ModuleBuilder builder{
         axiom::core::ModuleDescriptor{.namespace_name = "lambda", .metadata = {}}};
-    const int offset = 5;
+    int offset = 5;
 
     EXPECT_TRUE(builder.add(
         "offset", "Adds a captured offset", [offset](const int value) { return value + offset; },
         param("value", "Input value")));
+    offset = 100;
 
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));

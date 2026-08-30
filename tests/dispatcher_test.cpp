@@ -100,7 +100,13 @@ ActionId actionId(const std::string_view text) {
     return std::move(result.value());
 }
 
-TypeDescriptor integerType() { return {.kind = TypeDescriptor::Kind::Integer}; }
+TypeDescriptor integerType() {
+    return {.kind = TypeDescriptor::Kind::Integer,
+            .description = {},
+            .element_type = {},
+            .fields = {},
+            .value_type = {}};
+}
 
 ActionDescriptor action(const std::string_view id,
                         std::vector<ParameterDescriptor> parameters = {}) {
@@ -139,10 +145,11 @@ TEST(Dispatcher, InvokesRegisteredActionAndForwardsDiagnosticContext) {
     registerMath(registry);
     auto implementation = std::make_unique<RecordingAction>();
     const RecordingAction* const implementation_view = implementation.get();
-    ASSERT_TRUE(
-        registry.registerAction(action("math.add", {{.name = "left", .type = integerType()},
-                                                    {.name = "right", .type = integerType()}}),
-                                std::move(implementation)));
+    ASSERT_TRUE(registry.registerAction(
+        action("math.add",
+               {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
+                {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
+        std::move(implementation)));
     Dispatcher dispatcher{registry};
     const Arguments arguments{{"left", Value{std::int64_t{2}}}, {"right", Value{std::int64_t{3}}}};
     const InvocationContext context{.request_id = "request-7",
@@ -171,10 +178,11 @@ TEST(Dispatcher, ReturnsNotFoundBeforeArgumentValidationForUnknownAction) {
 TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
     Registry registry;
     registerMath(registry);
-    ASSERT_TRUE(
-        registry.registerAction(action("math.add", {{.name = "second", .type = integerType()},
-                                                    {.name = "first", .type = integerType()}}),
-                                std::make_unique<BusinessFailureAction>()));
+    ASSERT_TRUE(registry.registerAction(
+        action("math.add",
+               {{.name = "second", .description = {}, .type = integerType(), .default_value = {}},
+                {.name = "first", .description = {}, .type = integerType(), .default_value = {}}}),
+        std::make_unique<BusinessFailureAction>()));
     Dispatcher dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
@@ -192,10 +200,11 @@ TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
 TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
     Registry registry;
     registerMath(registry);
-    ASSERT_TRUE(
-        registry.registerAction(action("math.add", {{.name = "left", .type = integerType()},
-                                                    {.name = "right", .type = integerType()}}),
-                                std::make_unique<BusinessFailureAction>()));
+    ASSERT_TRUE(registry.registerAction(
+        action("math.add",
+               {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
+                {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
+        std::make_unique<BusinessFailureAction>()));
     Dispatcher dispatcher{registry};
 
     const auto result = dispatcher.invoke(
@@ -214,10 +223,11 @@ TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
 TEST(Dispatcher, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
     Registry registry;
     registerMath(registry);
-    ASSERT_TRUE(
-        registry.registerAction(action("math.add", {{.name = "left", .type = integerType()},
-                                                    {.name = "right", .type = integerType()}}),
-                                std::make_unique<BusinessFailureAction>()));
+    ASSERT_TRUE(registry.registerAction(
+        action("math.add",
+               {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
+                {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
+        std::make_unique<BusinessFailureAction>()));
     Dispatcher dispatcher{registry};
     const Arguments base{{"left", Value{1}}, {"right", Value{2}}};
 

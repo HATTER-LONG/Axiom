@@ -22,12 +22,13 @@ Responsible for:
 - confirming scope, owning module, acceptance criteria, and preserved behavior;
 - decomposing work into dependency-ordered subtasks;
 - identifying tasks that can run in parallel;
-- creating isolated Worktrees;
+- creating isolated Worktrees with unique names;
 - scheduling Implementers;
 - integrating committed results;
 - running integrated `hardening` and final `full`;
 - routing Gate and Review findings;
-- coordinating repairs;
+- applying simple repairs in the Primary working tree without a sub-agent;
+- coordinating repairs that need a new task boundary;
 - confirming final delivery.
 
 The Primary defines boundaries, dependencies, and constraints, but does not prescribe implementation details.
@@ -106,6 +107,10 @@ Primary
 Rules:
 
 - one Worktree belongs to one task at a time;
+- every concurrent Worktree must use a distinct directory name and Git branch name;
+- name Worktrees from the unique task id, for example `worktree/task-a` and `worktree/task-b`;
+- never assign two parallel Implementer or Repair tasks the same Worktree path or branch;
+- a name may be reused only after that Worktree has been removed;
 - Implementers must not modify other Worktrees;
 - Implementers must not independently merge, rebase, or synchronize other task branches;
 - agents exchange results only through committed Git history;
@@ -207,25 +212,28 @@ Integrated correctness must be validated again by the Primary.
 
 When `hardening` or `full` fails:
 
-- if the failure clearly belongs to an existing subtask, prefer the original Implementer;
-- if the failure is cross-cutting, integration-related, or ownership is unclear, create a new Repair Agent.
+- if the failure is simple, the Primary repairs it in the Primary working tree and does not create a sub-agent;
+- if the failure is not simple and clearly belongs to an existing subtask, prefer the original Implementer;
+- if the failure is not simple and is cross-cutting, integration-related, or ownership is unclear, create a new Repair Agent.
 
-Every repair must use a new isolated Repair Worktree created from the current Primary HEAD.
+A failure is simple when it is localized, has no Public API or ownership change, and the Primary can complete it without a new task boundary. Examples: typo, missing include, one-line test or documentation correction, CheckFlow or skill configuration. If the Primary is not certain, treat it as not simple.
+
+Non-simple repairs must use a new isolated Repair Worktree created from the current Primary HEAD. That Worktree name must not collide with any other live Worktree.
 
 ```text
 Gate Failure
     ↓
-Determine ownership
+Primary judges complexity
     ↓
-Repair Worktree
+Simple: Primary repairs in place
     ↓
-Repair
+Not simple: Repair Worktree + Agent
     ↓
 checkflow fast
     ↓
 commit
     ↓
-Primary integrate
+Primary integrate when a Worktree was used
     ↓
 Rerun affected Gate
 ```
@@ -267,18 +275,23 @@ The Primary must record the reviewed commit range.
 
 For findings:
 
+- if the finding is simple, the Primary repairs it in the Primary working tree;
+- otherwise follow the non-simple repair path with a uniquely named Repair Worktree.
+
 ```text
 Finding
    ↓
-Determine ownership
+Primary judges complexity
    ↓
-Repair Worktree
+Simple: Primary repairs in place
+   ↓
+Not simple: Repair Worktree + Agent
    ↓
 checkflow fast
    ↓
 commit
    ↓
-Primary integrate
+Primary integrate when a Worktree was used
    ↓
 checkflow hardening
    ↓
@@ -298,6 +311,7 @@ The Primary integrates subtasks according to dependency order.
 When conflicts occur:
 
 - first determine whether the conflict is purely textual;
+- if the conflict is purely textual and the resolution is simple, the Primary may resolve it;
 - if behavior, interfaces, or design semantics are involved, route the issue to the relevant Implementer or Repair Agent;
 - do not mechanically resolve semantic conflicts and continue.
 

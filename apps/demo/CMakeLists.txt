@@ -1,9 +1,5 @@
-add_executable(axiom_demo main.cpp)
-axiom_configure_language_diagnostics(axiom_demo)
-axiom_configure_static_analyzers(axiom_demo)
-axiom_configure_sanitizers(axiom_demo)
-axiom_configure_coverage(axiom_demo)
-target_compile_features(axiom_demo PRIVATE cxx_std_20)
+add_executable(axiom_demo main.cpp action_demo.cpp base_demo.cpp demo_output.cpp logging_demo.cpp
+                          resource_demo.cpp)
+axiom_configure_target(axiom_demo)
 target_link_libraries(axiom_demo PRIVATE Axiom::Core)
-
-axiom_configure_sanitizer_runtime(axiom_demo)
+axiom_deploy_runtime(axiom_demo)

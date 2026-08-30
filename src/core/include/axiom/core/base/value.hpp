@@ -1,5 +1,7 @@
 #pragma once
 
+#include <axiom/core/export.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -20,7 +22,7 @@ namespace axiom::core {
  * Value access failures are local programming errors. They are intentionally distinct
  * from Error, which represents expected failures at a public invocation boundary.
  */
-class ValueTypeError final : public std::logic_error {
+class AXIOM_CORE_API ValueTypeError final : public std::logic_error {
 public:
     /**
      * @brief Creates a type-access error.
@@ -39,7 +41,7 @@ public:
  * @note Moving a Value transfers its payload and leaves the source as Null. Self-move
  * assignment leaves the Value unchanged.
  */
-class Value {
+class AXIOM_CORE_API Value {
 public:
     /** @brief The logical type currently held by a Value. */
     enum class Type : std::uint8_t { Null, Boolean, Integer, Number, String, Array, Object };

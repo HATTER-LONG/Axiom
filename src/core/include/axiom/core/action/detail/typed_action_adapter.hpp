@@ -88,13 +88,29 @@ template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor();
 template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor() {
     using Type = std::remove_cvref_t<T>;
     if constexpr(std::is_same_v<Type, bool>) {
-        return {.kind = TypeDescriptor::Kind::Boolean};
+        return {.kind = TypeDescriptor::Kind::Boolean,
+                .description = {},
+                .element_type = {},
+                .fields = {},
+                .value_type = {}};
     } else if constexpr(value_converter_detail::IS_SIGNED_INTEGER<Type>) {
-        return {.kind = TypeDescriptor::Kind::Integer};
+        return {.kind = TypeDescriptor::Kind::Integer,
+                .description = {},
+                .element_type = {},
+                .fields = {},
+                .value_type = {}};
     } else if constexpr(std::is_floating_point_v<Type>) {
-        return {.kind = TypeDescriptor::Kind::Number};
+        return {.kind = TypeDescriptor::Kind::Number,
+                .description = {},
+                .element_type = {},
+                .fields = {},
+                .value_type = {}};
     } else if constexpr(std::is_same_v<Type, std::string>) {
-        return {.kind = TypeDescriptor::Kind::String};
+        return {.kind = TypeDescriptor::Kind::String,
+                .description = {},
+                .element_type = {},
+                .fields = {},
+                .value_type = {}};
     } else if constexpr(value_converter_detail::IsVector<Type>::value) {
         return TypeDescriptor::array(
             typeDescriptorFor<typename value_converter_detail::IsVector<Type>::ElementType>());
@@ -110,11 +126,19 @@ template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor() {
 template <typename Return> [[nodiscard]] TypeDescriptor returnTypeDescriptor() {
     using Type = std::remove_cvref_t<Return>;
     if constexpr(std::is_void_v<Type>) {
-        return {.kind = TypeDescriptor::Kind::Null};
+        return {.kind = TypeDescriptor::Kind::Null,
+                .description = {},
+                .element_type = {},
+                .fields = {},
+                .value_type = {}};
     } else if constexpr(ResultValue<Type>::IS_RESULT) {
         using ResultType = ResultValue<Type>::ValueType;
         if constexpr(std::is_void_v<ResultType>) {
-            return {.kind = TypeDescriptor::Kind::Null};
+            return {.kind = TypeDescriptor::Kind::Null,
+                    .description = {},
+                    .element_type = {},
+                    .fields = {},
+                    .value_type = {}};
         } else {
             return typeDescriptorFor<ResultType>();
         }

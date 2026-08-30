@@ -5,6 +5,7 @@
  * @brief Sink interface that consumes LogRecord values from a LoggingService.
  */
 
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_record.hpp>
 
 namespace axiom::core::logging {
@@ -15,7 +16,7 @@ namespace axiom::core::logging {
  * @note consume and flush implementations may throw. LoggingService catches those
  * failures, continues with remaining sinks, and does not propagate them to callers.
  */
-class ILogSink {
+class AXIOM_CORE_API ILogSink {
 public:
     virtual ~ILogSink() = default;
 

@@ -139,7 +139,8 @@ TEST(Value, MoveAssignmentTransfersObjectAndResetsSourceToNull) {
 TEST(Value, SelfMoveAssignmentPreservesValue) {
     axiom::core::Value value{axiom::core::Value::Object{{"answer", axiom::core::Value{42}}}};
 
-    value = std::move(value);
+    auto& same_value = value;
+    value = std::move(same_value);
 
     EXPECT_EQ(value.asObject().at("answer").asInteger(), 42);
 }
@@ -256,4 +257,29 @@ TEST(ResultVoid, AllowsMutableErrorAccess) {
     result.error().message = "after";
 
     EXPECT_EQ(result.error().message, "after");
+}
+TEST(ResultVoid, MutableFailureAccessPreservesStructuredError) {
+    auto failure = axiom::core::Result<void>::failure({
+        .code = axiom::core::ErrorCode::NotFound,
+        .message = "missing",
+        .path = "resource",
+        .details = axiom::core::Value{7},
+    });
+    auto& error = failure.error();
+    EXPECT_EQ(error.code, axiom::core::ErrorCode::NotFound);
+    EXPECT_EQ(error.path, "resource");
+    ASSERT_TRUE(error.details.has_value());
+    EXPECT_EQ(error.details.value_or(axiom::core::Value{}).asInteger(), 7);
+    error.message = "changed";
+    EXPECT_EQ(std::as_const(failure).error().message, "changed");
+}
+
+TEST(ResultValue, RejectsMutableErrorAccessOnSuccess) {
+    auto result = axiom::core::Result<axiom::core::Value>::success(axiom::core::Value{7});
+    EXPECT_THROW(static_cast<void>(result.error()), std::logic_error);
+}
+
+TEST(ResultVoid, RejectsMutableErrorAccessOnSuccess) {
+    auto result = axiom::core::Result<void>::success();
+    EXPECT_THROW(static_cast<void>(result.error()), std::logic_error);
 }

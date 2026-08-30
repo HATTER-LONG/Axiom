@@ -6,6 +6,7 @@
  */
 
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_level.hpp>
 #include <axiom/core/logging/scoped_log_context.hpp>
 
@@ -28,7 +29,7 @@ class LoggingState;
  * A default-constructed Logger is a safe no-op. Logger values may be copied and safely
  * carried across threads; scoped context is deliberately not carried across threads.
  */
-class Logger {
+class AXIOM_CORE_API Logger {
 public:
     /** @brief Creates a no-op Logger that ignores all write operations. */
     Logger() noexcept = default;

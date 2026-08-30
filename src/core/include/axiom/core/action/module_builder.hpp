@@ -8,6 +8,7 @@
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/export.hpp>
 
 #include <concepts>
 #include <cstddef>
@@ -97,7 +98,7 @@ param(std::string name,
  * function objects, non-copyable captures, and raw member-function pointers are
  * rejected at compile time; use bindMember() to retain a shared object explicitly.
  */
-class ModuleBuilder {
+class AXIOM_CORE_API ModuleBuilder {
 public:
     /**
      * @brief Starts a detached Module definition.

@@ -108,10 +108,11 @@ Registry 冲突/有序发现、Runtime 端到端调用、默认参数、`void`/`
 异常归一化。demo 注册 `math.add` 与 `math.divide`，展示成功调用、业务错误和未知参数错误。
 安装消费测试验证 `find_package(Axiom CONFIG)` 与 `Axiom::Core` 导出目标。
 
-构建契约由 CMake 3.25+ 和 C++20 定义，生产 target 为静态 `Axiom::Core`（内部 target 名
+构建契约由 CMake 3.25+ 和 C++20 定义，生产 target 为默认静态、可选动态的 `Axiom::Core`（内部 target 名
 `axiom_core`），公开头安装到 `include/axiom/core`。质量流程以 `checkflow.json` 为准：
 `fast` 执行架构、配置、构建、CTest 和覆盖率；`full` 增加格式、复杂度、cppcheck 和
-clang-tidy；`hardening` 执行 ASan/UBSan 测试及 Mull 变异测试。
+clang-tidy，以及独立的静态/动态库安装消费测试；`hardening` 执行 ASan/UBSan 测试及
+Mull 变异测试。覆盖率和 hardening 均使用静态 Core，动态兼容性使用独立构建目录。
 
 ## 8. 演进约束
 

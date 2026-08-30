@@ -6,6 +6,7 @@
  */
 
 #include <axiom/core/base/value.hpp>
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_filter.hpp>
 #include <axiom/core/logging/log_sink.hpp>
 #include <axiom/core/logging/logger.hpp>
@@ -27,7 +28,7 @@ class LoggingState;
  * An empty subscription has no effect and is useful when a caller elects not to
  * register a sink.
  */
-class LogSubscription {
+class AXIOM_CORE_API LogSubscription {
 public:
     /** @brief Creates an empty subscription that owns no sink. */
     LogSubscription() noexcept = default;
@@ -71,7 +72,7 @@ private:
  * allowing sinks to safely log recursively. The current implementation dispatches
  * synchronously, but callers must use flush() when they need an observability barrier.
  */
-class LoggingService {
+class AXIOM_CORE_API LoggingService {
 public:
     /** @brief Creates a service with no registered sinks. */
     LoggingService();

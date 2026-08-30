@@ -15,17 +15,33 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
-The demo prints `Axiom`. Use the `debug` preset when you need an unoptimized
-debug build:
+The demo walks through Core actions, logging, and resource behavior. `debug` uses
+an unoptimized build. Both development presets build tests; run them with
+`ctest --preset dev` or `ctest --preset debug`.
 
-```sh
-cmake --preset debug
-cmake --build --preset debug
-```
+Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) to see the walkthrough.
+The resource example in `apps/demo/resource_demo.cpp` specializes `ResourceTraits` for an
+accumulator, transfers ownership to `ResourceRegistry`, and round-trips a typed
+`Handle` through its `ResourceId` text. It resolves a `ResourceRef` to update the
+accumulator, then removes the registration: new lookups return `NotFound`, while
+the retained reference can still access the object until it leaves scope. The
+`axiom.demo` CTest smoke test checks these steps and fails on unexpected behavior.
 
-The installed-package consumer test is disabled during normal development because
-it performs a separate install, configure, and build. Enable it for release
-validation with `-DAXIOM_BUILD_INSTALL_TEST=ON`.
+The demo is split by responsibility: `main.cpp` sequences the walkthrough and handles
+exceptions; `base_demo` covers identity and Value; `action_demo` owns registration,
+discovery, and invocation; `resource_demo` covers resource lifetimes; `logging_demo`
+owns sinks, subscriptions, and log queries. Each example has a small header; its
+implementation helpers stay private. `accumulator.hpp` holds the shared example
+type, and `demo_output` handles common console formatting.
+
+Core is static by default. To select a shared library, use a separate build
+with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Core`.
+`BUILD_TESTING=OFF` disables tests. Axiom does not enable CTest when embedded
+with `add_subdirectory()`.
+
+Installation testing is opt-in (`AXIOM_BUILD_INSTALL_TEST=ON`) and requires an
+uninstrumented build. The test installs and relocates the package, then configures,
+builds and runs a standalone consumer with the same toolchain and configuration.
 
 ## Use as a CMake package
 
@@ -65,197 +81,125 @@ lossy and implicit string conversions are rejected. Optional parameters use
 validated `param(..., default_value)` values. The runtime is intentionally not
 thread-safe: registration, discovery, and invocation must not run concurrently.
 Core does not provide protocol adapters, JSON serialization, networking, plugins,
-logging, authorization, or asynchronous execution.
+authorization, or asynchronous execution.
 
 ## Project layout
 
 | Path | Purpose |
 | ---- | ------- |
-| `src/core` | Installable `Axiom::Core` library and its public headers. |
-| `apps/demo` | Minimal executable that consumes the core library. |
-| `tests` | Unit and installed-package integration tests. |
-| `checkflow.json` | Versioned CheckFlow quality-gate flow definitions. |
-| `.checkflow/tools` | Axiom-specific architecture, formatting, and mutation-quality Tools. |
-| `quality` | Versioned quality profile and architecture policy. |
+| `src/core` | Installable `Axiom::Core` library and public headers. |
+| `apps/demo` | Application consuming the same Core target as other clients. |
+| `tests` | GoogleTest suites and installed-package consumer. |
+| `cmake` | Target policy, runtime deployment and build verification. |
+| `checkflow.json` | Quality flow ordering and thresholds (the single policy source). |
+| `CMakePresets.json` | Compiler, library kind, instrumentation and build directories. |
+| `.checkflow/tools` | Architecture and non-mutating source-format adapters. |
+| `quality/architecture_rules.json` | Direct-include dependency policy. |
 
 ## Quality gates
 
-Run gates through the globally installed `checkflow` command so agents get one
-compact JSON result rather than compiler logs. A non-zero exit code always means
-the selected gate failed.
+Use the globally installed `checkflow`; no project-local Python environment is required.
 
 ```sh
+checkflow doctor
 checkflow fast
-checkflow full
 checkflow hardening
-checkflow doctor
+checkflow full
 ```
 
-Add `-v` or `--verbose` before or after the gate name to print each executed
-command, its combined output, and its exit code to stderr. The JSON report stays
-on stdout for machine consumption.
+| Flow | Checks |
+| ---- | ------ |
+| `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity. |
+| `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, plus uninstrumented static/shared tests and installed consumers. |
+| `hardening` | Static ASan/UBSan tests, including a UBSan termination regression, then a separate static Mull build and report-integrity check. |
 
-`fast` validates architecture, configures and builds `quality-fast`, runs CTest,
-and measures LLVM coverage. `full` adds whole-project complexity, cppcheck,
-clang-tidy, and non-mutating clang-format checks before its CTest and coverage
-steps. The installed-package consumer is enabled by the `quality-fast` preset
-but is not a CheckFlow step; enable it explicitly with
-`-DAXIOM_BUILD_INSTALL_TEST=ON` when running CTest. `hardening`
-runs ASan/UBSan tests plus a separate Mull build with a 90% mutation threshold.
-Use `checkflow doctor` to validate the declared tools before executing a flow.
+Coverage must reach **90% for each of lines, regions and branches**. The test executable
+links the entire static Core archive so unreferenced translation units cannot disappear
+from the denominator. CheckFlow discovers the executable through CTest; no platform
+filenames are embedded in the flow. An additional check rejects LLVM diagnostics
+(including mismatched profiles) and missing Core implementation files. Failed coverage
+produces `coverage-export.json` in the build directory.
 
-`fast` and `full` build with LLVM source-based coverage instrumentation and fail
-when the test suite's line coverage drops below 90%; the report also records
-region and branch coverage and writes a compact, agent-oriented
-`coverage-export.json` into the build directory. It uses repository-relative
-source paths, run-length encoded line hit counts, grouped branch hit counts,
-an inline legend for the array fields, and omits fully covered files while
-recording their count. Add `--coverage-html` to additionally
-render the browsable
-`llvm-cov` HTML report into `coverage-html/` next to it.
+Mutation testing must reach **90%** and its report must include implementation mutants
+under `src/core/src`, not only instantiated headers. Coverage and Mull intentionally
+require static Core. The independent `quality-shared` preset validates the DLL boundary
+using the existing tests; it uses Ninja Multi-Config and Release to exercise configuration
+selection during installation. Internal Registry/Dispatcher tests compile their private
+implementations locally in shared builds; public Runtime tests still execute the DLL.
 
-For diagnosis, without executing a flow:
+UBSan is configured to stop the process on a finding. Sanitizer availability and the
+selected combination are checked at configure time; unsupported combinations fail.
+MemorySanitizer also needs an appropriately instrumented dependency/standard-library
+toolchain; a successful compiler probe alone does not guarantee runtime usability.
+
+Commands return compact JSON reports. `--verbose` reports progress; `--diagnostic`
+includes raw execution details. A failed prerequisite prevents its dependent checks
+from running. Inspect skipped/unavailable tools: a skipped capability is not verified.
+Reports use the installed CheckFlow schema; there is no separate repository point-score
+system or secondary quality profile.
+
+For explicit build/test runs:
 
 ```sh
-checkflow doctor
-checkflow doctor fast
-checkflow fast --diagnostic
+cmake --preset quality-shared
+cmake --build --preset quality-shared
+ctest --preset quality-shared
 ```
 
-The analyzer inspections and the full gate scan every project compilation
-unit from CMake's compilation database.
+Build parallelism is not fixed by the repository. Use `CMAKE_BUILD_PARALLEL_LEVEL`,
+`cmake --build ... --parallel N`, or a local `CMakeUserPresets.json`.
 
-### Gate results, score, and blocking
+## Build policy and dependencies
 
-Each invocation writes one `axiom-quality/v2` JSON report. Every check has a
-maximum score and one of four statuses:
+The public target requires C++20. Strict standard conformance and baseline warnings
+are always enabled for Axiom-owned targets. `AXIOM_WARNINGS_AS_ERRORS` defaults on for
+standalone builds and off when embedded. Standard CMake analyzer/launcher settings
+are respected; Axiom never deletes caller-owned analyzer cache entries. Optional examples:
 
-| Status | Meaning | Effect on gate and score |
-| ------ | ------- | ------------------------ |
-| `pass` | The check ran and met its criterion. | Contributes its full score. |
-| `fail` | The check ran but its command, threshold, or validation failed. | Fails the gate and contributes zero. |
-| `blocked` | A prerequisite check failed, so this check was not run. | Fails the gate and contributes zero. |
-| `skipped` | A required external tool is absent or unsupported on this platform. | Is reported to stderr, does not fail the gate, and is excluded from the score denominator. |
+```sh
+cmake --preset dev -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+cmake --preset dev -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+cmake --preset dev -DAXIOM_BUILD_DOCS=ON
+cmake --build --preset dev --target docs
+```
 
-Thus `passed` is true only when every recorded check is `pass` or `skipped`.
-The total score is the sum of passed checks divided by the sum of all checks
-except skipped checks. A gate can therefore pass with a reduced maximum score:
-this means an optional capability was not verified, not that it passed. A tool
-that starts but returns a non-zero exit code is always a `fail`; it is never
-converted into a skip.
+The former `AXIOM_BUILD_TESTS`, `AXIOM_STRICT_LANGUAGE_MODE`, `AXIOM_STATIC_ANALYZERS`
+and `AXIOM_USE_CCACHE` switches were removed. Use `BUILD_TESTING`, the fixed conformance
+policy, standard CMake analyzer variables and `CMAKE_CXX_COMPILER_LAUNCHER` respectively.
+Recreate old build directories when migrating away from historical global tool flags.
 
-The gates are sequential where later checks depend on earlier build artifacts.
-A failed configure step blocks the build, tests, coverage, and compilation-
-database analyzers; a failed build similarly blocks its dependents. If the
-required executable for such a prerequisite is unavailable, both it and its
-dependents are instead skipped to avoid running against stale build artifacts.
-Independent tools (formatting, complexity, and individual analyzers) are
-skipped only for their own missing tools.
+CPM pins spdlog 1.17.0 and GoogleTest 1.18.0. spdlog and bundled fmt are private
+header dependencies; Core retains their `Threads::Threads` requirement. GoogleTest
+is test-only and explicitly static, regardless of Core's library kind. No sanitizer
+or ccache CMake integration is downloaded.
 
-The nominal point totals, before skips, are 75 for `fast`, 105 for `full`, and
-90 for `hardening`. `fast` checks architecture (10), configure (10), build
-(20), tests (15), and coverage (10). `full` additionally checks formatting (10),
-complexity (10), cppcheck (10), and clang-tidy (10). `hardening`
-contains a 45-point ASan/UBSan configure-build-test path and a separate 45-point
-Mull configure-build-mutation path.
+CPM honors `CPM_SOURCE_CACHE` from CMake or the environment. Defaults are
+`%LOCALAPPDATA%/CPM` on Windows and `$XDG_CACHE_HOME/CPM` or `~/.cache/CPM` on Unix;
+without a user cache location, CPM uses its build-tree fallback. Compiler and analysis
+tools are installed separately, not downloaded by CPM.
 
-### Architecture rules
-
-[`quality/architecture_rules.json`](quality/architecture_rules.json) is a small,
-versioned policy file consumed by the `architecture` check. Its current rule
-forbids files below `src/core/` from directly including headers below `apps/` or
-`tests/`. This preserves the intended dependency direction: reusable production
-code may be used by the demo and tests, but cannot depend on either of them.
-
-For this small project, the rule is a sensible, cheap guard: it is declarative,
-runs without a compiler database, scans headers as well as implementation files,
-and reports the offending file, line, include, and rule ID. It deliberately
-checks only direct textual `#include` directives, however; it does not prove a
-complete dependency graph, detect transitive dependencies, or validate every
-possible module boundary. As the project grows, add similarly narrow rules for
-each stable layer, and use the compilation database or a dedicated dependency
-analysis tool when transitive architectural enforcement becomes necessary.
+Core uses hidden visibility with explicit API exports. PIC remains enabled for static
+Core so consumers can embed it in a shared object. During the 0.x development series,
+the shared-library ABI identity is major.minor (currently 0.1); package compatibility
+is limited to the same minor version. Binary consumers must use a compatible C++ ABI,
+standard library and runtime. No cross-toolchain ABI stability is promised.
 
 ## Developer tools
 
-Install the following tools yourself before using the matching gate or feature.
-They are not downloaded by CPM.
+| Tool | Required for |
+| ---- | ------------ |
+| CMake 3.25+, Ninja, C++20 compiler | Builds; shared validation also uses Ninja Multi-Config. |
+| CheckFlow | Quality orchestration. |
+| Clang, llvm-profdata, llvm-cov | Quality builds and coverage. |
+| clang-format, clang-tidy, cppcheck, Lizard | Full static checks. |
+| Mull matching the Clang major version | Mutation testing in hardening. |
+| Doxygen | Optional API documentation. |
+| ccache | Optional standard compiler launcher. |
 
-| Tool                        | Used for                                                                                          | When required                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| CheckFlow                   | Run the repository quality gates                                                                   | Quality gates                                    |
-| CMake 3.25+ and Ninja       | Configure and build                                                                               | Builds and quality gates                         |
-| A C++20 compiler            | Build the project                                                                                 | Builds                                            |
-| LLVM/Clang                  | `clang++`, `clang-tidy`, `clang-format`, clangd, AddressSanitizer, and UndefinedBehaviorSanitizer | All quality gates                                |
-| `llvm-profdata`, `llvm-cov` | Test coverage measurement                                                                         | `fast`, `full`, and the coverage inspection      |
-| cppcheck                    | Static analysis                                                                                   | `fast`, `full`, and its inspection               |
-| Mull                        | C++ mutation testing                                                                              | `hardening`                                      |
-| Doxygen                     | API documentation                                                                                 | `-DAXIOM_BUILD_DOCS=ON`                          |
-| ccache                      | Compiler cache                                                                                    | Optional: `-DAXIOM_USE_CCACHE=ON`                |
-| Lizard                      | Function complexity, length, and parameter-count thresholds                                       | `fast`, `full`, and its inspection               |
+Mull support is platform-dependent; use a supported Linux/macOS environment (or WSL)
+for the mutation gate. On Windows, sanitizer builds locate the runtime using the selected
+Clang driver and target architecture, and fail if its required DLL is missing.
 
-`clang-tidy`, `clang-format`, `llvm-profdata`, and `llvm-cov` are distributed as
-part of LLVM. `full` and `inspect format` run non-mutating `--dry-run --Werror`
-diagnostics. Their JSON result lists files requiring formatting without embedding
-clang-format's line-by-line diagnostic output.
-
-The `quality-hardening` configuration uses LLVM's compiler and runtime. On Windows, the build
-copies the AddressSanitizer runtime DLL next to the executable when available. The separate
-`quality-mutation` configuration uses Mull's LLVM IR frontend. Matching unversioned tools or pairs such
-as `mull-runner-22` and `mull-ir-frontend-22` are detected from `PATH`; Mull must match the LLVM toolchain.
-Mull 0.34 does not support native Windows: run the `hardening` gate in WSL, Linux, or macOS. For
-this machine, install a Linux distribution for WSL first, then build/install the Mull source there
-and run `checkflow hardening` from the Linux checkout of Axiom. The
-versioned executable and frontend plugin must use the same LLVM major version as `clang++`.
-
-### Lizard complexity analysis
-
-Lizard is a Python-based complexity analyzer for C/C++ that does not require a
-complete include graph. Install it with Python 3.10 or later:
-
-```sh
-python -m pip install lizard
-```
-
-Analyze the project sources and tests with the same thresholds used by the
-quality gates:
-
-```sh
-lizard -l cpp -C 10 -L 80 -a 5 src apps tests
-```
-
-Use `-C <limit>` to set the cyclomatic-complexity threshold and `-L <limit>`
-to set the function-length threshold; `-a <limit>` controls parameter count.
-Violations produce a non-zero exit status. These syntax-level quantitative limits
-complement clang-tidy: `readability-function-size` retains only nesting depth,
-`readability-function-cognitive-complexity` measures human-oriented control-flow
-difficulty, and `misc-include-cleaner` performs semantic include diagnostics.
-
-### CPM-managed dependencies
-
-CPM downloads only project dependencies and CMake integrations into the user
-cache directory `~/.cache/CPM`:
-
-- GoogleTest 1.18.0, when `BUILD_TESTING=ON`;
-- CPM.cmake itself when a CPM-managed feature is configured;
-- the `cmake-scripts` sanitizer integration when `AXIOM_SANITIZERS` is enabled;
-- the `Ccache.cmake` integration when `AXIOM_USE_CCACHE=ON`.
-
-These downloads do not install the compiler, analysis tools, Doxygen, or the
-`ccache` executable.
-
-### CMake presets
-
-```sh
-cmake --preset quality-fast
-cmake --build --preset quality-fast
-ctest --preset quality-fast
-```
-
-CheckFlow is the preferred entry point because it combines these
-commands with the architecture, complexity, formatting, and analyzer checks.
-
-### Gate validation
-
-Run `checkflow doctor` after changing `checkflow.json` or a
-project Tool, then run `fast`, `full`, or `hardening` as appropriate.
+The architecture policy checks direct textual includes in source, application and test
+headers/implementations. It enforces declared layer boundaries but is not a transitive
+C++ dependency analysis. See `quality/architecture_rules.json` for the actual rules.

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file invocation_context.hpp
+ * @brief Caller-owned diagnostic context for action invocations.
+ */
+
 #include <functional>
 #include <map>
 #include <string>
