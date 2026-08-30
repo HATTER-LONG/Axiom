@@ -1,14 +1,14 @@
 # Axiom Core Resource / Handle 需求设计
 
-> 状态：待实现；本文确定 MVP 契约，不代表当前 API 已提供。
-> 范围：在 `Axiom::Core` 中新增独立的 `axiom::core::resource` 子系统。
+> 状态：MVP 已实现。本文记录已交付契约；第 8 节的 Value / Action 接入仍属后续设计，不是当前 API。
+> 范围：`Axiom::Core` 中的独立 `axiom::core::resource` 子系统。
 
 ## 1. 目标与仓库现状
 
 为不适合直接放进 `Value` 的复杂 C++ 对象提供统一资源管理，例如 `Document / Mesh /
 Shape / Scene`。对象留在 C++ 侧，调用方通过稳定 ID 和类型安全句柄引用它们。
 
-当前仓库已有 `base`、`action` 和 `logging`，尚无 Resource 子系统：
+当前仓库已有 `base`、`action`、`logging` 和 `resource`：
 
 - `Value` 与 `TypeDescriptor` 仅覆盖标量、Array 和 Object，不支持资源类型。
 - `Result<T>` 支持承载 move-only 值；`ErrorCode` 已有 `InvalidArgument`、`NotFound`、
@@ -200,7 +200,8 @@ GoogleTest 验收至少覆盖：
 
 实质实现完成后执行 `checkflow hardening`，交付前执行 `checkflow full`。现有 Value、
 Runtime、Logging 和安装测试不得退化，不降低覆盖率、静态分析或变异测试规则。
-本次仅交付需求文档，不创建上述源码或提前开放接口。
+MVP 已按上述三个增量交付；第 8 节仍为后续设计，不以 Value 资源变体或 Action 转换器
+为当前接口。
 
 ## 8. 第二阶段：Value 与 Action 接入
 

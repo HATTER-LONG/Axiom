@@ -12,9 +12,29 @@
       "forbidden": ["axiom/core/action/"]
     },
     {
+      "id": "core-base-must-not-depend-on-resource",
+      "from": ["src/core/include/axiom/core/base/", "src/core/src/base/"],
+      "forbidden": ["axiom/core/resource/"]
+    },
+    {
       "id": "core-logging-must-not-depend-on-upper-layers",
       "from": ["src/core/include/axiom/core/logging/", "src/core/src/logging/"],
       "forbidden": ["axiom/core/action/", "apps/", "Qt", "Q", "axiom/agent/", "agent/"]
+    },
+    {
+      "id": "core-resource-must-not-depend-on-upper-layers",
+      "from": ["src/core/include/axiom/core/resource/", "src/core/src/resource/"],
+      "forbidden": [
+        "axiom/core/action/",
+        "axiom/core/logging/",
+        "apps/",
+        "Qt",
+        "Q",
+        "boost/",
+        "Boost/",
+        "opencascade/",
+        "OpenCASCADE"
+      ]
     }
   ]
 }

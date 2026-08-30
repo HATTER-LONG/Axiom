@@ -2,7 +2,7 @@
 
 /**
  * @file core.hpp
- * @brief Umbrella header for the Axiom Core public surface (base, action, logging).
+ * @brief Umbrella header for the Axiom Core public surface (base, action, logging, resource).
  *
  * Prefer including this header from application and test code. Module-internal
  * translation units may include the narrower headers they need.
@@ -31,6 +31,11 @@
 #include <axiom/core/logging/logger.hpp>
 #include <axiom/core/logging/logging_service.hpp>
 #include <axiom/core/logging/scoped_log_context.hpp>
+#include <axiom/core/resource/handle.hpp>
+#include <axiom/core/resource/resource_id.hpp>
+#include <axiom/core/resource/resource_ref.hpp>
+#include <axiom/core/resource/resource_registry.hpp>
+#include <axiom/core/resource/resource_traits.hpp>
 // IWYU pragma: end_exports
 
 #include <string_view>

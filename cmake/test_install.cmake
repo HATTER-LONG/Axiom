@@ -3,9 +3,57 @@ if (NOT DEFINED AXIOM_SOURCE_DIR OR NOT DEFINED AXIOM_BINARY_DIR OR NOT DEFINED 
     message(FATAL_ERROR "The Axiom install test requires source, binary, generator, and tool paths")
 endif ()
 
-set(axiom_install_prefix "${AXIOM_BINARY_DIR}/install-test")
-set(axiom_consumer_binary_dir "${AXIOM_BINARY_DIR}/install-test-consumer")
-file(REMOVE_RECURSE "${axiom_install_prefix}" "${axiom_consumer_binary_dir}")
+set(axiom_package_binary_dir "${AXIOM_BINARY_DIR}")
+if (AXIOM_INSTALL_SHARED)
+    set(axiom_package_binary_dir "${AXIOM_BINARY_DIR}/install-test-shared-lib")
+    set(axiom_install_prefix "${AXIOM_BINARY_DIR}/install-test-shared")
+    set(axiom_consumer_binary_dir "${AXIOM_BINARY_DIR}/install-test-consumer-shared")
+    file(REMOVE_RECURSE "${axiom_package_binary_dir}" "${axiom_install_prefix}"
+         "${axiom_consumer_binary_dir}")
+
+    set(axiom_shared_configure_command
+        ${CMAKE_COMMAND}
+        -S "${AXIOM_SOURCE_DIR}"
+        -B "${axiom_package_binary_dir}"
+        -G "${AXIOM_GENERATOR}"
+        "-DCMAKE_MAKE_PROGRAM=${AXIOM_MAKE_PROGRAM}"
+        "-DCMAKE_CXX_COMPILER=${AXIOM_CXX_COMPILER}"
+        -DBUILD_SHARED_LIBS=ON
+        -DAXIOM_BUILD_DEMO=OFF
+        -DAXIOM_BUILD_TESTS=OFF
+        -DAXIOM_BUILD_INSTALL_TEST=OFF
+        -DAXIOM_COVERAGE=OFF
+        -DAXIOM_SANITIZERS=
+        -DAXIOM_STATIC_ANALYZERS=)
+    if (AXIOM_RC_COMPILER)
+        list(APPEND axiom_shared_configure_command "-DCMAKE_RC_COMPILER=${AXIOM_RC_COMPILER}")
+    endif ()
+    if (AXIOM_INSTALL_CONFIG)
+        list(APPEND axiom_shared_configure_command "-DCMAKE_BUILD_TYPE=${AXIOM_INSTALL_CONFIG}")
+    endif ()
+    execute_process(
+        COMMAND ${axiom_shared_configure_command}
+        RESULT_VARIABLE axiom_shared_configure_result)
+    if (NOT axiom_shared_configure_result EQUAL 0)
+        message(FATAL_ERROR
+                    "Shared Axiom configuration failed with exit code ${axiom_shared_configure_result}")
+    endif ()
+
+    set(axiom_shared_build_command ${CMAKE_COMMAND} --build "${axiom_package_binary_dir}")
+    if (AXIOM_INSTALL_CONFIG)
+        list(APPEND axiom_shared_build_command --config "${AXIOM_INSTALL_CONFIG}")
+    endif ()
+    execute_process(
+        COMMAND ${axiom_shared_build_command}
+        RESULT_VARIABLE axiom_shared_build_result)
+    if (NOT axiom_shared_build_result EQUAL 0)
+        message(FATAL_ERROR "Shared Axiom build failed with exit code ${axiom_shared_build_result}")
+    endif ()
+else ()
+    set(axiom_install_prefix "${AXIOM_BINARY_DIR}/install-test")
+    set(axiom_consumer_binary_dir "${AXIOM_BINARY_DIR}/install-test-consumer")
+    file(REMOVE_RECURSE "${axiom_install_prefix}" "${axiom_consumer_binary_dir}")
+endif ()
 
 set(axiom_consumer_configure_command
     ${CMAKE_COMMAND}
@@ -24,7 +72,8 @@ if (AXIOM_INSTALL_CONFIG)
     list(APPEND axiom_consumer_configure_command "-DCMAKE_BUILD_TYPE=${AXIOM_INSTALL_CONFIG}")
 endif ()
 
-set(axiom_install_command ${CMAKE_COMMAND} --install "${AXIOM_BINARY_DIR}" --prefix "${axiom_install_prefix}")
+set(axiom_install_command ${CMAKE_COMMAND} --install "${axiom_package_binary_dir}" --prefix
+                          "${axiom_install_prefix}")
 if (AXIOM_INSTALL_CONFIG)
     list(APPEND axiom_install_command --config "${AXIOM_INSTALL_CONFIG}")
 endif ()

@@ -50,21 +50,26 @@ if (PROJECT_IS_TOP_LEVEL)
         add_subdirectory(tests)
 
         if (AXIOM_BUILD_INSTALL_TEST)
+            set(axiom_install_test_common
+                ${CMAKE_COMMAND}
+                -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+                -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
+                -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
+                -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
+                -DAXIOM_INSTALL_CONFIG=$<CONFIG>)
             add_test(
                 NAME axiom.install
-                COMMAND
-                    ${CMAKE_COMMAND}
-                    -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-                    -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
-                    -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
-                    -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-                    -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                    -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
-                    -DAXIOM_INSTALL_CONFIG=$<CONFIG>
-                    -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+                COMMAND ${axiom_install_test_common} -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+            add_test(
+                NAME axiom.install.shared
+                COMMAND ${axiom_install_test_common} -DAXIOM_INSTALL_SHARED=ON -P
+                        ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
+            set_tests_properties(axiom.install.shared PROPERTIES TIMEOUT 300)
             if (AXIOM_SANITIZERS)
                 # The install consumer intentionally does not inherit private sanitizer link flags.
-                set_tests_properties(axiom.install PROPERTIES DISABLED TRUE)
+                set_tests_properties(axiom.install axiom.install.shared PROPERTIES DISABLED TRUE)
             endif ()
         endif ()
     endif ()
