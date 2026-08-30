@@ -101,7 +101,7 @@ public:
      * @tparam T Resource type satisfying ResourceHandleTarget.
      * @param handle Identity token to look up in this Registry.
      * @return A ResourceRef to the live object, or a structured failure.
-     * @throws std::bad_alloc If failure diagnostics cannot be allocated.
+     * @throws std::bad_alloc If the keepalive copy or failure diagnostics cannot be allocated.
      */
     template <typename T>
         requires detail::ResourceHandleTarget<T>
