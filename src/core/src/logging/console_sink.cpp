@@ -93,7 +93,7 @@ void scheduleArray(std::string& text, std::vector<RenderTask>& tasks, const Valu
         } else {
             tasks.push_back({.kind = RenderTask::Kind::Text, .text = ", "});
         }
-        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item});
+        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item, .text = {}});
     }
 }
 
@@ -110,8 +110,8 @@ void scheduleObject(std::string& text,
         } else {
             tasks.push_back({.kind = RenderTask::Kind::Text, .text = ", "});
         }
-        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item.second});
-        tasks.push_back({.kind = RenderTask::Kind::Key, .key = &item.first});
+        tasks.push_back({.kind = RenderTask::Kind::Value, .value = &item.second, .text = {}});
+        tasks.push_back({.kind = RenderTask::Kind::Key, .key = &item.first, .text = {}});
     }
 }
 
@@ -159,7 +159,7 @@ void appendTask(std::string& text, std::vector<RenderTask>& tasks, const RenderT
 }
 
 void appendValue(std::string& text, const Value& value) {
-    std::vector<RenderTask> tasks{{.kind = RenderTask::Kind::Value, .value = &value}};
+    std::vector<RenderTask> tasks{{.kind = RenderTask::Kind::Value, .value = &value, .text = {}}};
     // Explicit stack replaces recursion; nested containers push more work onto tasks.
     while(!tasks.empty()) {
         const auto task = tasks.back();
@@ -174,13 +174,13 @@ void appendValue(std::string& text, const Value& value) {
     const auto milliseconds =
         std::chrono::duration_cast<std::chrono::milliseconds>(rounded - seconds);
     const auto raw_time = std::chrono::system_clock::to_time_t(seconds);
-    std::tm utc{};
+    std::tm utc;
 #ifdef _WIN32
     gmtime_s(&utc, &raw_time);
 #else
     gmtime_r(&raw_time, &utc);
 #endif
-    std::array<char, 32> date{};
+    std::array<char, 32> date;
     static_cast<void>(std::strftime(date.data(), date.size(), "%Y-%m-%dT%H:%M:%S", &utc));
     return std::format("{}.{:03}Z", date.data(), milliseconds.count());
 }

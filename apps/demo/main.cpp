@@ -114,8 +114,9 @@ void printError(const Error& error) {
 }
 
 void installSinks(DemoLogging& logging) {
-    logging.console = logging.service.addSink(std::make_shared<ConsoleSink>(),
-                                              LogFilter{.minimum_level = LogLevel::Info});
+    logging.console = logging.service.addSink(
+        std::make_shared<ConsoleSink>(),
+        LogFilter{.minimum_level = LogLevel::Info, .category_prefixes = {}});
     logging.memory = logging.service.addSink(logging.collector);
     logging.callback = logging.service.addSink(std::make_shared<CallbackSink>(
         [count = logging.callback_count](const LogRecord&) { ++*count; }));

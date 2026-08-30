@@ -9,33 +9,37 @@ project(
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(AXIOM_BUILD_DEMO "Build the minimal demonstration application" ${PROJECT_IS_TOP_LEVEL})
-option(AXIOM_BUILD_TESTS "Build Axiom unit and integration tests" OFF)
-option(AXIOM_BUILD_INSTALL_TEST "Build the installed-package consumer test" OFF)
+# Declare this before dependencies so their defaults cannot change our library kind.
+option(BUILD_SHARED_LIBS "Build Axiom as a shared library" OFF)
+option(AXIOM_BUILD_DEMO "Build the demonstration application" ${PROJECT_IS_TOP_LEVEL})
+option(AXIOM_BUILD_INSTALL_TEST "Test the installed, uninstrumented package" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
-option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ${PROJECT_IS_TOP_LEVEL})
 option(AXIOM_COVERAGE "Enable LLVM source-based coverage instrumentation" OFF)
 option(AXIOM_MUTATION_TESTING "Instrument project targets for Mull mutation testing" OFF)
-set(AXIOM_MULL_IR_FRONTEND "" CACHE FILEPATH "Path to the Mull LLVM IR frontend plugin")
-option(AXIOM_STRICT_LANGUAGE_MODE "Enable strict C++ language diagnostics" ON)
+set(AXIOM_MULL_IR_FRONTEND
+    ""
+    CACHE FILEPATH "Path to the Mull LLVM IR frontend plugin")
+mark_as_advanced(AXIOM_MULL_IR_FRONTEND)
 set(AXIOM_SANITIZERS
     ""
     CACHE STRING
-          "Sanitizers: Address, Memory, MemoryWithOrigins, Undefined, Thread, Leak, or a list")
-set(AXIOM_STATIC_ANALYZERS
-    ""
-    CACHE STRING "Static analyzers: clang-tidy, cppcheck, or a semicolon-separated list")
-option(AXIOM_USE_CCACHE "Enable ccache compiler launcher" OFF)
-
-if (NOT CPM_SOURCE_CACHE OR CPM_SOURCE_CACHE STREQUAL "${PROJECT_SOURCE_DIR}/.cache/CPM")
-    set(CPM_SOURCE_CACHE
-        "$ENV{HOME}/.cache/CPM"
-        CACHE PATH "Persistent CPM package source cache" FORCE)
-endif ()
+          "Semicolon-separated sanitizers: Address;Undefined;Thread;Memory;MemoryWithOrigins;Leak")
 
 include("${PROJECT_SOURCE_DIR}/cmake/CPM.cmake")
-include(cmake/tools.cmake)
-axiom_configure_tools()
+include("${PROJECT_SOURCE_DIR}/cmake/tools.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/runtime.cmake")
+axiom_configure_instrumentation()
+
+if (AXIOM_BUILD_DOCS)
+    find_package(Doxygen REQUIRED)
+    configure_file(Doxyfile.in Doxyfile @ONLY)
+    add_custom_target(
+        docs
+        COMMAND Doxygen::doxygen "${PROJECT_BINARY_DIR}/Doxyfile"
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        VERBATIM)
+endif ()
 
 add_subdirectory(src/core)
 
@@ -45,33 +49,11 @@ endif ()
 
 if (PROJECT_IS_TOP_LEVEL)
     include(CTest)
-
-    if (AXIOM_BUILD_TESTS AND BUILD_TESTING)
+    if (AXIOM_BUILD_INSTALL_TEST AND NOT BUILD_TESTING)
+        message(FATAL_ERROR "AXIOM_BUILD_INSTALL_TEST requires BUILD_TESTING=ON")
+    endif ()
+    if (BUILD_TESTING)
         add_subdirectory(tests)
-
-        if (AXIOM_BUILD_INSTALL_TEST)
-            set(axiom_install_test_common
-                ${CMAKE_COMMAND}
-                -DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-                -DAXIOM_BINARY_DIR=${PROJECT_BINARY_DIR}
-                -DAXIOM_GENERATOR=${CMAKE_GENERATOR}
-                -DAXIOM_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-                -DAXIOM_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DAXIOM_RC_COMPILER=${CMAKE_RC_COMPILER}
-                -DAXIOM_INSTALL_CONFIG=$<CONFIG>)
-            add_test(
-                NAME axiom.install
-                COMMAND ${axiom_install_test_common} -P ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
-            add_test(
-                NAME axiom.install.shared
-                COMMAND ${axiom_install_test_common} -DAXIOM_INSTALL_SHARED=ON -P
-                        ${PROJECT_SOURCE_DIR}/cmake/test_install.cmake)
-            set_tests_properties(axiom.install.shared PROPERTIES TIMEOUT 300)
-            if (AXIOM_SANITIZERS)
-                # The install consumer intentionally does not inherit private sanitizer link flags.
-                set_tests_properties(axiom.install axiom.install.shared PROPERTIES DISABLED TRUE)
-            endif ()
-        endif ()
     endif ()
 endif ()
 
@@ -87,7 +69,7 @@ configure_package_config_file(cmake/AxiomConfig.cmake.in "${PROJECT_BINARY_DIR}/
 write_basic_package_version_file(
     "${PROJECT_BINARY_DIR}/AxiomConfigVersion.cmake"
     VERSION "${PROJECT_VERSION}"
-    COMPATIBILITY SameMajorVersion)
+    COMPATIBILITY SameMinorVersion)
 install(
     EXPORT AxiomTargets
     NAMESPACE Axiom::

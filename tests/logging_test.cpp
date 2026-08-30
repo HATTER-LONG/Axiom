@@ -96,7 +96,8 @@ LogRecord record(std::string message,
             .category = std::move(category),
             .source_file = "logging_test.cpp",
             .source_function = "record",
-            .source_line = 1};
+            .source_line = 1,
+            .fields = {}};
 }
 
 void expectRecordMessageAndCategory(const LogRecord& logged) {
@@ -656,7 +657,7 @@ TEST(LogCollector, PreservesEveryMatchWhenTheLimitEqualsTheMatchCount) {
     collector.consume(record("first", LogLevel::Info, "runtime"));
     collector.consume(record("second", LogLevel::Info, "runtime"));
 
-    const auto matching = collector.records({.limit = 2});
+    const auto matching = collector.records({.category_prefixes = {}, .limit = 2});
 
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "first");
@@ -684,6 +685,100 @@ TEST(LogCollector, SupportsConcurrentConsumptionAndQueries) {
 
     EXPECT_TRUE(capacity_respected.load(std::memory_order_acquire));
     EXPECT_EQ(collector.records().size(), 128U);
+}
+
+void consumeNumberedRecords(LogCollector& collector, const int count) {
+    for(int index = 0; index < count; ++index) {
+        collector.consume(record(std::to_string(index)));
+    }
+}
+
+TEST(LogCollector, WrapsAnOddSizedBufferMultipleTimesInChronologicalOrder) {
+    LogCollector collector{3};
+    consumeNumberedRecords(collector, 8);
+    const auto retained = collector.records();
+    ASSERT_EQ(retained.size(), 3U);
+    EXPECT_EQ(retained[0].message, "5");
+    EXPECT_EQ(retained[1].message, "6");
+    EXPECT_EQ(retained[2].message, "7");
+}
+
+TEST(LogCollector, EmptyCategoryPrefixMatchesEveryCategory) {
+    LogCollector collector;
+    collector.consume(record("empty", LogLevel::Info, ""));
+    collector.consume(record("child", LogLevel::Info, "runtime.action"));
+    const auto all = collector.query({.category_prefixes = {""}});
+    ASSERT_EQ(all.size(), 2U);
+    EXPECT_EQ(all[0].message, "empty");
+    EXPECT_EQ(all[1].message, "child");
+}
+
+TEST(Logger, RemovesAnOuterContextWithoutRemovingTheLiveInnerContext) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    auto subscription = service.addSink(sink);
+    const auto logger = service.logger("context");
+    auto outer = logger.scopedContext({{"outer", Value{true}}, {"shared", Value{"outer"}}});
+    auto inner = logger.scopedContext({{"inner", Value{true}}, {"shared", Value{"inner"}}});
+    outer = {};
+    logger.write(LogLevel::Info, "inner survives");
+    inner = {};
+    logger.write(LogLevel::Info, "no context");
+    ASSERT_EQ(sink->records.size(), 2U);
+    EXPECT_FALSE(sink->records[0].fields.contains("outer"));
+    EXPECT_EQ(sink->records[0].fields.at("shared").asString(), "inner");
+    EXPECT_TRUE(sink->records[1].fields.empty());
+}
+
+TEST(LoggingService, RepeatedUnsubscribeDoesNotRemoveOtherSubscriptions) {
+    LoggingService service;
+    const auto sink = std::make_shared<RecordingSink>();
+    std::vector<axiom::core::logging::LogSubscription> subscriptions;
+    subscriptions.reserve(64);
+    for(int index = 0; index < 64; ++index) {
+        subscriptions.push_back(service.addSink(sink));
+    }
+    subscriptions.front().reset();
+    subscriptions.front().reset();
+    service.logger("subscriptions").write(LogLevel::Info, "remaining listeners");
+    EXPECT_EQ(sink->records.size(), 63U);
+    subscriptions.clear();
+    EXPECT_FALSE(service.logger("subscriptions").enabled(LogLevel::Info));
+}
+
+TEST(ConsoleSink, PreservesMessageAndLocationForLongRecordsAtNonEpochTimes) {
+    ConsoleSink sink;
+    auto logged = record(std::string(80, 'm'), LogLevel::Info, "console.boundary");
+    logged.timestamp += std::chrono::seconds{86400 + 3661};
+    logged.source_line = 73;
+    logged.source_function = "long_record";
+    testing::internal::CaptureStderr();
+    sink.consume(logged);
+    sink.flush();
+    const auto output = testing::internal::GetCapturedStderr();
+    expectOutputContains(output, "1970-01-02T01:01:01.000Z");
+    expectOutputContains(output, std::string(80, 'm'));
+    expectOutputContains(output, "logging_test.cpp:73 long_record");
+}
+
+TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
+    ConsoleSink sink;
+    testing::internal::CaptureStderr();
+    sink.consume(record("message"));
+    sink.flush();
+    auto output = testing::internal::GetCapturedStderr();
+    // Color escapes and the platform newline do not change the record's text format.
+    for(auto start = output.find("\x1b["); start != std::string::npos;
+        start = output.find("\x1b[")) {
+        const auto end = output.find('m', start);
+        ASSERT_NE(end, std::string::npos);
+        output.erase(start, end - start + 1);
+    }
+    if(output.ends_with("\r\n")) {
+        output.erase(output.size() - 2, 1);
+    }
+    EXPECT_EQ(output,
+              "1970-01-01T00:00:00.000Z [info] [runtime] message (logging_test.cpp:1 record)\n");
 }
 
 } // namespace

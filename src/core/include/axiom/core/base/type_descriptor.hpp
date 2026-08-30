@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file type_descriptor.hpp
+ * @brief Recursive value shape descriptors and validation.
+ */
+
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/export.hpp>
 

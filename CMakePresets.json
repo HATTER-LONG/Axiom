@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "base",
@@ -8,7 +12,22 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "AXIOM_WARNINGS_AS_ERRORS": "ON"
+        "AXIOM_WARNINGS_AS_ERRORS": "ON",
+        "BUILD_SHARED_LIBS": "OFF",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "quality-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_INSTALL_TEST": "OFF",
+        "AXIOM_COVERAGE": "OFF",
+        "AXIOM_MUTATION_TESTING": "OFF",
+        "AXIOM_SANITIZERS": ""
       }
     },
     {
@@ -17,9 +36,7 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "AXIOM_BUILD_TESTS": "ON",
-        "BUILD_TESTING": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
@@ -27,104 +44,186 @@
       "displayName": "Debug build",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build-debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
       "name": "quality-fast",
-      "displayName": "Quality gate: fast",
-      "inherits": "base",
+      "displayName": "Incremental static coverage",
+      "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/fast",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "AXIOM_BUILD_TESTS": "ON",
-        "BUILD_TESTING": "ON",
-        "AXIOM_BUILD_INSTALL_TEST": "ON",
-        "AXIOM_STATIC_ANALYZERS": "",
         "AXIOM_COVERAGE": "ON"
       }
     },
     {
       "name": "quality-full",
-      "displayName": "Quality gate: full",
-      "inherits": "base",
+      "displayName": "Clean static coverage",
+      "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/full",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "AXIOM_BUILD_TESTS": "ON",
-        "BUILD_TESTING": "ON",
-        "AXIOM_STATIC_ANALYZERS": "",
         "AXIOM_COVERAGE": "ON"
       }
     },
     {
       "name": "quality-hardening",
-      "displayName": "Quality gate: hardening",
-      "inherits": "base",
+      "displayName": "Static ASan and UBSan",
+      "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/hardening",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "AXIOM_BUILD_TESTS": "ON",
-        "BUILD_TESTING": "ON",
-        "AXIOM_STATIC_ANALYZERS": "",
-        "AXIOM_MUTATION_TESTING": "OFF",
         "AXIOM_SANITIZERS": "Address;Undefined"
       }
     },
     {
       "name": "quality-mutation",
-      "displayName": "Quality gate: mutation testing",
-      "inherits": "base",
+      "displayName": "Static Mull mutation testing",
+      "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/mutation",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
         "AXIOM_BUILD_DEMO": "OFF",
-        "AXIOM_BUILD_TESTS": "ON",
-        "BUILD_TESTING": "ON",
-        "AXIOM_STATIC_ANALYZERS": "",
         "AXIOM_MUTATION_TESTING": "ON"
       }
+    },
+    {
+      "name": "quality-static",
+      "displayName": "Static package validation",
+      "inherits": "quality-base",
+      "binaryDir": "${sourceDir}/build-quality/static",
+      "cacheVariables": {
+        "AXIOM_BUILD_INSTALL_TEST": "ON"
+      }
+    },
+    {
+      "name": "quality-shared",
+      "displayName": "Shared package and multi-config validation",
+      "inherits": "quality-base",
+      "binaryDir": "${sourceDir}/build-quality/shared",
+      "cacheVariables": {
+        "AXIOM_BUILD_INSTALL_TEST": "ON",
+        "BUILD_SHARED_LIBS": "ON",
+        "CMAKE_BUILD_TYPE": null
+      },
+      "generator": "Ninja Multi-Config"
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 16 },
-    { "name": "debug", "configurePreset": "debug", "jobs": 16 },
-    { "name": "quality-fast", "configurePreset": "quality-fast", "jobs": 16 },
-    { "name": "quality-full", "configurePreset": "quality-full", "jobs": 16 },
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "quality-fast",
+      "configurePreset": "quality-fast"
+    },
+    {
+      "name": "quality-full",
+      "configurePreset": "quality-full"
+    },
     {
       "name": "quality-hardening",
-      "configurePreset": "quality-hardening",
-      "jobs": 16
+      "configurePreset": "quality-hardening"
     },
     {
       "name": "quality-mutation",
-      "configurePreset": "quality-mutation",
-      "jobs": 16
+      "configurePreset": "quality-mutation"
+    },
+    {
+      "name": "quality-static",
+      "configurePreset": "quality-static"
+    },
+    {
+      "name": "quality-shared",
+      "configurePreset": "quality-shared",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
     {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "quality-fast",
       "configurePreset": "quality-fast",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
     },
     {
       "name": "quality-full",
       "configurePreset": "quality-full",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
     },
     {
       "name": "quality-hardening",
       "configurePreset": "quality-hardening",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
     },
     {
       "name": "quality-mutation",
       "configurePreset": "quality-mutation",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "quality-static",
+      "configurePreset": "quality-static",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "quality-shared",
+      "configurePreset": "quality-shared",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "configuration": "Release"
     }
   ],
   "workflowPresets": [
@@ -132,16 +231,28 @@
       "name": "dev",
       "displayName": "Configure and build developer configuration",
       "steps": [
-        { "type": "configure", "name": "dev" },
-        { "type": "build", "name": "dev" }
+        {
+          "type": "configure",
+          "name": "dev"
+        },
+        {
+          "type": "build",
+          "name": "dev"
+        }
       ]
     },
     {
       "name": "debug",
       "displayName": "Configure and build debug configuration",
       "steps": [
-        { "type": "configure", "name": "debug" },
-        { "type": "build", "name": "debug" }
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "debug"
+        }
       ]
     }
   ]

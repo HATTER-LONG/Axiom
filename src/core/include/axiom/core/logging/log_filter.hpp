@@ -5,6 +5,7 @@
  * @brief Per-sink severity and category-prefix selection for LoggingService.
  */
 
+#include <axiom/core/export.hpp>
 #include <axiom/core/logging/log_level.hpp>
 
 #include <string>
@@ -29,7 +30,8 @@ struct LogFilter {
      * @param category Dot-separated category path of the candidate record.
      * @return true when severity and category both satisfy this filter.
      */
-    [[nodiscard]] bool matches(LogLevel level, std::string_view category) const noexcept;
+    [[nodiscard]] AXIOM_CORE_API bool matches(LogLevel level,
+                                              std::string_view category) const noexcept;
 };
 
 } // namespace axiom::core::logging

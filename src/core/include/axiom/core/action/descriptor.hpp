@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file descriptor.hpp
+ * @brief Action metadata, parameter defaults, and validation.
+ */
+
 #include <axiom/core/action/action_id.hpp>
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/base/type_descriptor.hpp>
@@ -21,7 +26,7 @@ struct ParameterDescriptor {
     /** @brief Whether callers must supply the parameter. */
     bool required{true};
     /** @brief Shape expected for the parameter's Value. */
-    TypeDescriptor type;
+    TypeDescriptor type{};
     /** @brief Optional fallback Value for an optional parameter. */
     std::optional<Value> default_value;
 
@@ -38,7 +43,7 @@ struct ActionDescriptor {
     /** @brief Inputs in externally observable presentation and validation order. */
     std::vector<ParameterDescriptor> parameters;
     /** @brief Shape produced by a successful invocation. */
-    TypeDescriptor return_type;
+    TypeDescriptor return_type{};
     /** @brief Optional compatible Action version. */
     std::optional<std::string> version;
     /** @brief Searchable labels associated with this Action. */

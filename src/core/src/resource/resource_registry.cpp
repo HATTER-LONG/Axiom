@@ -193,11 +193,12 @@ ResourceRegistry::lookup(const std::string_view id_text,
                          const std::string_view expected_name) const {
     const auto found = impl_->entries.find(id_text);
     if(found == impl_->entries.end()) {
-        return {.status = LookupStatus::Missing};
+        return {.status = LookupStatus::Missing, .access = {}, .actual_logical_name = {}};
     }
     if(found->second.logical_name != expected_name ||
        found->second.type != TypeIdentity{expected_type}) {
         return {.status = LookupStatus::TypeMismatch,
+                .access = {},
                 .actual_logical_name = found->second.logical_name};
     }
     return {.status = LookupStatus::Found,

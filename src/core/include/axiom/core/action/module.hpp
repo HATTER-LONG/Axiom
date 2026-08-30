@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file module.hpp
+ * @brief Module namespace metadata and validation.
+ */
+
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/export.hpp>
 

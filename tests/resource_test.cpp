@@ -140,6 +140,10 @@ concept CanFormHandle = requires { typename Handle<T>; };
 
 using ShapeAlias = Shape;
 
+// These types have valid names; rejection must come from lifetime/completeness constraints.
+static_assert(axiom::core::resource::detail::HasValidResourceTraits<ThrowingDestructor>);
+static_assert(axiom::core::resource::detail::HasValidResourceTraits<Incomplete>);
+
 [[nodiscard]] ResourceId resourceId(const std::string_view text) {
     auto result = ResourceId::parse(text);
     EXPECT_TRUE(result) << text;
@@ -642,6 +646,33 @@ TEST(ResourceRegistry, SerialExhaustionReturnsInternalErrorWithoutMutation) {
     const auto after = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(after);
     EXPECT_NE(existing.value().id(), after.value().id());
+}
+
+TEST(ResourceId, AcceptsTypeNameSuffixBoundariesAndLongNames) {
+    for(const auto* name : {"aa", "az", "a0", "a9", "a_"}) {
+        expectCanonicalIdentity(std::string{name} + ":1");
+    }
+    expectCanonicalIdentity(std::string(41, 'a') + ":1");
+    expectCanonicalIdentity(std::string(80, 'z') + ":18446744073709551615");
+}
+
+TEST(ResourceRef, MoveAssignmentReleasesOldObjectAndKeepsNewObjectAlive) {
+    resetLifetimeCounters();
+    ResourceRegistry registry;
+    const auto first = registry.add(std::make_unique<Counted>());
+    const auto second = registry.add(std::make_unique<Counted>());
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    auto destination = registry.resolve(first.value());
+    auto source = registry.resolve(second.value());
+    ASSERT_TRUE(destination);
+    ASSERT_TRUE(source);
+    auto* const expected = &*source.value();
+    EXPECT_TRUE(registry.remove(first.value().id()));
+    EXPECT_TRUE(registry.remove(second.value().id()));
+    destination.value() = std::move(source.value());
+    EXPECT_EQ(Counted::destroyed, 1);
+    EXPECT_EQ(&*destination.value(), expected);
 }
 
 } // namespace
