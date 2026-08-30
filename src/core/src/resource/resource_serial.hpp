@@ -2,7 +2,11 @@
 
 /**
  * @file resource_serial.hpp
- * @brief Process-wide resource serial allocation and a private overflow test seam.
+ * @brief Process-wide resource serial allocation and a non-installed overflow test seam.
+ *
+ * This header is not part of the installed Core public surface. Tests may include it
+ * through a non-install include path. Serial exhaustion is not a switch on
+ * ResourceRegistry.
  */
 
 #include <axiom/core/base/result.hpp>
@@ -20,15 +24,13 @@ namespace axiom::core::resource::detail {
  * serial.
  *
  * @return A non-zero serial, or InternalError when the serial space is exhausted.
- * @note This function is not a stable public API.
  */
-[[nodiscard]] AXIOM_CORE_API Result<std::uint64_t> allocateResourceSerial();
+[[nodiscard]] Result<std::uint64_t> allocateResourceSerial();
 
 /**
  * @brief Forces serial exhaustion for the lifetime of the guard, then restores it.
  *
- * Intended only for tests of the overflow failure path. It is not a stable public
- * API and is not a switch on ResourceRegistry.
+ * Intended only for tests of the overflow failure path.
  */
 class AXIOM_CORE_API ResourceSerialExhaustionGuard {
 public:

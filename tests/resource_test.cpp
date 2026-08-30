@@ -1,5 +1,5 @@
 #include <axiom/core/base/error.hpp>
-#include <axiom/core/resource/detail/resource_serial.hpp>
+#include <resource/resource_serial.hpp>
 #include <axiom/core/resource/handle.hpp>
 #include <axiom/core/resource/resource_id.hpp>
 #include <axiom/core/resource/resource_ref.hpp>
@@ -21,7 +21,11 @@
 
 namespace {
 
-struct Shape {};
+struct Shape {
+    static int destroyed;
+    ~Shape() { ++destroyed; }
+};
+int Shape::destroyed = 0;
 struct Mesh {};
 struct UniqueBody {
     UniqueBody() = default;
@@ -267,7 +271,14 @@ static_assert(!std::is_move_assignable_v<ResourceRegistry>);
 void resetLifetimeCounters() {
     Counted::constructed = 0;
     Counted::destroyed = 0;
+    Shape::destroyed = 0;
     ShapeImpostor::destroyed = 0;
+}
+
+[[nodiscard]] bool looksLikeAddressOrRtti(const std::string_view text) {
+    return text.find("0x") != std::string_view::npos ||
+           text.find("typeid") != std::string_view::npos ||
+           text.find("typeinfo") != std::string_view::npos;
 }
 
 TEST(ResourceRegistry, RegistersAndMutatesNonCopyableObject) {
@@ -346,6 +357,33 @@ TEST(ResourceRegistry, WrongTypeHandleIsTypeMismatch) {
     EXPECT_EQ(resolved.error().code, ErrorCode::TypeMismatch);
 }
 
+TEST(ResourceRegistry, ResolveCppTypeMismatchIsTypeMismatchWithoutKeepalive) {
+    resetLifetimeCounters();
+    ResourceRegistry registry;
+    auto added = registry.add(std::make_unique<Shape>());
+    ASSERT_TRUE(added);
+    const auto mismatch =
+        registry.resolve(Handle<ShapeImpostor>{added.value().id()});
+
+    EXPECT_FALSE(mismatch);
+    EXPECT_EQ(mismatch.error().code, ErrorCode::TypeMismatch);
+    EXPECT_FALSE(mismatch.error().path.has_value());
+    ASSERT_TRUE(mismatch.error().details.has_value());
+    ASSERT_TRUE(mismatch.error().details->isObject());
+    const auto& details = mismatch.error().details->asObject();
+    ASSERT_EQ(details.size(), 3U);
+    EXPECT_EQ(details.at("id").asString(), added.value().id().str());
+    EXPECT_EQ(details.at("expected").asString(), "shape");
+    EXPECT_EQ(details.at("actual").asString(), "shape");
+    EXPECT_FALSE(looksLikeAddressOrRtti(mismatch.error().message));
+    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("id").asString()));
+    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("expected").asString()));
+    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("actual").asString()));
+    EXPECT_EQ(ShapeImpostor::destroyed, 0);
+    EXPECT_TRUE(registry.remove(added.value().id()));
+    EXPECT_EQ(Shape::destroyed, 1);
+}
+
 TEST(ResourceRegistry, SameLogicalNameDifferentCppTypesIsTypeMismatch) {
     ResourceRegistry registry;
     auto added = registry.add(std::make_unique<Shape>());
@@ -407,6 +445,36 @@ TEST(ResourceRegistry, ResolveAfterRemoveIsNotFoundWhileRefRemainsValid) {
     EXPECT_FALSE(later);
     EXPECT_EQ(later.error().code, ErrorCode::NotFound);
     EXPECT_EQ(kept.value()->value, 9);
+}
+
+TEST(ResourceRegistry, DestroyedWithNoRefsDestroysObjectOnce) {
+    resetLifetimeCounters();
+    {
+        ResourceRegistry registry;
+        auto added = registry.add(std::make_unique<Counted>());
+        ASSERT_TRUE(added);
+        EXPECT_EQ(Counted::constructed, 1);
+        EXPECT_EQ(Counted::destroyed, 0);
+    }
+    EXPECT_EQ(Counted::destroyed, 1);
+}
+
+TEST(ResourceRegistry, DestroyedWhileRefHeldThenRefReleasedDestroysOnce) {
+    resetLifetimeCounters();
+    std::optional<ResourceRef<Counted>> kept;
+    {
+        ResourceRegistry registry;
+        auto added = registry.add(std::make_unique<Counted>());
+        ASSERT_TRUE(added);
+        auto resolved = registry.resolve(added.value());
+        ASSERT_TRUE(resolved);
+        kept = std::move(resolved.value());
+        EXPECT_EQ(Counted::destroyed, 0);
+    }
+    EXPECT_EQ(Counted::destroyed, 0);
+    kept.reset();
+    EXPECT_EQ(Counted::destroyed, 1);
+    EXPECT_EQ(Counted::constructed, 1);
 }
 
 TEST(ResourceRegistry, ResourceRefSurvivesRegistryDestruction) {

@@ -1,4 +1,4 @@
-#include <axiom/core/resource/detail/resource_serial.hpp>
+#include "resource_serial.hpp"
 
 #include <axiom/core/base/error.hpp>
 

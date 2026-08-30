@@ -1,8 +1,9 @@
 #include <axiom/core/resource/resource_registry.hpp>
 
+#include "resource_serial.hpp"
+
 #include <axiom/core/base/error.hpp>
 #include <axiom/core/base/value.hpp>
-#include <axiom/core/resource/detail/resource_serial.hpp>
 #include <axiom/core/resource/resource_id.hpp>
 
 #include <functional>
@@ -10,11 +11,25 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <typeindex>
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 
 namespace axiom::core::resource {
 namespace {
+
+class TypeIdentity {
+public:
+    explicit TypeIdentity(const std::type_info& info) noexcept : index_(info) {}
+
+    [[nodiscard]] bool operator==(const TypeIdentity& other) const noexcept {
+        return index_ == other.index_;
+    }
+
+private:
+    std::type_index index_;
+};
 
 struct TransparentStringHash {
     using is_transparent = void;
@@ -24,20 +39,20 @@ struct TransparentStringHash {
     }
 
     [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept {
-        return std::hash<std::string>{}(value);
+        return std::hash<std::string_view>{}(value);
     }
 };
 
 struct Registered {
     std::shared_ptr<void> object;
-    detail::TypeIdentity type;
+    TypeIdentity type;
     std::string_view logical_name;
 };
 
 using EntryMap =
     std::unordered_map<std::string, Registered, TransparentStringHash, std::equal_to<>>;
 using BindingMap =
-    std::unordered_map<std::string, detail::TypeIdentity, TransparentStringHash, std::equal_to<>>;
+    std::unordered_map<std::string, TypeIdentity, TransparentStringHash, std::equal_to<>>;
 
 [[nodiscard]] Error logicalNameConflictError(const std::string_view logical_name) {
     return {
@@ -82,9 +97,7 @@ using BindingMap =
 
 } // namespace
 
-namespace detail {
-
-Error nullResourceError() {
+Error ResourceRegistry::nullResourceError() {
     return {
         .code = ErrorCode::InvalidArgument,
         .message = "Cannot register a null resource",
@@ -93,7 +106,7 @@ Error nullResourceError() {
     };
 }
 
-Error resourceNotFoundError(const std::string_view id) {
+Error ResourceRegistry::resourceNotFoundError(const std::string_view id) {
     return {
         .code = ErrorCode::NotFound,
         .message = "Resource is not registered",
@@ -102,9 +115,9 @@ Error resourceNotFoundError(const std::string_view id) {
     };
 }
 
-Error resourceTypeMismatchError(const std::string_view id,
-                                const std::string_view expected,
-                                const std::string_view actual) {
+Error ResourceRegistry::resourceTypeMismatchError(const std::string_view id,
+                                                  const std::string_view expected,
+                                                  const std::string_view actual) {
     return {
         .code = ErrorCode::TypeMismatch,
         .message = "Resource type does not match the requested handle type",
@@ -115,18 +128,14 @@ Error resourceTypeMismatchError(const std::string_view id,
     };
 }
 
-} // namespace detail
-
 class ResourceRegistry::Impl {
 public:
     [[nodiscard]] std::optional<Error> bindingConflict(std::string_view logical_name,
-                                                       detail::TypeIdentity type) const;
+                                                       TypeIdentity type) const;
     [[nodiscard]] Result<ResourceId> store(ResourceId identity,
-                                           detail::RegistrationRequest request);
-    [[nodiscard]] detail::Resolution lookup(std::string_view id_text,
-                                            std::string_view expected_name,
-                                            detail::TypeIdentity expected_type) const;
-
+                                           std::shared_ptr<void> object,
+                                           std::string_view logical_name,
+                                           TypeIdentity type);
     EntryMap entries;
     BindingMap bindings;
 };
@@ -148,9 +157,8 @@ bool ResourceRegistry::contains(const ResourceId& id) const {
     return impl_->entries.contains(id.str());
 }
 
-std::optional<Error>
-ResourceRegistry::Impl::bindingConflict(const std::string_view logical_name,
-                                        const detail::TypeIdentity type) const {
+std::optional<Error> ResourceRegistry::Impl::bindingConflict(const std::string_view logical_name,
+                                                             const TypeIdentity type) const {
     const auto found = bindings.find(logical_name);
     if(found != bindings.end() && found->second != type) {
         return logicalNameConflictError(logical_name);
@@ -159,15 +167,17 @@ ResourceRegistry::Impl::bindingConflict(const std::string_view logical_name,
 }
 
 Result<ResourceId> ResourceRegistry::Impl::store(ResourceId identity,
-                                                 detail::RegistrationRequest request) {
-    const auto [position, inserted] = entries.try_emplace(
-        std::string{identity.str()},
-        Registered{std::move(request.object), request.type, request.logical_name});
+                                                 std::shared_ptr<void> object,
+                                                 const std::string_view logical_name,
+                                                 const TypeIdentity type) {
+    const auto [position, inserted] =
+        entries.try_emplace(std::string{identity.str()},
+                            Registered{std::move(object), type, logical_name});
     if(!inserted) {
         return Result<ResourceId>::failure(duplicateIdentityError(position->first));
     }
     try {
-        bindings.try_emplace(std::string{request.logical_name}, request.type);
+        bindings.try_emplace(std::string{logical_name}, type);
     } catch(...) {
         entries.erase(position);
         throw;
@@ -175,42 +185,41 @@ Result<ResourceId> ResourceRegistry::Impl::store(ResourceId identity,
     return Result<ResourceId>::success(std::move(identity));
 }
 
-detail::Resolution ResourceRegistry::Impl::lookup(const std::string_view id_text,
-                                                  const std::string_view expected_name,
-                                                  const detail::TypeIdentity expected_type) const {
-    const auto found = entries.find(id_text);
-    if(found == entries.end()) {
+ResourceRegistry::LookupResult ResourceRegistry::lookup(const std::string_view id_text,
+                                                        const std::string_view expected_name,
+                                                        const std::type_info& expected_type) const {
+    const auto found = impl_->entries.find(id_text);
+    if(found == impl_->entries.end()) {
         return {};
     }
-    if(found->second.logical_name != expected_name || found->second.type != expected_type) {
-        return {.status = detail::Resolution::Status::TypeMismatch,
+    if(found->second.logical_name != expected_name ||
+       found->second.type != TypeIdentity{expected_type}) {
+        return {.status = LookupStatus::TypeMismatch,
                 .actual_logical_name = found->second.logical_name};
     }
-    return {.status = detail::Resolution::Status::Found,
-            .object = found->second.object.get(),
-            .keepalive = detail::ResourceKeepalive{found->second.object},
+    return {.status = LookupStatus::Found,
+            .access = detail::ResourceKeepalive{found->second.object.get(), found->second.object},
             .actual_logical_name = found->second.logical_name};
 }
 
-Result<ResourceId> ResourceRegistry::commit(detail::RegistrationRequest request) {
-    if(const auto conflict = impl_->bindingConflict(request.logical_name, request.type)) {
+Result<ResourceId> ResourceRegistry::adopt(void* const object,
+                                           void (*const destroy)(void*),
+                                           const std::string_view logical_name,
+                                           const std::type_info& type) {
+    std::shared_ptr<void> hold{object, destroy};
+    const TypeIdentity identity{type};
+    if(const auto conflict = impl_->bindingConflict(logical_name, identity)) {
         return Result<ResourceId>::failure(*conflict);
     }
     const auto serial = detail::allocateResourceSerial();
     if(!serial) {
         return Result<ResourceId>::failure(serial.error());
     }
-    auto identity = identityFromSerial(request.logical_name, serial.value());
-    if(!identity) {
-        return identity;
+    auto allocated = identityFromSerial(logical_name, serial.value());
+    if(!allocated) {
+        return allocated;
     }
-    return impl_->store(std::move(identity.value()), std::move(request));
-}
-
-detail::Resolution ResourceRegistry::lookup(const std::string_view id_text,
-                                            const std::string_view expected_name,
-                                            const detail::TypeIdentity expected_type) const {
-    return impl_->lookup(id_text, expected_name, expected_type);
+    return impl_->store(std::move(allocated.value()), std::move(hold), logical_name, identity);
 }
 
 } // namespace axiom::core::resource

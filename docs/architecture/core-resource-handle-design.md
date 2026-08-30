@@ -122,22 +122,22 @@ MVP 不承诺线程安全：同一 Registry 的所有操作和析构均须由宿
 ## 5. 目录与实现边界
 
 ```text
-src/core/include/axiom/core/resource/
+src/core/include/axiom/core/resource/   # 已安装公开头：仅此五件
 ├── resource_id.hpp
 ├── resource_traits.hpp
 ├── handle.hpp
 ├── resource_ref.hpp
-├── resource_registry.hpp
-└── detail/
-    └── resource_entry.hpp
-src/core/src/resource/             # ID 分配、Registry 存储等非模板实现
+└── resource_registry.hpp
+src/core/src/resource/                  # 非安装：ID 分配、类型擦除存储、序号溢出测试缝
 tests/resource_test.cpp
 ```
 
 模板只承接类型约束与有类型的访问，查找、身份分配、类型绑定、事务提交和生命周期策略
-由 Registry 私有实现统一负责。`detail/resource_entry.hpp` 承载必要的类型擦除与保活，
-其内部类型不是稳定 API；不得把 `std::any`、`shared_ptr<void>`、可变容器或原始存储指针
-暴露给调用方，也不要求业务类继承统一 Resource 基类。
+由 Registry 私有实现统一负责。类型擦除、保活与序号分配留在非安装实现中，不是稳定 API，
+也不随 `install(DIRECTORY include)` 发布；不得把 `std::any`、`shared_ptr<void>`、可变容器
+或原始存储指针作为调用方可构造或可命名的契约暴露，也不要求业务类继承统一 Resource 基类。
+ResourceRef 的保活对调用方不透明：无公开 `shared_ptr` 构造，失败的 resolve 不保活对象。
+序号溢出通过非安装头中的测试缝验证，不是 Registry 的公开开关。
 
 实现时更新 `core.hpp`、`src/core/CMakeLists.txt`、测试清单及架构规则：resource 不得
 依赖 action、logging、应用或外部适配器，base 不得反向依赖 resource。复用 Result 所

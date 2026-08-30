@@ -30,6 +30,7 @@ template <typename T> struct ResourceTraits;
 
 namespace detail {
 
+/** @brief True when @p name matches `[a-z][a-z0-9_]*`. Shared with ResourceId::parse. */
 [[nodiscard]] constexpr bool isCanonicalTypeName(const std::string_view name) noexcept {
     if(name.empty() || name.front() < 'a' || name.front() > 'z') {
         return false;

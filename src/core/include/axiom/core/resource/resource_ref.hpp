@@ -5,14 +5,45 @@
  * @brief Move-only RAII access to a live resource after a successful resolve.
  */
 
-#include <axiom/core/resource/detail/resource_entry.hpp>
 #include <axiom/core/resource/resource_traits.hpp>
 
+#include <memory>
 #include <utility>
 
 namespace axiom::core::resource {
 
 class ResourceRegistry;
+
+namespace detail {
+
+/**
+ * @brief Opaque hold that keeps a resolved object alive.
+ *
+ * Not a stable API. Callers cannot attach storage; only ResourceRegistry may
+ * populate a live hold during a successful resolve.
+ */
+class ResourceKeepalive {
+public:
+    ResourceKeepalive() = default;
+    ResourceKeepalive(const ResourceKeepalive&) = default;
+    ResourceKeepalive(ResourceKeepalive&&) noexcept = default;
+    ResourceKeepalive& operator=(const ResourceKeepalive&) = default;
+    ResourceKeepalive& operator=(ResourceKeepalive&&) noexcept = default;
+    ~ResourceKeepalive() = default;
+
+private:
+    friend class axiom::core::resource::ResourceRegistry;
+
+    ResourceKeepalive(void* object, std::shared_ptr<void> hold) noexcept
+        : object_(object), hold_(std::move(hold)) {}
+
+    [[nodiscard]] void* get() const noexcept { return object_; }
+
+    void* object_{nullptr};
+    std::shared_ptr<void> hold_{};
+};
+
+} // namespace detail
 
 /**
  * @brief Move-only access object that keeps a resolved resource alive.

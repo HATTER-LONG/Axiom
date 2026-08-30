@@ -27,6 +27,7 @@ axiom_configure_sanitizers(axiom_core_test)
 axiom_configure_coverage(axiom_core_test)
 axiom_configure_mutation_testing(axiom_core_test)
 target_compile_features(axiom_core_test PRIVATE cxx_std_20)
+target_include_directories(axiom_core_test PRIVATE "${PROJECT_SOURCE_DIR}/src/core/src")
 target_link_libraries(axiom_core_test PRIVATE Axiom::Core GTest::gtest_main)
 
 include(GoogleTest)

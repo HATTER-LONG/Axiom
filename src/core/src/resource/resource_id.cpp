@@ -1,6 +1,7 @@
 #include <axiom/core/resource/resource_id.hpp>
 
 #include <axiom/core/base/error.hpp>
+#include <axiom/core/resource/resource_traits.hpp>
 
 #include <charconv>
 #include <cstdint>
@@ -23,20 +24,6 @@ namespace {
     };
 }
 
-[[nodiscard]] bool isCanonicalTypeName(const std::string_view name) noexcept {
-    if(name.empty() || name.front() < 'a' || name.front() > 'z') {
-        return false;
-    }
-    for(const char character : name.substr(1U)) {
-        const bool legal = (character >= 'a' && character <= 'z') ||
-                           (character >= '0' && character <= '9') || character == '_';
-        if(!legal) {
-            return false;
-        }
-    }
-    return true;
-}
-
 [[nodiscard]] bool isCanonicalSerial(const std::string_view text) noexcept {
     if(text.empty() || (text.size() > 1U && text.front() == '0')) {
         return false;
@@ -52,7 +39,8 @@ namespace {
 Result<ResourceId> ResourceId::parse(const std::string_view text) {
     const auto separator = text.find(':');
     if(separator == std::string_view::npos || separator != text.rfind(':') || separator == 0U ||
-       separator + 1U == text.size() || !isCanonicalTypeName(text.substr(0U, separator)) ||
+       separator + 1U == text.size() ||
+       !detail::isCanonicalTypeName(text.substr(0U, separator)) ||
        !isCanonicalSerial(text.substr(separator + 1U))) {
         return Result<ResourceId>::failure(invalidResourceId());
     }

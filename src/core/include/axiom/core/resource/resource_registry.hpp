@@ -8,27 +8,18 @@
 #include <axiom/core/base/error.hpp>
 #include <axiom/core/base/result.hpp>
 #include <axiom/core/export.hpp>
-#include <axiom/core/resource/detail/resource_entry.hpp>
 #include <axiom/core/resource/handle.hpp>
 #include <axiom/core/resource/resource_id.hpp>
 #include <axiom/core/resource/resource_ref.hpp>
 #include <axiom/core/resource/resource_traits.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <string_view>
+#include <typeinfo>
 #include <utility>
 
 namespace axiom::core::resource {
-
-namespace detail {
-
-[[nodiscard]] AXIOM_CORE_API Error nullResourceError();
-[[nodiscard]] AXIOM_CORE_API Error resourceNotFoundError(std::string_view id);
-[[nodiscard]] AXIOM_CORE_API Error resourceTypeMismatchError(std::string_view id,
-                                                             std::string_view expected,
-                                                             std::string_view actual);
-
-} // namespace detail
 
 /**
  * @brief Manages resource registration records, type bindings, and identity allocation.
@@ -89,13 +80,10 @@ public:
         requires detail::ResourceHandleTarget<T>
     [[nodiscard]] Result<Handle<T>> add(std::unique_ptr<T> object) {
         if(!object) {
-            return Result<Handle<T>>::failure(detail::nullResourceError());
+            return Result<Handle<T>>::failure(nullResourceError());
         }
-        auto committed = commit({
-            .object = std::shared_ptr<void>{std::move(object)},
-            .logical_name = ResourceTraits<T>::type_name,
-            .type = detail::TypeIdentity{typeid(T)},
-        });
+        T* const owned = object.release();
+        auto committed = adopt(owned, &destroyResource<T>, ResourceTraits<T>::type_name, typeid(T));
         if(!committed) {
             return Result<Handle<T>>::failure(committed.error());
         }
@@ -113,22 +101,21 @@ public:
      * @tparam T Resource type satisfying ResourceHandleTarget.
      * @param handle Identity token to look up in this Registry.
      * @return A ResourceRef to the live object, or a structured failure.
+     * @throws std::bad_alloc If failure diagnostics cannot be allocated.
      */
     template <typename T>
         requires detail::ResourceHandleTarget<T>
     [[nodiscard]] Result<ResourceRef<T>> resolve(const Handle<T>& handle) const {
-        auto found = lookup(handle.id().str(), ResourceTraits<T>::type_name,
-                            detail::TypeIdentity{typeid(T)});
-        if(found.status == detail::Resolution::Status::Missing) {
-            return Result<ResourceRef<T>>::failure(
-                detail::resourceNotFoundError(handle.id().str()));
+        auto found = lookup(handle.id().str(), ResourceTraits<T>::type_name, typeid(T));
+        if(found.status == LookupStatus::Missing) {
+            return Result<ResourceRef<T>>::failure(resourceNotFoundError(handle.id().str()));
         }
-        if(found.status == detail::Resolution::Status::TypeMismatch) {
-            return Result<ResourceRef<T>>::failure(detail::resourceTypeMismatchError(
+        if(found.status == LookupStatus::TypeMismatch) {
+            return Result<ResourceRef<T>>::failure(resourceTypeMismatchError(
                 handle.id().str(), ResourceTraits<T>::type_name, found.actual_logical_name));
         }
         return Result<ResourceRef<T>>::success(
-            ResourceRef<T>{static_cast<T*>(found.object), std::move(found.keepalive)});
+            ResourceRef<T>{static_cast<T*>(found.access.get()), std::move(found.access)});
     }
 
     /**
@@ -158,10 +145,32 @@ public:
 private:
     class Impl;
 
-    [[nodiscard]] Result<ResourceId> commit(detail::RegistrationRequest request);
-    [[nodiscard]] detail::Resolution lookup(std::string_view id_text,
-                                            std::string_view expected_name,
-                                            detail::TypeIdentity expected_type) const;
+    enum class LookupStatus : std::uint8_t { Missing, TypeMismatch, Found };
+
+    struct LookupResult {
+        LookupStatus status{LookupStatus::Missing};
+        detail::ResourceKeepalive access;
+        std::string_view actual_logical_name{};
+    };
+
+    template <typename T>
+    static void destroyResource(void* pointer) noexcept {
+        delete static_cast<T*>(pointer);
+    }
+
+    [[nodiscard]] static Error nullResourceError();
+    [[nodiscard]] static Error resourceNotFoundError(std::string_view id);
+    [[nodiscard]] static Error resourceTypeMismatchError(std::string_view id,
+                                                         std::string_view expected,
+                                                         std::string_view actual);
+
+    [[nodiscard]] Result<ResourceId> adopt(void* object,
+                                           void (*destroy)(void*),
+                                           std::string_view logical_name,
+                                           const std::type_info& type);
+    [[nodiscard]] LookupResult lookup(std::string_view id_text,
+                                      std::string_view expected_name,
+                                      const std::type_info& expected_type) const;
 
     std::unique_ptr<Impl> impl_;
 };
