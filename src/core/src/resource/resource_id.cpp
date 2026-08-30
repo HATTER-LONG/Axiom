@@ -1,6 +1,7 @@
 #include <axiom/core/resource/resource_id.hpp>
 
 #include <axiom/core/base/error.hpp>
+#include <axiom/core/base/result.hpp>
 #include <axiom/core/resource/resource_traits.hpp>
 
 #include <charconv>
@@ -9,7 +10,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <utility>
 
 namespace axiom::core::resource {
 namespace {
@@ -39,8 +39,7 @@ namespace {
 Result<ResourceId> ResourceId::parse(const std::string_view text) {
     const auto separator = text.find(':');
     if(separator == std::string_view::npos || separator != text.rfind(':') || separator == 0U ||
-       separator + 1U == text.size() ||
-       !detail::isCanonicalTypeName(text.substr(0U, separator)) ||
+       separator + 1U == text.size() || !detail::isCanonicalTypeName(text.substr(0U, separator)) ||
        !isCanonicalSerial(text.substr(separator + 1U))) {
         return Result<ResourceId>::failure(invalidResourceId());
     }

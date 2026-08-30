@@ -78,6 +78,7 @@ private:
 
 } // namespace axiom::core::resource
 
+// NOLINTBEGIN(bugprone-std-namespace-modification): C++ standard mandates std::hash.
 template <typename T> struct std::hash<axiom::core::resource::Handle<T>> {
     /**
      * @brief Hashes the identity stored by @p handle.
@@ -89,3 +90,4 @@ template <typename T> struct std::hash<axiom::core::resource::Handle<T>> {
         return std::hash<axiom::core::resource::ResourceId>{}(handle.id());
     }
 };
+// NOLINTEND(bugprone-std-namespace-modification)

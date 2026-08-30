@@ -2,12 +2,16 @@
 
 #include <axiom/core/core.hpp>
 
+#include <string_view>
+
 struct InstallWidget {
     int value = 0;
 };
 
 template <> struct axiom::core::resource::ResourceTraits<InstallWidget> {
-    static constexpr std::string_view type_name = "install_widget";
+    static constexpr std::string_view type_name =
+        "install_widget"; // NOLINT(readability-identifier-naming): ResourceTraits contract mandates
+                          // type_name.
 };
 
 [[nodiscard]] axiom::core::Result<axiom::core::resource::Handle<InstallWidget>>

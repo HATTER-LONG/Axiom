@@ -106,13 +106,15 @@ public:
     template <typename T>
         requires detail::ResourceHandleTarget<T>
     [[nodiscard]] Result<ResourceRef<T>> resolve(const Handle<T>& handle) const {
-        auto found = lookup(handle.id().str(), ResourceTraits<T>::type_name, typeid(T));
+        auto found = lookup(handle.id().str(), typeid(T), ResourceTraits<T>::type_name);
         if(found.status == LookupStatus::Missing) {
             return Result<ResourceRef<T>>::failure(resourceNotFoundError(handle.id().str()));
         }
         if(found.status == LookupStatus::TypeMismatch) {
-            return Result<ResourceRef<T>>::failure(resourceTypeMismatchError(
-                handle.id().str(), ResourceTraits<T>::type_name, found.actual_logical_name));
+            return Result<ResourceRef<T>>::failure(
+                resourceTypeMismatchError({.id = handle.id().str(),
+                                           .expected = ResourceTraits<T>::type_name,
+                                           .actual = found.actual_logical_name}));
         }
         return Result<ResourceRef<T>>::success(
             ResourceRef<T>{static_cast<T*>(found.access.get()), std::move(found.access)});
@@ -147,30 +149,33 @@ private:
 
     enum class LookupStatus : std::uint8_t { Missing, TypeMismatch, Found };
 
+    struct TypeMismatchNames {
+        std::string_view id;
+        std::string_view expected;
+        std::string_view actual;
+    };
+
     struct LookupResult {
         LookupStatus status{LookupStatus::Missing};
         detail::ResourceKeepalive access;
-        std::string_view actual_logical_name{};
+        std::string_view actual_logical_name;
     };
 
-    template <typename T>
-    static void destroyResource(void* pointer) noexcept {
+    template <typename T> static void destroyResource(void* pointer) noexcept {
         delete static_cast<T*>(pointer);
     }
 
     [[nodiscard]] static Error nullResourceError();
     [[nodiscard]] static Error resourceNotFoundError(std::string_view id);
-    [[nodiscard]] static Error resourceTypeMismatchError(std::string_view id,
-                                                         std::string_view expected,
-                                                         std::string_view actual);
+    [[nodiscard]] static Error resourceTypeMismatchError(const TypeMismatchNames& names);
 
     [[nodiscard]] Result<ResourceId> adopt(void* object,
                                            void (*destroy)(void*),
                                            std::string_view logical_name,
                                            const std::type_info& type);
     [[nodiscard]] LookupResult lookup(std::string_view id_text,
-                                      std::string_view expected_name,
-                                      const std::type_info& expected_type) const;
+                                      const std::type_info& expected_type,
+                                      std::string_view expected_name) const;
 
     std::unique_ptr<Impl> impl_;
 };

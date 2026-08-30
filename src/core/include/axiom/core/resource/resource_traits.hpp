@@ -5,6 +5,7 @@
  * @brief Compile-time mapping from a C++ resource type to a stable logical name.
  */
 
+#include <algorithm>
 #include <concepts>
 #include <string_view>
 #include <type_traits>
@@ -35,14 +36,11 @@ namespace detail {
     if(name.empty() || name.front() < 'a' || name.front() > 'z') {
         return false;
     }
-    for(const char character : name.substr(1U)) {
-        const bool legal = (character >= 'a' && character <= 'z') ||
-                           (character >= '0' && character <= '9') || character == '_';
-        if(!legal) {
-            return false;
-        }
-    }
-    return true;
+    const auto rest = name.substr(1U);
+    return std::ranges::all_of(rest, [](const char character) noexcept {
+        return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') ||
+               character == '_';
+    });
 }
 
 template <typename T>

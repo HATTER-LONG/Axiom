@@ -40,7 +40,7 @@ private:
     [[nodiscard]] void* get() const noexcept { return object_; }
 
     void* object_{nullptr};
-    std::shared_ptr<void> hold_{};
+    std::shared_ptr<void> hold_;
 };
 
 } // namespace detail

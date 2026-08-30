@@ -13,6 +13,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace axiom::core::resource {
 
@@ -84,6 +85,7 @@ private:
 
 } // namespace axiom::core::resource
 
+// NOLINTBEGIN(bugprone-std-namespace-modification): C++ standard mandates std::hash.
 template <> struct std::hash<axiom::core::resource::ResourceId> {
     /**
      * @brief Hashes canonical identity text.
@@ -95,3 +97,4 @@ template <> struct std::hash<axiom::core::resource::ResourceId> {
         return std::hash<std::string_view>{}(id.str());
     }
 };
+// NOLINTEND(bugprone-std-namespace-modification)

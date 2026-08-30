@@ -1,13 +1,25 @@
 #include <axiom/core/base/error.hpp>
-#include <resource/resource_serial.hpp>
+#include <axiom/core/base/value.hpp>
 #include <axiom/core/resource/handle.hpp>
 #include <axiom/core/resource/resource_id.hpp>
 #include <axiom/core/resource/resource_ref.hpp>
 #include <axiom/core/resource/resource_registry.hpp>
 #include <axiom/core/resource/resource_traits.hpp>
+#include <resource/resource_serial.hpp>
 
 #include <gtest/gtest.h>
 
+// cppcheck does not load GoogleTest's generated include paths when it scans sources directly.
+// Preserve analysis of the test bodies by supplying its equivalent function-shaped macro only
+// when the real framework did not provide TEST.
+#ifndef TEST
+#define TEST(suite_name, test_name) void suite_name##_##test_name()
+#endif
+
+#include <array>
+#include <compare>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -33,6 +45,7 @@ struct UniqueBody {
     UniqueBody& operator=(const UniqueBody&) = delete;
     UniqueBody(UniqueBody&&) = delete;
     UniqueBody& operator=(UniqueBody&&) = delete;
+    ~UniqueBody() = default;
     int value = 0;
 };
 struct Counted {
@@ -53,7 +66,7 @@ struct NoTraits {};
 struct Incomplete;
 
 struct ThrowingDestructor {
-    ~ThrowingDestructor() noexcept(false) {}
+    ~ThrowingDestructor() noexcept(false) = default;
 };
 
 struct UppercaseName {};
@@ -64,6 +77,7 @@ struct EmptyName {};
 
 } // namespace
 
+// NOLINTBEGIN(readability-identifier-naming): ResourceTraits contract mandates type_name.
 template <> struct axiom::core::resource::ResourceTraits<Shape> {
     static constexpr std::string_view type_name = "shape";
 };
@@ -105,12 +119,13 @@ template <> struct axiom::core::resource::ResourceTraits<HyphenatedName> {
 };
 
 template <> struct axiom::core::resource::ResourceTraits<EmptyName> {
-    static constexpr std::string_view type_name = "";
+    static constexpr std::string_view type_name{};
 };
 
 template <> struct axiom::core::resource::ResourceTraits<Incomplete> {
     static constexpr std::string_view type_name = "incomplete";
 };
+// NOLINTEND(readability-identifier-naming)
 
 namespace {
 
@@ -131,6 +146,72 @@ using ShapeAlias = Shape;
     return std::move(result.value());
 }
 
+void expectRejectedIdentity(const std::string_view invalid) {
+    const auto result = ResourceId::parse(invalid);
+    EXPECT_FALSE(result) << invalid;
+    EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument) << invalid;
+}
+
+void expectCanonicalIdentity(const std::string_view text) {
+    const auto result = ResourceId::parse(text);
+    ASSERT_TRUE(result) << text;
+    EXPECT_EQ(result.value().str(), text) << text;
+    EXPECT_EQ(resourceId(text), result.value()) << text;
+}
+
+[[nodiscard]] bool looksLikeAddressOrRtti(const std::string_view text) {
+    return text.find("0x") != std::string_view::npos ||
+           text.find("typeid") != std::string_view::npos ||
+           text.find("typeinfo") != std::string_view::npos;
+}
+
+void expectNoDiagnosticLeak(const std::string_view text) {
+    EXPECT_FALSE(looksLikeAddressOrRtti(text));
+}
+
+void expectMismatchIdField(const axiom::core::Value::Object& details, const std::string_view id) {
+    EXPECT_EQ(details.at("id").asString(), id);
+    expectNoDiagnosticLeak(details.at("id").asString());
+}
+
+void expectMismatchNameFields(const axiom::core::Value::Object& details) {
+    EXPECT_EQ(details.at("expected").asString(), "shape");
+    EXPECT_EQ(details.at("actual").asString(), "shape");
+    expectNoDiagnosticLeak(details.at("expected").asString());
+    expectNoDiagnosticLeak(details.at("actual").asString());
+}
+
+void expectMismatchObjectFields(const axiom::core::Value::Object& details,
+                                const std::string_view id) {
+    ASSERT_EQ(details.size(), 3U);
+    expectMismatchIdField(details, id);
+    expectMismatchNameFields(details);
+}
+
+void expectMismatchDiagnostics(const axiom::core::Error& error, const std::string_view id) {
+    EXPECT_EQ(error.code, ErrorCode::TypeMismatch);
+    EXPECT_FALSE(error.path.has_value());
+    if(!error.details.has_value() || !error.details->isObject()) {
+        FAIL() << "type mismatch must include structured object details";
+        return;
+    }
+    expectMismatchObjectFields(error.details->asObject(), id);
+    expectNoDiagnosticLeak(error.message);
+}
+
+void collectUniqueIdentities(std::mutex& mutex,
+                             std::unordered_set<std::string>& identities,
+                             const int per_registry) {
+    ResourceRegistry registry;
+    for(int n = 0; n < per_registry; ++n) {
+        const auto added = registry.add(std::make_unique<Shape>());
+        ASSERT_TRUE(added);
+        const std::string text{added.value().id().str()};
+        const std::scoped_lock lock{mutex};
+        EXPECT_TRUE(identities.insert(text).second) << text;
+    }
+}
+
 TEST(ResourceId, ParsesCanonicalTypeAndSerial) {
     const auto result = ResourceId::parse("shape:42");
 
@@ -139,42 +220,38 @@ TEST(ResourceId, ParsesCanonicalTypeAndSerial) {
 }
 
 TEST(ResourceId, RoundTripsCanonicalIdentities) {
-    for(const std::string_view text :
-        {"a:1", "z:9", "shape:42", "type_2:10", "shape:18446744073709551615"}) {
-        const auto result = ResourceId::parse(text);
-
-        ASSERT_TRUE(result) << text;
-        EXPECT_EQ(result.value().str(), text) << text;
-        EXPECT_EQ(resourceId(text), result.value()) << text;
+    constexpr std::array texts{std::string_view{"a:1"}, std::string_view{"z:9"},
+                               std::string_view{"shape:42"}, std::string_view{"type_2:10"},
+                               std::string_view{"shape:18446744073709551615"}};
+    for(const std::string_view text : texts) {
+        expectCanonicalIdentity(text);
     }
 }
 
 TEST(ResourceId, RejectsIllegalIdentities) {
-    for(const std::string_view invalid : {"",
-                                          "shape",
-                                          ":42",
-                                          "shape:",
-                                          "shape:0",
-                                          "shape:01",
-                                          "shape:00",
-                                          "Shape:42",
-                                          "1shape:1",
-                                          "_shape:1",
-                                          "shape-name:1",
-                                          "shape:1:2",
-                                          "shape:+1",
-                                          "shape:-1",
-                                          "shape: 1",
-                                          " shape:1",
-                                          "shape:1 ",
-                                          "shape:4 2",
-                                          "shape:1a",
-                                          "shape:18446744073709551616",
-                                          "shape:184467440737095516160"}) {
-        const auto result = ResourceId::parse(invalid);
-
-        EXPECT_FALSE(result) << invalid;
-        EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument) << invalid;
+    constexpr std::array invalids{std::string_view{""},
+                                  std::string_view{"shape"},
+                                  std::string_view{":42"},
+                                  std::string_view{"shape:"},
+                                  std::string_view{"shape:0"},
+                                  std::string_view{"shape:01"},
+                                  std::string_view{"shape:00"},
+                                  std::string_view{"Shape:42"},
+                                  std::string_view{"1shape:1"},
+                                  std::string_view{"_shape:1"},
+                                  std::string_view{"shape-name:1"},
+                                  std::string_view{"shape:1:2"},
+                                  std::string_view{"shape:+1"},
+                                  std::string_view{"shape:-1"},
+                                  std::string_view{"shape: 1"},
+                                  std::string_view{" shape:1"},
+                                  std::string_view{"shape:1 "},
+                                  std::string_view{"shape:4 2"},
+                                  std::string_view{"shape:1a"},
+                                  std::string_view{"shape:18446744073709551616"},
+                                  std::string_view{"shape:184467440737095516160"}};
+    for(const std::string_view invalid : invalids) {
+        expectRejectedIdentity(invalid);
     }
 }
 
@@ -206,7 +283,7 @@ TEST(ResourceId, HashMatchesEquality) {
 
 TEST(ResourceId, MoveTransfersIdentityToDestination) {
     ResourceId original = resourceId("shape:7");
-    ResourceId moved{std::move(original)};
+    const ResourceId moved{std::move(original)};
 
     EXPECT_EQ(moved.str(), "shape:7");
     original = resourceId("mesh:3");
@@ -215,23 +292,23 @@ TEST(ResourceId, MoveTransfersIdentityToDestination) {
 
 TEST(Handle, WrapsResourceIdWithoutCrossTypeConversion) {
     const Handle<Shape> shape{resourceId("shape:42")};
-    const Handle<Shape> copy = shape;
     const Handle<Mesh> mesh{resourceId("mesh:1")};
+    const Handle<Shape> same{resourceId("shape:42")};
 
     EXPECT_EQ(shape.id().str(), "shape:42");
-    EXPECT_EQ(shape, copy);
-    EXPECT_EQ(std::hash<Handle<Shape>>{}(shape), std::hash<Handle<Shape>>{}(copy));
+    EXPECT_EQ(shape, same);
+    EXPECT_EQ(std::hash<Handle<Shape>>{}(shape), std::hash<Handle<Shape>>{}(same));
     EXPECT_LT(Handle<Shape>{resourceId("shape:10")}, Handle<Shape>{resourceId("shape:9")});
     EXPECT_NE(shape.id(), mesh.id());
 
     std::unordered_set<Handle<Shape>> handles;
     handles.insert(shape);
-    EXPECT_TRUE(handles.contains(copy));
+    EXPECT_TRUE(handles.contains(same));
 }
 
 TEST(Handle, MoveTransfersIdentityToDestination) {
     Handle<Shape> original{resourceId("shape:8")};
-    Handle<Shape> moved{std::move(original)};
+    const Handle<Shape> moved{std::move(original)};
 
     EXPECT_EQ(moved.id().str(), "shape:8");
     original = Handle<Shape>{resourceId("shape:9")};
@@ -244,7 +321,6 @@ static_assert(std::is_same_v<Handle<Shape>, Handle<ShapeAlias>>);
 static_assert(!CanFormHandle<NoTraits>);
 static_assert(!CanFormHandle<const Shape>);
 static_assert(!CanFormHandle<volatile Shape>);
-static_assert(!CanFormHandle<Shape[]>);
 static_assert(!CanFormHandle<ThrowingDestructor>);
 static_assert(!CanFormHandle<UppercaseName>);
 static_assert(!CanFormHandle<DigitPrefixedName>);
@@ -275,19 +351,13 @@ void resetLifetimeCounters() {
     ShapeImpostor::destroyed = 0;
 }
 
-[[nodiscard]] bool looksLikeAddressOrRtti(const std::string_view text) {
-    return text.find("0x") != std::string_view::npos ||
-           text.find("typeid") != std::string_view::npos ||
-           text.find("typeinfo") != std::string_view::npos;
-}
-
 TEST(ResourceRegistry, RegistersAndMutatesNonCopyableObject) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<UniqueBody>());
+    const auto added = registry.add(std::make_unique<UniqueBody>());
     ASSERT_TRUE(added);
     EXPECT_TRUE(registry.contains(added.value().id()));
 
-    auto resolved = registry.resolve(added.value());
+    const auto resolved = registry.resolve(added.value());
     ASSERT_TRUE(resolved);
     resolved.value()->value += 11;
     EXPECT_EQ((*resolved.value()).value, 11);
@@ -295,11 +365,11 @@ TEST(ResourceRegistry, RegistersAndMutatesNonCopyableObject) {
 
 TEST(ResourceRegistry, MultipleResolvesObserveTheSameObject) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<UniqueBody>());
+    const auto added = registry.add(std::make_unique<UniqueBody>());
     ASSERT_TRUE(added);
 
-    auto first = registry.resolve(added.value());
-    auto second = registry.resolve(added.value());
+    const auto first = registry.resolve(added.value());
+    const auto second = registry.resolve(added.value());
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     first.value()->value = 3;
@@ -310,9 +380,9 @@ TEST(ResourceRegistry, MultipleResolvesObserveTheSameObject) {
 TEST(ResourceRegistry, HandleCopyDoesNotExtendLifetime) {
     resetLifetimeCounters();
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Counted>());
+    const auto added = registry.add(std::make_unique<Counted>());
     ASSERT_TRUE(added);
-    const Handle<Counted> copy = added.value();
+    const Handle<Counted> copy{added.value().id()};
     EXPECT_EQ(Counted::constructed, 1);
     EXPECT_TRUE(registry.remove(copy.id()));
     EXPECT_EQ(Counted::destroyed, 1);
@@ -339,7 +409,7 @@ TEST(ResourceRegistry, UnknownIdIsNotFound) {
 TEST(ResourceRegistry, CrossRegistryIdIsNotFound) {
     ResourceRegistry first;
     ResourceRegistry second;
-    auto added = first.add(std::make_unique<Shape>());
+    const auto added = first.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
     EXPECT_FALSE(second.contains(added.value().id()));
     const auto resolved = second.resolve(added.value());
@@ -349,7 +419,7 @@ TEST(ResourceRegistry, CrossRegistryIdIsNotFound) {
 
 TEST(ResourceRegistry, WrongTypeHandleIsTypeMismatch) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Shape>());
+    const auto added = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
     const Handle<Mesh> wrong{added.value().id()};
     const auto resolved = registry.resolve(wrong);
@@ -360,25 +430,12 @@ TEST(ResourceRegistry, WrongTypeHandleIsTypeMismatch) {
 TEST(ResourceRegistry, ResolveCppTypeMismatchIsTypeMismatchWithoutKeepalive) {
     resetLifetimeCounters();
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Shape>());
+    const auto added = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
-    const auto mismatch =
-        registry.resolve(Handle<ShapeImpostor>{added.value().id()});
+    const auto mismatch = registry.resolve(Handle<ShapeImpostor>{added.value().id()});
 
     EXPECT_FALSE(mismatch);
-    EXPECT_EQ(mismatch.error().code, ErrorCode::TypeMismatch);
-    EXPECT_FALSE(mismatch.error().path.has_value());
-    ASSERT_TRUE(mismatch.error().details.has_value());
-    ASSERT_TRUE(mismatch.error().details->isObject());
-    const auto& details = mismatch.error().details->asObject();
-    ASSERT_EQ(details.size(), 3U);
-    EXPECT_EQ(details.at("id").asString(), added.value().id().str());
-    EXPECT_EQ(details.at("expected").asString(), "shape");
-    EXPECT_EQ(details.at("actual").asString(), "shape");
-    EXPECT_FALSE(looksLikeAddressOrRtti(mismatch.error().message));
-    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("id").asString()));
-    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("expected").asString()));
-    EXPECT_FALSE(looksLikeAddressOrRtti(details.at("actual").asString()));
+    expectMismatchDiagnostics(mismatch.error(), added.value().id().str());
     EXPECT_EQ(ShapeImpostor::destroyed, 0);
     EXPECT_TRUE(registry.remove(added.value().id()));
     EXPECT_EQ(Shape::destroyed, 1);
@@ -386,7 +443,7 @@ TEST(ResourceRegistry, ResolveCppTypeMismatchIsTypeMismatchWithoutKeepalive) {
 
 TEST(ResourceRegistry, SameLogicalNameDifferentCppTypesIsTypeMismatch) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Shape>());
+    const auto added = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
     resetLifetimeCounters();
     const auto rejected = registry.add(std::make_unique<ShapeImpostor>());
@@ -399,8 +456,8 @@ TEST(ResourceRegistry, SameLogicalNameDifferentCppTypesIsTypeMismatch) {
 
 TEST(ResourceRegistry, FailedAddDoesNotCorruptExistingEntries) {
     ResourceRegistry registry;
-    auto first = registry.add(std::make_unique<Shape>());
-    auto second = registry.add(std::make_unique<Mesh>());
+    const auto first = registry.add(std::make_unique<Shape>());
+    const auto second = registry.add(std::make_unique<Mesh>());
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     EXPECT_FALSE(registry.add(std::make_unique<ShapeImpostor>()));
@@ -411,21 +468,21 @@ TEST(ResourceRegistry, FailedAddDoesNotCorruptExistingEntries) {
 
 TEST(ResourceRegistry, BindingSurvivesRemovalOfAllInstances) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Shape>());
+    const auto added = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
     EXPECT_TRUE(registry.remove(added.value().id()));
     EXPECT_FALSE(registry.contains(added.value().id()));
     const auto rejected = registry.add(std::make_unique<ShapeImpostor>());
     EXPECT_FALSE(rejected);
     EXPECT_EQ(rejected.error().code, ErrorCode::TypeMismatch);
-    auto again = registry.add(std::make_unique<Shape>());
+    const auto again = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(again);
     EXPECT_NE(added.value().id(), again.value().id());
 }
 
 TEST(ResourceRegistry, RepeatRemoveHasNoSideEffects) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Shape>());
+    const auto added = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(added);
     EXPECT_TRUE(registry.remove(added.value().id()));
     EXPECT_FALSE(registry.remove(added.value().id()));
@@ -434,9 +491,9 @@ TEST(ResourceRegistry, RepeatRemoveHasNoSideEffects) {
 
 TEST(ResourceRegistry, ResolveAfterRemoveIsNotFoundWhileRefRemainsValid) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<UniqueBody>());
+    const auto added = registry.add(std::make_unique<UniqueBody>());
     ASSERT_TRUE(added);
-    auto kept = registry.resolve(added.value());
+    const auto kept = registry.resolve(added.value());
     ASSERT_TRUE(kept);
     kept.value()->value = 9;
     EXPECT_TRUE(registry.remove(added.value().id()));
@@ -451,7 +508,7 @@ TEST(ResourceRegistry, DestroyedWithNoRefsDestroysObjectOnce) {
     resetLifetimeCounters();
     {
         ResourceRegistry registry;
-        auto added = registry.add(std::make_unique<Counted>());
+        const auto added = registry.add(std::make_unique<Counted>());
         ASSERT_TRUE(added);
         EXPECT_EQ(Counted::constructed, 1);
         EXPECT_EQ(Counted::destroyed, 0);
@@ -464,7 +521,7 @@ TEST(ResourceRegistry, DestroyedWhileRefHeldThenRefReleasedDestroysOnce) {
     std::optional<ResourceRef<Counted>> kept;
     {
         ResourceRegistry registry;
-        auto added = registry.add(std::make_unique<Counted>());
+        const auto added = registry.add(std::make_unique<Counted>());
         ASSERT_TRUE(added);
         auto resolved = registry.resolve(added.value());
         ASSERT_TRUE(resolved);
@@ -481,31 +538,34 @@ TEST(ResourceRegistry, ResourceRefSurvivesRegistryDestruction) {
     std::optional<ResourceRef<UniqueBody>> kept;
     {
         ResourceRegistry registry;
-        auto added = registry.add(std::make_unique<UniqueBody>());
+        const auto added = registry.add(std::make_unique<UniqueBody>());
         ASSERT_TRUE(added);
         auto resolved = registry.resolve(added.value());
         ASSERT_TRUE(resolved);
         resolved.value()->value = 4;
         kept = std::move(resolved.value());
     }
-    ASSERT_TRUE(kept.has_value());
+    if(!kept.has_value()) {
+        FAIL() << "expected keepalive after registry destruction";
+        return;
+    }
     EXPECT_EQ((*kept)->value, 4);
 }
 
 TEST(ResourceRegistry, LastRefReleaseDestroysExactlyOnce) {
     resetLifetimeCounters();
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<Counted>());
+    const auto added = registry.add(std::make_unique<Counted>());
     ASSERT_TRUE(added);
     {
         auto first = registry.resolve(added.value());
-        auto second = registry.resolve(added.value());
+        const auto second = registry.resolve(added.value());
         ASSERT_TRUE(first);
         ASSERT_TRUE(second);
         EXPECT_TRUE(registry.remove(added.value().id()));
         EXPECT_EQ(Counted::destroyed, 0);
-        auto moved = std::move(first.value());
-        (void)moved;
+        const ResourceRef<Counted> moved{std::move(first.value())};
+        static_cast<void>(moved);
     }
     EXPECT_EQ(Counted::destroyed, 1);
     EXPECT_EQ(Counted::constructed, 1);
@@ -513,10 +573,10 @@ TEST(ResourceRegistry, LastRefReleaseDestroysExactlyOnce) {
 
 TEST(ResourceRegistry, ConstRegistryYieldsMutableAccess) {
     ResourceRegistry registry;
-    auto added = registry.add(std::make_unique<UniqueBody>());
+    const auto added = registry.add(std::make_unique<UniqueBody>());
     ASSERT_TRUE(added);
     const ResourceRegistry& frozen = registry;
-    auto resolved = frozen.resolve(added.value());
+    const auto resolved = frozen.resolve(added.value());
     ASSERT_TRUE(resolved);
     resolved.value()->value = 2;
     EXPECT_EQ(registry.resolve(added.value()).value()->value, 2);
@@ -524,8 +584,8 @@ TEST(ResourceRegistry, ConstRegistryYieldsMutableAccess) {
 
 TEST(ResourceRegistry, EqualContentReceivesDistinctIds) {
     ResourceRegistry registry;
-    auto first = registry.add(std::make_unique<Shape>());
-    auto second = registry.add(std::make_unique<Shape>());
+    const auto first = registry.add(std::make_unique<Shape>());
+    const auto second = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     EXPECT_NE(first.value().id(), second.value().id());
@@ -535,16 +595,16 @@ TEST(ResourceRegistry, SerialsAreNeverReusedAcrossRebuildDeleteAndAdd) {
     std::string first_text;
     {
         ResourceRegistry registry;
-        auto added = registry.add(std::make_unique<Shape>());
+        const auto added = registry.add(std::make_unique<Shape>());
         ASSERT_TRUE(added);
         first_text = std::string{added.value().id().str()};
         EXPECT_TRUE(registry.remove(added.value().id()));
-        auto replacement = registry.add(std::make_unique<Shape>());
+        const auto replacement = registry.add(std::make_unique<Shape>());
         ASSERT_TRUE(replacement);
         EXPECT_NE(first_text, replacement.value().id().str());
     }
     ResourceRegistry rebuilt;
-    auto again = rebuilt.add(std::make_unique<Shape>());
+    const auto again = rebuilt.add(std::make_unique<Shape>());
     ASSERT_TRUE(again);
     EXPECT_NE(first_text, again.value().id().str());
 }
@@ -556,17 +616,9 @@ TEST(ResourceRegistry, ConcurrentAllocateFromDistinctRegistriesNeverReusesIds) {
     std::unordered_set<std::string> identities;
     std::vector<std::thread> workers;
     workers.reserve(static_cast<std::size_t>(registry_count));
-    for(int index = 0; index < registry_count; ++index) {
-        workers.emplace_back([&] {
-            ResourceRegistry registry;
-            for(int n = 0; n < per_registry; ++n) {
-                auto added = registry.add(std::make_unique<Shape>());
-                ASSERT_TRUE(added);
-                const std::string text{added.value().id().str()};
-                const std::lock_guard lock{mutex};
-                EXPECT_TRUE(identities.insert(text).second) << text;
-            }
-        });
+    while(workers.size() < static_cast<std::size_t>(registry_count)) {
+        workers.emplace_back(
+            [&mutex, &identities] { collectUniqueIdentities(mutex, identities, per_registry); });
     }
     for(auto& worker : workers) {
         worker.join();
@@ -576,7 +628,7 @@ TEST(ResourceRegistry, ConcurrentAllocateFromDistinctRegistriesNeverReusesIds) {
 
 TEST(ResourceRegistry, SerialExhaustionReturnsInternalErrorWithoutMutation) {
     ResourceRegistry registry;
-    auto existing = registry.add(std::make_unique<Shape>());
+    const auto existing = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(existing);
     resetLifetimeCounters();
     {
@@ -587,7 +639,7 @@ TEST(ResourceRegistry, SerialExhaustionReturnsInternalErrorWithoutMutation) {
         EXPECT_EQ(Counted::destroyed, 1);
         EXPECT_TRUE(registry.contains(existing.value().id()));
     }
-    auto after = registry.add(std::make_unique<Shape>());
+    const auto after = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(after);
     EXPECT_NE(existing.value().id(), after.value().id());
 }

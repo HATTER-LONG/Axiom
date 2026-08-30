@@ -1,6 +1,7 @@
 #include "resource_serial.hpp"
 
 #include <axiom/core/base/error.hpp>
+#include <axiom/core/base/result.hpp>
 
 #include <atomic>
 #include <cstdint>

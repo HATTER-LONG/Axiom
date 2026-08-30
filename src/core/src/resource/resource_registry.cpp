@@ -3,9 +3,12 @@
 #include "resource_serial.hpp"
 
 #include <axiom/core/base/error.hpp>
+#include <axiom/core/base/result.hpp>
 #include <axiom/core/base/value.hpp>
 #include <axiom/core/resource/resource_id.hpp>
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -32,6 +35,7 @@ private:
 };
 
 struct TransparentStringHash {
+    // NOLINTNEXTLINE(readability-identifier-naming): unordered_map mandates is_transparent.
     using is_transparent = void;
 
     [[nodiscard]] std::size_t operator()(const std::string_view value) const noexcept {
@@ -92,7 +96,7 @@ using BindingMap =
     if(!parsed) {
         return Result<ResourceId>::failure(malformedAllocatedIdError());
     }
-    return parsed;
+    return Result<ResourceId>::success(std::move(parsed.value()));
 }
 
 } // namespace
@@ -115,16 +119,14 @@ Error ResourceRegistry::resourceNotFoundError(const std::string_view id) {
     };
 }
 
-Error ResourceRegistry::resourceTypeMismatchError(const std::string_view id,
-                                                  const std::string_view expected,
-                                                  const std::string_view actual) {
+Error ResourceRegistry::resourceTypeMismatchError(const TypeMismatchNames& names) {
     return {
         .code = ErrorCode::TypeMismatch,
         .message = "Resource type does not match the requested handle type",
         .path = std::nullopt,
-        .details = Value{Value::Object{{"id", Value{std::string{id}}},
-                                       {"expected", Value{std::string{expected}}},
-                                       {"actual", Value{std::string{actual}}}}},
+        .details = Value{Value::Object{{"id", Value{std::string{names.id}}},
+                                       {"expected", Value{std::string{names.expected}}},
+                                       {"actual", Value{std::string{names.actual}}}}},
     };
 }
 
@@ -170,9 +172,9 @@ Result<ResourceId> ResourceRegistry::Impl::store(ResourceId identity,
                                                  std::shared_ptr<void> object,
                                                  const std::string_view logical_name,
                                                  const TypeIdentity type) {
-    const auto [position, inserted] =
-        entries.try_emplace(std::string{identity.str()},
-                            Registered{std::move(object), type, logical_name});
+    const auto [position, inserted] = entries.try_emplace(
+        std::string{identity.str()},
+        Registered{.object = std::move(object), .type = type, .logical_name = logical_name});
     if(!inserted) {
         return Result<ResourceId>::failure(duplicateIdentityError(position->first));
     }
@@ -185,12 +187,13 @@ Result<ResourceId> ResourceRegistry::Impl::store(ResourceId identity,
     return Result<ResourceId>::success(std::move(identity));
 }
 
-ResourceRegistry::LookupResult ResourceRegistry::lookup(const std::string_view id_text,
-                                                        const std::string_view expected_name,
-                                                        const std::type_info& expected_type) const {
+ResourceRegistry::LookupResult
+ResourceRegistry::lookup(const std::string_view id_text,
+                         const std::type_info& expected_type,
+                         const std::string_view expected_name) const {
     const auto found = impl_->entries.find(id_text);
     if(found == impl_->entries.end()) {
-        return {};
+        return {.status = LookupStatus::Missing};
     }
     if(found->second.logical_name != expected_name ||
        found->second.type != TypeIdentity{expected_type}) {
