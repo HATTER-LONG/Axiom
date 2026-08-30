@@ -1,5 +1,5 @@
-#include <testlib/core/core.hpp>
+#include <axiom/axiom.hpp>
 
 #include <iostream>
 
-int main() { std::cout << testlib::core::version() << '\n'; }
+int main() { std::cout << axiom::frameworkName() << '\n'; }

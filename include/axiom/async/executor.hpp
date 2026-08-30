@@ -5,6 +5,8 @@
  * @brief A draining, fixed-size asynchronous task executor.
  */
 
+#include <axiom/export.hpp>
+
 #include <cstddef>
 #include <functional>
 #include <future>
@@ -25,7 +27,7 @@ class Scheduler;
  * It must not be called from one of this executor's workers. Destruction performs
  * the same shutdown and therefore must occur outside an executor task.
  */
-class Executor final {
+class AXIOM_API Executor final {
 public:
     /**
      * @brief Starts worker threads.
@@ -97,3 +99,4 @@ auto Executor::submit(F&& function, Args&&... args)
 }
 
 } // namespace axiom::async
+#include <axiom/export.hpp>

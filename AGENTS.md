@@ -20,7 +20,7 @@ interfaces small, and never weaken a quality check to make it pass.
 - Avoid leaky abstractions: do not expose storage, third-party types, platform
   handles, mutable internal collections, or implementation-specific error details
   unless the module is explicitly an adapter boundary.
-- Put behavior in the module that owns it; keep dependencies one-way: Core must not
+- Put behavior in the module that owns it; keep dependencies one-way: Axiom library must not
   depend on UI, libraries on applications, or production on tests.
 - Prefer RAII, explicit ownership, and composition. Do not expose third-party
   implementation types outside an adapter boundary.
@@ -64,7 +64,7 @@ obvious control flow. Keep documentation synchronized with behavior.
 ```cpp
 /**
  * @brief Returns the library ABI version encoded by this build.
- * @return Positive version integer for the current Core ABI.
+ * @return Positive version integer for the current Axiom ABI.
  */
 [[nodiscard]] int version();
 ```

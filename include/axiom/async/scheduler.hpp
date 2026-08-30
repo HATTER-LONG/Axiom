@@ -5,6 +5,8 @@
  * @brief Timed callback dispatch through an Executor.
  */
 
+#include <axiom/export.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -21,7 +23,7 @@ class Executor;
  * Its destructor cancels pending work and joins the timing thread; the referenced
  * Executor must outlive the Scheduler.
  */
-class Scheduler final {
+class AXIOM_API Scheduler final {
 private:
     struct State;
 
@@ -108,3 +110,4 @@ private:
 };
 
 } // namespace axiom::async
+#include <axiom/export.hpp>

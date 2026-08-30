@@ -1,25 +1,25 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TestlibInstallConsumer LANGUAGES CXX)
+project(AxiomInstallConsumer LANGUAGES CXX)
 
 include(CTest)
 
-find_package(Testlib CONFIG REQUIRED)
+find_package(Axiom CONFIG REQUIRED)
 
-add_executable(testlib_install_consumer main.cpp)
-target_link_libraries(testlib_install_consumer PRIVATE Testlib::Core)
+add_executable(axiom_install_consumer main.cpp)
+target_link_libraries(axiom_install_consumer PRIVATE Axiom::Axiom)
 
-add_test(NAME testlib.install.consumer COMMAND testlib_install_consumer)
+add_test(NAME axiom.install.consumer COMMAND axiom_install_consumer)
 
-get_target_property(testlib_core_type Testlib::Core TYPE)
-if (TESTLIB_EXPECT_SHARED AND NOT testlib_core_type STREQUAL "SHARED_LIBRARY")
-    message(FATAL_ERROR "The installed Core must be shared")
-elseif (NOT TESTLIB_EXPECT_SHARED AND NOT testlib_core_type STREQUAL "STATIC_LIBRARY")
-    message(FATAL_ERROR "The installed Core must be static")
+get_target_property(axiom_library_type Axiom::Axiom TYPE)
+if (AXIOM_EXPECT_SHARED AND NOT axiom_library_type STREQUAL "SHARED_LIBRARY")
+    message(FATAL_ERROR "The installed Axiom library must be shared")
+elseif (NOT AXIOM_EXPECT_SHARED AND NOT axiom_library_type STREQUAL "STATIC_LIBRARY")
+    message(FATAL_ERROR "The installed Axiom library must be static")
 endif ()
-if (WIN32 AND TESTLIB_EXPECT_SHARED)
+if (WIN32 AND AXIOM_EXPECT_SHARED)
     set_tests_properties(
-        testlib.install.consumer
+        axiom.install.consumer
         PROPERTIES ENVIRONMENT_MODIFICATION
-                   "PATH=path_list_prepend:$<TARGET_FILE_DIR:Testlib::Core>")
+                   "PATH=path_list_prepend:$<TARGET_FILE_DIR:Axiom::Axiom>")
 endif ()

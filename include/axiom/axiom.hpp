@@ -15,6 +15,9 @@
 #include <axiom/action/module.hpp>
 #include <axiom/action/module_builder.hpp>
 #include <axiom/action/runtime.hpp>
+#include <axiom/async/executor.hpp>
+#include <axiom/async/scheduler.hpp>
+#include <axiom/events/signal.hpp>
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>

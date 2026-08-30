@@ -1,4 +1,3 @@
-#include "../src/action/detail/typed_action_adapter.hpp"
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/invocation_context.hpp>
 #include <axiom/action/module.hpp>
@@ -120,16 +119,6 @@ private:
     int factor_;
 };
 
-static_assert(axiom::detail::isAdaptableCallable<decltype(&add)>());
-static_assert(
-    axiom::detail::isAdaptableCallable<decltype([](const int value) { return value; })>());
-static_assert(
-    !axiom::detail::isAdaptableCallable<decltype([](const auto value) { return value; })>());
-static_assert(!axiom::detail::isAdaptableCallable<OverloadedCallable>());
-static_assert(!axiom::detail::isAdaptableCallable<NonCopyableCallable>());
-static_assert(!axiom::detail::isAdaptableCallable<decltype(&Multiplier::multiply)>());
-static_assert(!axiom::detail::isAdaptableCallable<std::function<int(int)>>());
-
 template <typename Callable, typename... Documentation>
 concept PubliclyAddable =
     requires(ModuleBuilder& builder, Callable&& callable, Documentation&&... documentation) {
@@ -202,7 +191,6 @@ static_assert(!PubliclyAddable<std::function<int(int)>, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyEntriesCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyHashMapCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyVectorCallable, ParameterDoc>);
-static_assert(!axiom::detail::isAdaptableCallable<PolicyEntriesCallable>());
 
 ActionId id(const std::string_view text) {
     const auto parsed = ActionId::parse(text);
