@@ -1,7 +1,7 @@
-#include "../src/action/detail/action.hpp"
 #include "../src/action/detail/registry.hpp"
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
 #include <axiom/action/invocation_context.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>

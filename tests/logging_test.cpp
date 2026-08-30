@@ -781,4 +781,21 @@ TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
               "1970-01-01T00:00:00.000Z [info] [runtime] message (logging_test.cpp:1 record)\n");
 }
 
+TEST(LoggingService, AllowsSinkDestructorsToLogDuringUnsubscribe) {
+    LoggingService service;
+    auto collector = std::make_shared<LogCollector>();
+    const auto collected = service.addSink(collector);
+    const auto logger = service.logger("destruction");
+    auto sink = std::shared_ptr<ILogSink>{new CallbackSink{{}}, [logger](ILogSink* value) {
+                                              logger.write(LogLevel::Info, "sink released");
+                                              delete value;
+                                          }};
+    auto subscription = service.addSink(std::move(sink));
+
+    subscription.reset();
+    const auto records = collector->records();
+    ASSERT_EQ(records.size(), 1U);
+    EXPECT_EQ(records.front().message, "sink released");
+}
+
 } // namespace

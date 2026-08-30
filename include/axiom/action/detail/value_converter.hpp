@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file value_converter.hpp
+ * @brief Shared implementation of the typed Action value boundary.
+ */
+
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
@@ -47,12 +51,12 @@ struct IsStringMap<std::unordered_map<std::string, Element, Hash, Equal, Allocat
 };
 
 template <typename T>
-inline constexpr bool IS_SIGNED_INTEGER =
+inline constexpr bool is_signed_integer =
     std::is_integral_v<T> && std::is_signed_v<T> && !std::is_same_v<T, bool>;
 
 template <typename T>
 struct IsValueConvertible
-    : std::bool_constant<std::is_same_v<T, bool> || IS_SIGNED_INTEGER<T> ||
+    : std::bool_constant<std::is_same_v<T, bool> || is_signed_integer<T> ||
                          std::is_floating_point_v<T> || std::is_same_v<T, std::string>> {};
 
 template <typename Element, typename Allocator>
@@ -90,20 +94,18 @@ struct IsValueConvertible<std::unordered_map<std::string, Element, Hash, Equal, 
     case Value::Type::Object:
         return "object";
     }
-
     return "unknown";
 }
 
 [[nodiscard]] inline Error typeMismatch(const std::string_view path,
                                         const std::string_view expected,
                                         const Value::Type actual) {
-    return {
-        .code = ErrorCode::TypeMismatch,
-        .message = "Expected " + std::string{expected} + " but received " + valueTypeName(actual),
-        .path = std::string{path},
-        .details = Value{Value::Object{{"actual", Value{valueTypeName(actual)}},
-                                       {"expected", Value{std::string{expected}}}}},
-    };
+    return {.code = ErrorCode::TypeMismatch,
+            .message =
+                "Expected " + std::string{expected} + " but received " + valueTypeName(actual),
+            .path = std::string{path},
+            .details = Value{Value::Object{{"actual", Value{valueTypeName(actual)}},
+                                           {"expected", Value{std::string{expected}}}}}};
 }
 
 template <typename Integer> [[nodiscard]] bool fitsInInteger(const std::int64_t value) noexcept {
@@ -130,19 +132,16 @@ template <typename Integer> [[nodiscard]] bool fitsInInteger(const std::int64_t 
     if(key.empty()) {
         return false;
     }
-
     const auto is_letter = [](const unsigned char character) constexpr {
         return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
     };
     const auto is_digit = [](const unsigned char character) constexpr {
         return character >= '0' && character <= '9';
     };
-
     const auto first = static_cast<unsigned char>(key.front());
     if(!is_letter(first) && first != '_') {
         return false;
     }
-
     return std::all_of(key.cbegin() + 1, key.cend(), [&](const char character) {
         const auto byte = static_cast<unsigned char>(character);
         return is_letter(byte) || is_digit(byte) || byte == '_';
@@ -191,7 +190,6 @@ template <typename Integer> [[nodiscard]] bool fitsInInteger(const std::int64_t 
     constexpr std::string_view hexadecimal = "0123456789ABCDEF";
     std::string escaped;
     escaped.reserve(key.size());
-
     for(const unsigned char byte : key) {
         const auto escape_sequence = commonEscapeSequence(byte);
         if(!escape_sequence.empty()) {
@@ -206,7 +204,6 @@ template <typename Integer> [[nodiscard]] bool fitsInInteger(const std::int64_t 
             escaped += static_cast<char>(byte);
         }
     }
-
     return escaped;
 }
 
@@ -224,7 +221,7 @@ template <> struct Converter<bool> {
 };
 
 template <typename T>
-    requires IS_SIGNED_INTEGER<T>
+    requires is_signed_integer<T>
 struct Converter<T> {
     [[nodiscard]] static Result<T> from(const Value& value, const std::string_view path) {
         if(!value.isInteger()) {
@@ -396,7 +393,6 @@ concept ValueConvertible =
         }
         return std::string{parent_path} + '.' + std::string{field_name};
     }
-
     return std::string{parent_path} + "[\"" + value_converter_detail::escapePathKey(field_name) +
            "\"]";
 }

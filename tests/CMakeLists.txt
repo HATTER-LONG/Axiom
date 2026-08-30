@@ -13,6 +13,12 @@ endif ()
 add_executable(axiom_test core_test.cpp descriptor_test.cpp dispatcher_test.cpp events_test.cpp
                async_test.cpp logging_test.cpp registry_test.cpp resource_test.cpp runtime_test.cpp
                value_converter_test.cpp)
+# Internal unit tests compile their private implementation locally. Public Runtime
+# and installed-consumer tests still exercise the shared library boundary.
+if (BUILD_SHARED_LIBS)
+    target_sources(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src/action/dispatcher.cpp"
+                                      "${PROJECT_SOURCE_DIR}/src/action/registry.cpp")
+endif ()
 axiom_configure_target(axiom_test)
 target_include_directories(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src"
                                            "${PROJECT_SOURCE_DIR}/src/action")
@@ -67,6 +73,7 @@ if (AXIOM_COVERAGE)
 endif ()
 if (AXIOM_MUTATION_TESTING)
     add_custom_target(axiom_verify_mutation
-        COMMAND "${CMAKE_COMMAND}" "-DAXIOM_REPORT=${PROJECT_BINARY_DIR}/mull/mutations.json" -P
+        COMMAND "${CMAKE_COMMAND}" "-DAXIOM_REPORT=${PROJECT_BINARY_DIR}/mull/mutations.json"
+                "-DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/cmake/verify_mutation.cmake" VERBATIM)
 endif ()

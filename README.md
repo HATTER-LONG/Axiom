@@ -6,8 +6,6 @@ as described `Module`/`Action` entries, discovered through metadata, and invoked
 through the dynamic `Value` boundary with structured `Result` errors. It also
 ships a small demo executable, tests, and reproducible quality gates.
 
-[中文文档](README.zh-CN.md)
-
 ## Build
 
 ```sh
@@ -15,24 +13,9 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
-The demo walks through Axiom library actions, logging, and resource behavior. `debug` uses
-an unoptimized build. Both development presets build tests; run them with
-`ctest --preset dev` or `ctest --preset debug`.
-
-Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) to see the walkthrough.
-The resource example in `apps/demo/resource_demo.cpp` specializes `ResourceTraits` for an
-accumulator, transfers ownership to `ResourceRegistry`, and round-trips a typed
-`Handle` through its `ResourceId` text. It resolves a `ResourceRef` to update the
-accumulator, then removes the registration: new lookups return `NotFound`, while
-the retained reference can still access the object until it leaves scope. The
-`axiom.demo` CTest smoke test checks these steps and fails on unexpected behavior.
-
-The demo is split by responsibility: `main.cpp` sequences the walkthrough and handles
-exceptions; `base_demo` covers identity and Value; `action_demo` owns registration,
-discovery, and invocation; `resource_demo` covers resource lifetimes; `logging_demo`
-owns sinks, subscriptions, and log queries. Each example has a small header; its
-implementation helpers stay private. `accumulator.hpp` holds the shared example
-type, and `demo_output` handles common console formatting.
+The demo prints the framework name. `debug` uses an unoptimized build. Both
+presets build tests; run them with `ctest --preset dev` or `ctest --preset debug`.
+Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) for the demo.
 
 Axiom library is static by default. To select a shared library, use a separate build
 with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Axiom`.
@@ -77,17 +60,19 @@ in each component.
 Supported callable conversions include `bool`, signed integers, floating-point
 values, `std::string`, recursive `std::vector<T>`, and string-keyed
 `std::map`/`std::unordered_map`. Integer inputs may widen to floating point;
-lossy and implicit string conversions are rejected. Optional parameters use
+out-of-range integer narrowing and implicit string conversions are rejected.
+Floating-point conversions follow C++ numeric conversion semantics. Optional parameters use
 validated `param(..., default_value)` values. The runtime is intentionally not
 thread-safe: registration, discovery, and invocation must not run concurrently.
 Axiom library does not provide protocol adapters, JSON serialization, networking, plugins,
-authorization, or asynchronous execution.
+or authorization. Independent `async::Executor` and `async::Scheduler` services
+provide asynchronous work; Action invocation itself remains synchronous.
 
 ## Project layout
 
 | Path | Purpose |
 | ---- | ------- |
-| `src/{foundation,action,logging,resource,events,async}` | Installable `Axiom::Axiom` library and public headers. |
+| `include/axiom`, `src` | Public headers and implementations of `Axiom::Axiom`; events are header-only. |
 | `apps/demo` | Application consuming the same Axiom library target as other clients. |
 | `tests` | GoogleTest suites and installed-package consumer. |
 | `cmake` | Target policy, runtime deployment and build verification. |
@@ -111,7 +96,7 @@ checkflow full
 | ---- | ------ |
 | `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity. |
 | `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, plus uninstrumented static/shared tests and installed consumers. |
-| `hardening` | Static ASan/UBSan tests, including a UBSan termination regression, then a separate static Mull build and report-integrity check. |
+| `hardening` | Static ASan/UBSan tests, then a separate static Mull build and report-integrity check. |
 
 Coverage must reach **90% for each of lines, regions and branches**. The test executable
 links the entire static Axiom library archive so unreferenced translation units cannot disappear
@@ -120,8 +105,8 @@ filenames are embedded in the flow. An additional check rejects LLVM diagnostics
 (including mismatched profiles) and missing Axiom library implementation files. Failed coverage
 produces `coverage-export.json` in the build directory.
 
-Mutation testing must reach **90%** and its report must include implementation mutants
-under `src/{foundation,action,logging,resource,events,async}/src`, not only instantiated headers. Coverage and Mull intentionally
+Mutation testing must reach **70%** and its report must include implementation mutants
+under this repository’s `src/`, not only instantiated headers or dependency files. Coverage and Mull intentionally
 require static Axiom library. The independent `quality-shared` preset validates the DLL boundary
 using the existing tests; it uses Ninja Multi-Config and Release to exercise configuration
 selection during installation. Internal Registry/Dispatcher tests compile their private

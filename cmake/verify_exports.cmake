@@ -9,5 +9,9 @@ endif ()
 execute_process(COMMAND "${AXIOM_NM}" ${options} "${AXIOM_LIBRARY}"
                 OUTPUT_VARIABLE symbols COMMAND_ERROR_IS_FATAL ANY)
 if (symbols MATCHES "spdlog|[0-9]fmt")
-    message(FATAL_ERROR "Core exports private spdlog/fmt implementation symbols")
+    message(FATAL_ERROR "Axiom exports private spdlog/fmt implementation symbols")
+endif ()
+
+if (symbols MATCHES "N[K]?5axiom6detail(8Registry|10Dispatcher)")
+    message(FATAL_ERROR "Axiom exports private Registry/Dispatcher implementation symbols")
 endif ()

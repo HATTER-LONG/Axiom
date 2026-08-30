@@ -1,9 +1,13 @@
 #pragma once
 
-#include "action.hpp"
-#include "function_traits.hpp"
-#include "value_converter.hpp"
+/** @file typed_action_adapter.hpp
+ * @brief Callable adaptation machinery required by ModuleBuilder templates.
+ * @note These detail declarations are not supported public extension points.
+ */
+
 #include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
+#include <axiom/action/detail/value_converter.hpp>
 #include <axiom/action/invocation_context.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
@@ -22,22 +26,68 @@
 
 namespace axiom::detail {
 
+template <typename Return, typename... Arguments> struct FunctionSignature {
+    using ReturnType = Return;
+    using ArgumentTypes = std::tuple<Arguments...>;
+};
+
+template <typename T, typename = void> struct FunctionTraits {};
+
+/** @brief Identifies type-erased bindings that cannot expose their original lifetime model. */
+template <typename T> struct IsTypeErasedCallable : std::false_type {};
+
+template <typename Return, typename... Arguments>
+struct IsTypeErasedCallable<std::function<Return(Arguments...)>> : std::true_type {};
+
+template <typename Return, typename... Arguments>
+struct FunctionTraits<Return (*)(Arguments...), void> : FunctionSignature<Return, Arguments...> {};
+
+template <typename Return, typename... Arguments>
+struct FunctionTraits<Return (*)(Arguments...) noexcept, void>
+    : FunctionSignature<Return, Arguments...> {};
+
+template <typename Class, typename Return, typename... Arguments>
+struct FunctionTraits<Return (Class::*)(Arguments...), void>
+    : FunctionSignature<Return, Arguments...> {};
+
+template <typename Class, typename Return, typename... Arguments>
+struct FunctionTraits<Return (Class::*)(Arguments...) const, void>
+    : FunctionSignature<Return, Arguments...> {};
+
+template <typename Class, typename Return, typename... Arguments>
+struct FunctionTraits<Return (Class::*)(Arguments...) noexcept, void>
+    : FunctionSignature<Return, Arguments...> {};
+
+template <typename Class, typename Return, typename... Arguments>
+struct FunctionTraits<Return (Class::*)(Arguments...) const noexcept, void>
+    : FunctionSignature<Return, Arguments...> {};
+
+template <typename T>
+struct FunctionTraits<T, std::void_t<decltype((&std::remove_cvref_t<T>::operator()))>>
+    : FunctionTraits<decltype((&std::remove_cvref_t<T>::operator()))> {};
+
+template <typename T>
+concept HasFunctionTraits = requires {
+    typename FunctionTraits<std::remove_cvref_t<T>>::ReturnType;
+    typename FunctionTraits<std::remove_cvref_t<T>>::ArgumentTypes;
+};
+
 template <typename T> struct ResultValue {
-    static constexpr bool IS_RESULT = false;
+    static constexpr bool is_result = false;
     using ValueType = T;
 };
 
 template <typename T> struct ResultValue<Result<T>> {
-    static constexpr bool IS_RESULT = true;
+    static constexpr bool is_result = true;
     using ValueType = T;
 };
 
 template <typename T>
-inline constexpr bool IS_ADAPTED_RETURN = [] {
+inline constexpr bool is_adapted_return = [] {
     using Type = std::remove_cvref_t<T>;
     if constexpr(std::is_void_v<Type>) {
         return true;
-    } else if constexpr(ResultValue<Type>::IS_RESULT) {
+    } else if constexpr(ResultValue<Type>::is_result) {
         using ResultType = ResultValue<Type>::ValueType;
         return std::is_void_v<ResultType> || ValueConvertible<ResultType>;
     } else {
@@ -62,7 +112,7 @@ template <typename Callable> consteval bool isAdaptableCallable() {
         using Return = Traits::ReturnType;
         constexpr auto count = std::tuple_size_v<Arguments>;
         return areArgumentTypesConvertible<Arguments>(std::make_index_sequence<count>{}) &&
-               IS_ADAPTED_RETURN<Return> &&
+               is_adapted_return<Return> &&
                []<std::size_t... Index>(std::index_sequence<Index...> index_sequence) {
                    static_cast<void>(index_sequence);
                    return std::invocable<
@@ -93,7 +143,7 @@ template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor() {
                 .element_type = {},
                 .fields = {},
                 .value_type = {}};
-    } else if constexpr(value_converter_detail::IS_SIGNED_INTEGER<Type>) {
+    } else if constexpr(value_converter_detail::is_signed_integer<Type>) {
         return {.kind = TypeDescriptor::Kind::Integer,
                 .description = {},
                 .element_type = {},
@@ -131,7 +181,7 @@ template <typename Return> [[nodiscard]] TypeDescriptor returnTypeDescriptor() {
                 .element_type = {},
                 .fields = {},
                 .value_type = {}};
-    } else if constexpr(ResultValue<Type>::IS_RESULT) {
+    } else if constexpr(ResultValue<Type>::is_result) {
         using ResultType = ResultValue<Type>::ValueType;
         if constexpr(std::is_void_v<ResultType>) {
             return {.kind = TypeDescriptor::Kind::Null,
@@ -220,7 +270,7 @@ private:
     template <typename ResultType>
     [[nodiscard]] static Result<Value> convertReturn(ResultType&& result) {
         using Type = std::remove_cvref_t<ResultType>;
-        if constexpr(ResultValue<Type>::IS_RESULT) {
+        if constexpr(ResultValue<Type>::is_result) {
             if(!result) {
                 return Result<Value>::failure(result.error());
             }

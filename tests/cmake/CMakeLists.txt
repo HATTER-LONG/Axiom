@@ -48,19 +48,22 @@ endif ()
 # Exercise both sides of the report guard, so a syntax error cannot masquerade as correctly
 # rejecting header-only mutation reports.
 set(report "${CMAKE_CURRENT_BINARY_DIR}/mutations.json")
-foreach (source IN ITEMS "/project/include/axiom/foundation/value.hpp" "/project/src/action/runtime.cpp")
+foreach (source IN ITEMS "${axiom_source}/include/axiom/foundation/value.hpp"
+                         "${axiom_source}/src/action/runtime.cpp"
+                         "/dependency/src/action/runtime.cpp")
     file(WRITE "${report}" "{\"files\":{\"${source}\":{\"mutants\":[{}]}}}")
     execute_process(
-        COMMAND "${CMAKE_COMMAND}" "-DAXIOM_REPORT=${report}" -P
+        COMMAND "${CMAKE_COMMAND}" "-DAXIOM_REPORT=${report}"
+                "-DAXIOM_SOURCE_DIR=${axiom_source}" -P
                 "${axiom_source}/cmake/verify_mutation.cmake"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE output
         ERROR_VARIABLE error)
-    if (source MATCHES "[.]hpp$" AND (result EQUAL 0 OR NOT error MATCHES
-                                                        "no Axiom implementation mutants"))
-        message(
-            FATAL_ERROR "Header-only mutation report was not correctly rejected: ${output}${error}")
-    elseif (source MATCHES "[.]cpp$" AND NOT result EQUAL 0)
-        message(FATAL_ERROR "Implementation report was rejected: ${output}${error}")
+    if (source STREQUAL "${axiom_source}/src/action/runtime.cpp")
+        if (NOT result EQUAL 0)
+            message(FATAL_ERROR "Implementation report was rejected: ${output}${error}")
+        endif ()
+    elseif (result EQUAL 0 OR NOT error MATCHES "no Axiom implementation mutants")
+        message(FATAL_ERROR "Non-implementation report was not correctly rejected: ${output}${error}")
     endif ()
 endforeach ()

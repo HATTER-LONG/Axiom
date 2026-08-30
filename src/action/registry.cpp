@@ -1,6 +1,6 @@
 #include "detail/registry.hpp"
-#include "detail/action.hpp"
 #include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
 #include <axiom/action/module.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>

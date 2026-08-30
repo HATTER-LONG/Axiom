@@ -1,21 +1,28 @@
 cmake_minimum_required(VERSION 3.25)
 
-# A score based only on instantiated headers must never pass as Core coverage.
+# A score based only on instantiated headers must never pass as Axiom coverage.
 file(READ "${AXIOM_REPORT}" report)
 string(JSON file_count LENGTH "${report}" files)
+file(GLOB_RECURSE axiom_sources "${AXIOM_SOURCE_DIR}/src/*.cpp")
+if (NOT axiom_sources)
+    message(FATAL_ERROR "No Axiom implementation sources found")
+endif ()
 set(implementation_mutants 0)
 if (file_count GREATER 0)
     math(EXPR last "${file_count} - 1")
     foreach (index RANGE 0 ${last})
         string(JSON source MEMBER "${report}" files ${index})
         string(REPLACE "\\" "/" normalized_source "${source}")
-        if (normalized_source MATCHES "/src/core/src/.*[.]cpp$")
+        # The library implementation is organized by feature under src/.  Header
+        # instantiations alone must not satisfy the mutation gate.
+        cmake_path(ABSOLUTE_PATH normalized_source BASE_DIRECTORY "${AXIOM_SOURCE_DIR}" NORMALIZE)
+        if (normalized_source IN_LIST axiom_sources)
             string(JSON count LENGTH "${report}" files "${source}" mutants)
             math(EXPR implementation_mutants "${implementation_mutants} + ${count}")
         endif ()
     endforeach ()
 endif ()
 if (implementation_mutants EQUAL 0)
-    message(FATAL_ERROR "Mull report has no Core implementation mutants; check library discovery")
+    message(FATAL_ERROR "Mull report has no Axiom implementation mutants; check library discovery")
 endif ()
-message(STATUS "Verified ${implementation_mutants} Core implementation mutants")
+message(STATUS "Verified ${implementation_mutants} Axiom implementation mutants")

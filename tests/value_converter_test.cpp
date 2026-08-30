@@ -1,4 +1,5 @@
-#include "../src/action/detail/value_converter.hpp"
+#include <axiom/action/detail/value_converter.hpp>
+#include <axiom/action/module_builder.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/value.hpp>
 
@@ -78,6 +79,16 @@ static_assert(!ValueConvertible<std::unordered_map<std::string, int, NonDefaultC
 static_assert(!ValueConvertible<std::vector<int, NonDefaultConstructibleIntAllocator>>);
 static_assert(
     !ValueConvertible<std::vector<std::map<std::string, int, NonDefaultConstructibleCompare>>>);
+
+TEST(ValueConverter, SharesDefinitionsWithPublicCallableRegistration) {
+    axiom::ModuleBuilder builder{{.namespace_name = "conversion", .metadata = {}}};
+    const auto registered =
+        builder.add("echo", "Echo", [](int value) { return value; }, axiom::param("value"));
+    EXPECT_TRUE(registered);
+    auto converted = fromValue<int>(Value{42}, "value");
+    ASSERT_TRUE(converted);
+    EXPECT_EQ(converted.value(), 42);
+}
 
 } // namespace
 

@@ -2,8 +2,12 @@
 
 #include <axiom/async/executor.hpp>
 
+#include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -12,11 +16,22 @@
 
 namespace axiom::async {
 
+namespace {
+[[nodiscard]] std::chrono::steady_clock::time_point
+deadlineAfter(const std::chrono::steady_clock::duration delay) {
+    const auto now = std::chrono::steady_clock::now();
+    if(now > std::chrono::steady_clock::time_point::max() - delay) {
+        throw std::overflow_error{"Scheduler deadline is outside the clock range"};
+    }
+    return now + delay;
+}
+} // namespace
+
 struct Scheduler::State final {
     struct Entry final {
         std::chrono::steady_clock::time_point due;
         std::chrono::steady_clock::duration period;
-        std::function<void()> callback;
+        std::shared_ptr<std::function<void()>> callback;
     };
 
     explicit State(Executor& executor_ref) : executor(executor_ref) {}
@@ -35,7 +50,7 @@ bool Scheduler::cancel(const std::shared_ptr<State>& state, const std::uint64_t 
     if(!state || id == 0) {
         return false;
     }
-    std::lock_guard lock{state->mutex};
+    std::unique_lock lock{state->mutex};
     const auto entry = state->entries.find(id);
     if(entry == state->entries.end()) {
         return false;
@@ -47,7 +62,10 @@ bool Scheduler::cancel(const std::shared_ptr<State>& state, const std::uint64_t 
             break;
         }
     }
-    state->entries.erase(entry);
+    // Captures may own other handles. Release them after unlocking so their
+    // destructors can safely cancel another registration.
+    auto removed = state->entries.extract(entry);
+    lock.unlock();
     state->changed.notify_all();
     return true;
 }
@@ -56,55 +74,62 @@ bool Scheduler::active(const std::shared_ptr<State>& state, const std::uint64_t 
     if(!state || id == 0) {
         return false;
     }
-    std::lock_guard lock{state->mutex};
+    std::scoped_lock const lock{state->mutex};
     return state->entries.contains(id);
+}
+
+bool Scheduler::waitForDue(State& state, std::unique_lock<std::mutex>& lock) {
+    if(state.due_entries.empty()) {
+        state.changed.wait(lock, [&state] { return state.stopping || !state.due_entries.empty(); });
+        return false;
+    }
+
+    const auto due = state.due_entries.begin()->first;
+    return !state.changed.wait_until(lock, due, [&state, due] {
+        return state.stopping || state.due_entries.empty() ||
+               state.due_entries.begin()->first != due;
+    });
+}
+
+void Scheduler::dispatchDue(const std::shared_ptr<State>& state,
+                            std::unique_lock<std::mutex>& lock) {
+    if(state->stopping || state->due_entries.empty()) {
+        return;
+    }
+
+    const auto due = state->due_entries.begin()->first;
+    const auto id = state->due_entries.begin()->second;
+    state->due_entries.erase(state->due_entries.begin());
+    const auto entry = state->entries.find(id);
+    if(entry == state->entries.end()) {
+        return;
+    }
+
+    auto callback = entry->second.callback;
+    if(entry->second.period > std::chrono::steady_clock::duration::zero() &&
+       due <= std::chrono::steady_clock::time_point::max() - entry->second.period) {
+        entry->second.due = due + entry->second.period;
+        state->due_entries.emplace(entry->second.due, id);
+    } else {
+        state->entries.erase(entry);
+    }
+
+    lock.unlock();
+    try {
+        [[maybe_unused]] auto dispatched = state->executor.submit([callback] { (*callback)(); });
+    } catch(const std::runtime_error&) {
+        cancel(state, id);
+    }
+    callback.reset();
+    lock.lock();
 }
 
 void Scheduler::run(const std::shared_ptr<State>& state) {
     std::unique_lock lock{state->mutex};
     while(!state->stopping) {
-        if(state->due_entries.empty()) {
-            state->changed.wait(
-                lock, [&state] { return state->stopping || !state->due_entries.empty(); });
-            continue;
+        if(waitForDue(*state, lock)) {
+            dispatchDue(state, lock);
         }
-
-        const auto due_iterator = state->due_entries.begin();
-        const auto due = due_iterator->first;
-        if(state->changed.wait_until(lock, due, [&state, due] {
-               return state->stopping || state->due_entries.empty() ||
-                      state->due_entries.begin()->first < due;
-           })) {
-            continue;
-        }
-        if(state->stopping || state->due_entries.empty() ||
-           state->due_entries.begin()->first != due) {
-            continue;
-        }
-
-        const auto id = state->due_entries.begin()->second;
-        state->due_entries.erase(state->due_entries.begin());
-        const auto entry = state->entries.find(id);
-        if(entry == state->entries.end()) {
-            continue;
-        }
-
-        auto callback = entry->second.callback;
-        if(entry->second.period > std::chrono::steady_clock::duration::zero()) {
-            entry->second.due = due + entry->second.period;
-            state->due_entries.emplace(entry->second.due, id);
-        } else {
-            state->entries.erase(entry);
-        }
-
-        lock.unlock();
-        try {
-            [[maybe_unused]] auto dispatched =
-                state->executor.submit([callback = std::move(callback)]() mutable { callback(); });
-        } catch(const std::runtime_error&) {
-            cancel(state, id);
-        }
-        lock.lock();
     }
 }
 
@@ -142,10 +167,11 @@ Scheduler::Scheduler(Executor& executor) : state_(std::make_shared<State>(execut
 }
 
 Scheduler::~Scheduler() {
+    decltype(state_->entries) removed;
     {
-        std::lock_guard lock{state_->mutex};
+        std::scoped_lock const lock{state_->mutex};
         state_->stopping = true;
-        state_->entries.clear();
+        removed.swap(state_->entries);
         state_->due_entries.clear();
     }
     state_->changed.notify_all();
@@ -159,7 +185,8 @@ Scheduler::ScheduleHandle Scheduler::scheduleAfter(const std::chrono::steady_clo
     if(delay < std::chrono::steady_clock::duration::zero()) {
         throw std::invalid_argument{"Scheduler delay must not be negative"};
     }
-    return schedule(delay, std::chrono::steady_clock::duration::zero(), std::move(callback));
+    return schedule(deadlineAfter(delay), std::chrono::steady_clock::duration::zero(),
+                    std::move(callback));
 }
 
 Scheduler::ScheduleHandle Scheduler::scheduleEvery(const std::chrono::steady_clock::duration period,
@@ -167,10 +194,10 @@ Scheduler::ScheduleHandle Scheduler::scheduleEvery(const std::chrono::steady_clo
     if(period <= std::chrono::steady_clock::duration::zero()) {
         throw std::invalid_argument{"Scheduler period must be positive"};
     }
-    return schedule(period, period, std::move(callback));
+    return schedule(deadlineAfter(period), period, std::move(callback));
 }
 
-Scheduler::ScheduleHandle Scheduler::schedule(const std::chrono::steady_clock::duration delay,
+Scheduler::ScheduleHandle Scheduler::schedule(const std::chrono::steady_clock::time_point due,
                                               const std::chrono::steady_clock::duration period,
                                               std::function<void()> callback) {
     if(!callback) {
@@ -180,14 +207,20 @@ Scheduler::ScheduleHandle Scheduler::schedule(const std::chrono::steady_clock::d
         throw std::runtime_error{"Scheduler executor is closed"};
     }
 
-    std::lock_guard lock{state_->mutex};
+    auto owned_callback = std::make_shared<std::function<void()>>(std::move(callback));
+    std::scoped_lock const lock{state_->mutex};
     if(state_->stopping) {
         throw std::runtime_error{"Scheduler is stopped"};
     }
     const auto id = state_->next_id++;
-    const auto due = std::chrono::steady_clock::now() + delay;
-    state_->entries.emplace(id, State::Entry{due, period, std::move(callback)});
-    state_->due_entries.emplace(due, id);
+    state_->entries.emplace(id,
+                            State::Entry{.due = due, .period = period, .callback = owned_callback});
+    try {
+        state_->due_entries.emplace(due, id);
+    } catch(...) {
+        state_->entries.erase(id);
+        throw;
+    }
     state_->changed.notify_all();
     return ScheduleHandle{state_, id};
 }

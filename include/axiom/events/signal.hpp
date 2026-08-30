@@ -26,6 +26,10 @@ using ConnectionId = std::uint64_t;
  * the signal lock, then invokes that snapshot without the lock: connection changes
  * made by a slot affect only later emissions. A slot exception is propagated and
  * stops the current emission.
+ * Concurrent emissions may invoke the same slot concurrently; synchronize mutable
+ * slot state. Disconnect does not wait for snapshots already being emitted.
+ * Operations on one Subscription and Signal destruction require external
+ * synchronization. Captured objects must outlive any in-progress emission.
  *
  * @tparam Args Values delivered to each connected slot.
  */
@@ -35,8 +39,15 @@ private:
 
     struct State final {
         std::mutex mutex;
-        std::map<ConnectionId, Slot> slots;
+        std::map<ConnectionId, std::shared_ptr<Slot>> slots;
         ConnectionId next_id{1};
+
+        bool disconnect(const ConnectionId id) {
+            std::unique_lock lock{mutex};
+            auto removed = slots.extract(id);
+            lock.unlock();
+            return !removed.empty();
+        }
     };
 
 public:
@@ -82,8 +93,7 @@ public:
                 return false;
             }
 
-            std::lock_guard lock{state->mutex};
-            return state->slots.erase(id) != 0;
+            return state->disconnect(id);
         }
 
         /** @brief Reports whether this subscription still owns a connected slot. */
@@ -92,11 +102,11 @@ public:
             if(!state || id_ == 0) {
                 return false;
             }
-            std::lock_guard lock{state->mutex};
+            std::lock_guard const lock{state->mutex};
             return state->slots.contains(id_);
         }
 
-        /** @brief Returns this connection's identifier, or zero when inactive. */
+        /** @brief Returns the assigned identifier, or zero after reset or move. */
         [[nodiscard]] ConnectionId id() const noexcept { return id_; }
 
     private:
@@ -128,9 +138,10 @@ public:
             throw std::invalid_argument{"Signal slot must not be empty"};
         }
 
-        std::lock_guard lock{state_->mutex};
+        auto owned_slot = std::make_shared<Slot>(std::move(slot));
+        std::lock_guard const lock{state_->mutex};
         const auto id = state_->next_id++;
-        state_->slots.emplace(id, std::move(slot));
+        state_->slots.emplace(id, owned_slot);
         return Subscription{state_, id};
     }
 
@@ -139,10 +150,7 @@ public:
      * @param id Identifier returned internally for the connection.
      * @return true if a connected slot was removed.
      */
-    bool disconnect(const ConnectionId id) noexcept {
-        std::lock_guard lock{state_->mutex};
-        return state_->slots.erase(id) != 0;
-    }
+    bool disconnect(const ConnectionId id) noexcept { return state_->disconnect(id); }
 
     /**
      * @brief Invokes a snapshot of currently connected slots in insertion order.
@@ -150,9 +158,9 @@ public:
      * @throws Any exception thrown by the first failing slot.
      */
     void emit(Args... args) const {
-        std::vector<Slot> snapshot;
+        std::vector<std::shared_ptr<Slot>> snapshot;
         {
-            std::lock_guard lock{state_->mutex};
+            std::lock_guard const lock{state_->mutex};
             snapshot.reserve(state_->slots.size());
             for(const auto& [_, slot] : state_->slots) {
                 snapshot.push_back(slot);
@@ -160,7 +168,7 @@ public:
         }
 
         for(const auto& slot : snapshot) {
-            slot(args...);
+            (*slot)(args...);
         }
     }
 

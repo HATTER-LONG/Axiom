@@ -56,10 +56,15 @@ public:
 
     void removeSink(const std::uint64_t id) noexcept {
         try {
+            std::shared_ptr<ILogSink> removed;
             const std::scoped_lock lock{mutex_};
-            std::erase_if(sinks_, [id](const SinkRegistration& registration) {
-                return registration.id == id;
-            });
+            const auto found = std::ranges::find(sinks_, id, &SinkRegistration::id);
+            if(found != sinks_.end()) {
+                // Sink destruction can log or release another subscription.
+                // Keep the final reference alive until the lock is released.
+                removed = std::move(found->sink);
+                sinks_.erase(found);
+            }
         } catch(...) {
             return;
         }

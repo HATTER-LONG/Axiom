@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 namespace axiom::async {
 
@@ -22,6 +23,11 @@ class Executor;
  * The scheduler owns a timing thread but never invokes user callbacks there.
  * Its destructor cancels pending work and joins the timing thread; the referenced
  * Executor must outlive the Scheduler.
+ * Cancellation prevents future dispatches, but does not wait for callbacks already
+ * dispatched to the Executor. Their captured objects must remain alive until that
+ * work completes. Callback exceptions are contained by the Executor and discarded.
+ * Scheduling and operations on distinct handles may run concurrently; accessing
+ * the same handle or destroying the Scheduler requires external synchronization.
  */
 class AXIOM_API Scheduler final {
 private:
@@ -29,7 +35,7 @@ private:
 
 public:
     /** @brief Move-only ownership of one scheduled callback. */
-    class ScheduleHandle final {
+    class AXIOM_API ScheduleHandle final {
     public:
         /** @brief Creates an inactive handle. */
         ScheduleHandle() = default;
@@ -45,6 +51,7 @@ public:
         /**
          * @brief Cancels this callback and makes the handle inactive.
          * @return true if the callback was pending; otherwise false.
+         * @note Already-dispatched callbacks may still run after this method returns.
          */
         bool cancel() noexcept;
 
@@ -82,6 +89,7 @@ public:
      * @return Handle that can cancel the callback.
      * @throws std::invalid_argument if delay is negative or callback is empty.
      * @throws std::runtime_error if the executor no longer accepts work.
+     * @throws std::overflow_error if the deadline cannot be represented.
      */
     [[nodiscard]] ScheduleHandle scheduleAfter(std::chrono::steady_clock::duration delay,
                                                std::function<void()> callback);
@@ -93,21 +101,27 @@ public:
      * @return Handle that can cancel future dispatches.
      * @throws std::invalid_argument if period is not positive or callback is empty.
      * @throws std::runtime_error if the executor no longer accepts work.
+     * @throws std::overflow_error if the first deadline cannot be represented.
+     * @note Due times advance from the previous deadline. Late dispatches catch up
+     *       and may overlap on multiple workers; synchronize mutable callback state.
+     *       No further dispatch is scheduled if the next deadline would overflow.
      */
     [[nodiscard]] ScheduleHandle scheduleEvery(std::chrono::steady_clock::duration period,
                                                std::function<void()> callback);
 
 private:
-    [[nodiscard]] ScheduleHandle schedule(std::chrono::steady_clock::duration delay,
+    [[nodiscard]] ScheduleHandle schedule(std::chrono::steady_clock::time_point due,
                                           std::chrono::steady_clock::duration period,
                                           std::function<void()> callback);
     static bool cancel(const std::shared_ptr<State>& state, std::uint64_t id) noexcept;
     [[nodiscard]] static bool active(const std::shared_ptr<State>& state,
                                      std::uint64_t id) noexcept;
+    [[nodiscard]] static bool waitForDue(State& state, std::unique_lock<std::mutex>& lock);
+    static void dispatchDue(const std::shared_ptr<State>& state,
+                            std::unique_lock<std::mutex>& lock);
     static void run(const std::shared_ptr<State>& state);
 
     std::shared_ptr<State> state_;
 };
 
 } // namespace axiom::async
-#include <axiom/export.hpp>

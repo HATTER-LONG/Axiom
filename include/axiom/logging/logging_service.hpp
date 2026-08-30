@@ -76,7 +76,7 @@ class AXIOM_API LoggingService {
 public:
     /** @brief Creates a service with no registered sinks. */
     LoggingService();
-    /** @brief Destroys the service; outstanding Loggers become no-ops after state release. */
+    /** @brief Releases this owner; outstanding Loggers and contexts retain shared state. */
     ~LoggingService() noexcept;
 
     LoggingService(LoggingService&&) noexcept = default;

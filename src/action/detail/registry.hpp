@@ -1,8 +1,8 @@
 #pragma once
 
-#include "action.hpp"
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
 #include <axiom/action/module.hpp>
 #include <axiom/foundation/result.hpp>
 

@@ -1,7 +1,11 @@
 #include <axiom/async/executor.hpp>
 
 #include <condition_variable>
+#include <cstddef>
 #include <deque>
+#include <exception>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -31,28 +35,11 @@ Executor::Executor(std::size_t worker_count) : state_(std::make_unique<State>())
     state_->workers.reserve(worker_count);
     try {
         for(std::size_t index = 0; index < worker_count; ++index) {
-            state_->workers.emplace_back([this] {
-                current_executor = this;
-                for(;;) {
-                    std::function<void()> task;
-                    {
-                        std::unique_lock lock{state_->mutex};
-                        state_->available.wait(
-                            lock, [this] { return state_->closing || !state_->tasks.empty(); });
-                        if(state_->tasks.empty()) {
-                            current_executor = nullptr;
-                            return;
-                        }
-                        task = std::move(state_->tasks.front());
-                        state_->tasks.pop_front();
-                    }
-                    task();
-                }
-            });
+            state_->workers.emplace_back([this] { runWorker(*state_, this); });
         }
     } catch(...) {
         {
-            std::lock_guard lock{state_->mutex};
+            std::scoped_lock const lock{state_->mutex};
             state_->closing = true;
         }
         state_->available.notify_all();
@@ -62,6 +49,24 @@ Executor::Executor(std::size_t worker_count) : state_(std::make_unique<State>())
             }
         }
         throw;
+    }
+}
+
+void Executor::runWorker(State& state, const Executor* const executor) {
+    current_executor = executor;
+    for(;;) {
+        std::function<void()> task;
+        {
+            std::unique_lock lock{state.mutex};
+            state.available.wait(lock, [&state] { return state.closing || !state.tasks.empty(); });
+            if(state.tasks.empty()) {
+                current_executor = nullptr;
+                return;
+            }
+            task = std::move(state.tasks.front());
+            state.tasks.pop_front();
+        }
+        task();
     }
 }
 
@@ -78,7 +83,7 @@ Executor::~Executor() noexcept {
 
 void Executor::enqueue(std::function<void()> task) {
     {
-        std::lock_guard lock{state_->mutex};
+        std::scoped_lock const lock{state_->mutex};
         if(state_->closing) {
             throw std::runtime_error{"Executor is closed"};
         }
@@ -88,7 +93,7 @@ void Executor::enqueue(std::function<void()> task) {
 }
 
 bool Executor::accepting() const noexcept {
-    std::lock_guard lock{state_->mutex};
+    std::scoped_lock const lock{state_->mutex};
     return !state_->closing;
 }
 
@@ -97,10 +102,10 @@ void Executor::close() {
         throw std::logic_error{"Executor::close cannot be called by its worker"};
     }
 
-    std::lock_guard close_lock{state_->close_mutex};
+    std::scoped_lock const close_lock{state_->close_mutex};
 
     {
-        std::lock_guard lock{state_->mutex};
+        std::scoped_lock const lock{state_->mutex};
         state_->closing = true;
     }
     state_->available.notify_all();

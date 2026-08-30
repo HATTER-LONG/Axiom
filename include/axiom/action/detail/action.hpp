@@ -1,13 +1,15 @@
 #pragma once
 
+/** @file action.hpp
+ * @brief Internal callable boundary; not a supported extension API.
+ */
+
 #include <axiom/action/invocation_context.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
 
 namespace axiom::detail {
 
-#ifndef AXIOM_DETAIL_IACTION_DEFINED
-#define AXIOM_DETAIL_IACTION_DEFINED
 /**
  * @brief Internal polymorphic implementation of a registered Action.
  *
@@ -32,6 +34,5 @@ public:
     [[nodiscard]] virtual Result<Value> invoke(const Arguments& arguments,
                                                const InvocationContext& context) = 0;
 };
-#endif
 
 } // namespace axiom::detail

@@ -50,12 +50,14 @@ public:
      * @tparam Args Argument types.
      * @param function Callable to invoke.
      * @param args Arguments captured for the invocation.
+     * @note Callable and arguments are decay-copied and invoked as rvalues. Use
+     *       std::ref for an explicit reference whose target outlives the task.
      * @return Future for the callable result or exception.
      * @throws std::runtime_error if close() has begun.
      */
     template <typename F, typename... Args>
     [[nodiscard]] auto submit(F&& function, Args&&... args)
-        -> std::future<std::invoke_result_t<F, Args...>>;
+        -> std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>>;
 
     /**
      * @brief Stops accepting work, drains queued work, and joins workers.
@@ -74,13 +76,14 @@ private:
     [[nodiscard]] bool accepting() const noexcept;
 
     struct State;
+    static void runWorker(State& state, const Executor* executor);
     std::unique_ptr<State> state_;
 };
 
 template <typename F, typename... Args>
 auto Executor::submit(F&& function, Args&&... args)
-    -> std::future<std::invoke_result_t<F, Args...>> {
-    using Result = std::invoke_result_t<F, Args...>;
+    -> std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>> {
+    using Result = std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>;
     using Function = std::decay_t<F>;
     using Arguments = std::tuple<std::decay_t<Args>...>;
 
@@ -99,4 +102,3 @@ auto Executor::submit(F&& function, Args&&... args)
 }
 
 } // namespace axiom::async
-#include <axiom/export.hpp>
