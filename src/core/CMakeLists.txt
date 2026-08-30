@@ -71,13 +71,17 @@ if (AXIOM_BUILD_DEMO AND NOT BUILD_SHARED_LIBS)
     add_library(Axiom::DemoCore ALIAS axiom_demo_core)
 else ()
     set(axiom_core_library_type STATIC)
+    set(axiom_core_is_shared FALSE)
     if (BUILD_SHARED_LIBS)
         set(axiom_core_library_type SHARED)
+        set(axiom_core_is_shared TRUE)
     endif ()
 
     add_library(axiom_core ${axiom_core_library_type} ${axiom_core_sources})
     axiom_configure_core_compilation(axiom_core)
-    axiom_configure_core_interface(axiom_core ${BUILD_SHARED_LIBS})
+    # BUILD_SHARED_LIBS may be unset; unquoted ${BUILD_SHARED_LIBS} would omit
+    # the required is_shared argument and fail configure (e.g. quality-mutation).
+    axiom_configure_core_interface(axiom_core ${axiom_core_is_shared})
 
     if (AXIOM_BUILD_DEMO)
         add_library(Axiom::DemoCore ALIAS axiom_core)
