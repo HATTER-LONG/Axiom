@@ -19,6 +19,21 @@ The demo walks through Core actions, logging, and resource behavior. `debug` use
 an unoptimized build. Both development presets build tests; run them with
 `ctest --preset dev` or `ctest --preset debug`.
 
+Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) to see the walkthrough.
+The resource example in `apps/demo/resource_demo.cpp` specializes `ResourceTraits` for an
+accumulator, transfers ownership to `ResourceRegistry`, and round-trips a typed
+`Handle` through its `ResourceId` text. It resolves a `ResourceRef` to update the
+accumulator, then removes the registration: new lookups return `NotFound`, while
+the retained reference can still access the object until it leaves scope. The
+`axiom.demo` CTest smoke test checks these steps and fails on unexpected behavior.
+
+The demo is split by responsibility: `main.cpp` sequences the walkthrough and handles
+exceptions; `base_demo` covers identity and Value; `action_demo` owns registration,
+discovery, and invocation; `resource_demo` covers resource lifetimes; `logging_demo`
+owns sinks, subscriptions, and log queries. Each example has a small header; its
+implementation helpers stay private. `accumulator.hpp` holds the shared example
+type, and `demo_output` handles common console formatting.
+
 Core is static by default. To select a shared library, use a separate build
 with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Core`.
 `BUILD_TESTING=OFF` disables tests. Axiom does not enable CTest when embedded

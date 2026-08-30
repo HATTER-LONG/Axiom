@@ -17,7 +17,17 @@ ctest --preset dev
 
 `debug` 提供未优化构建。两个开发预设均构建测试；关闭测试使用
 `BUILD_TESTING=OFF`。作为 `add_subdirectory()` 依赖时，Axiom 不启用 CTest。
-Demo 演示 Core 的 Action 与日志接口，始终链接 `Axiom::Core`，不再有 DemoCore。
+Demo 演示 Core 的 Action、日志与资源接口，始终链接 `Axiom::Core`，不再有 DemoCore。
+运行 `build/apps/demo/axiom_demo`（Windows 下为 `axiom_demo.exe`）即可查看演示。
+`apps/demo/resource_demo.cpp` 中的资源示例为累加器特化 `ResourceTraits`，将所有权交给
+`ResourceRegistry`，并通过 `ResourceId` 文本往返还原类型化 `Handle`。随后解析出
+`ResourceRef` 并更新累加器，再移除注册：新的查询返回 `NotFound`，已有引用在离开
+作用域前仍可访问对象。`axiom.demo` CTest 冒烟测试会检查这些步骤，行为不符时失败。
+
+Demo 按职责拆分：`main.cpp` 只负责执行顺序和异常处理；`base_demo` 演示框架标识和
+Value；`action_demo` 负责注册、发现和调用；`resource_demo` 演示资源生命周期；
+`logging_demo` 封装 sink、订阅和日志查询。各示例通过小型头文件提供入口，实现辅助函数
+保持私有；`accumulator.hpp` 保存共享示例类型，`demo_output` 统一控制台格式。
 
 Core 默认构建静态库。需要动态库时，在独立构建目录设置 `BUILD_SHARED_LIBS=ON`。
 安装后消费方式保持不变：

@@ -232,6 +232,15 @@ TEST(ResourceId, RoundTripsCanonicalIdentities) {
     }
 }
 
+TEST(ResourceId, ParsesOnlyTheProvidedView) {
+    // Digits outside the view would overflow the serial if parsing read past its end.
+    constexpr std::string_view backing{"shape:12345678901234567890123456789012345678901234567890"};
+    const auto result = ResourceId::parse(backing.substr(0U, 8U));
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value().str(), "shape:12");
+}
+
 TEST(ResourceId, RejectsIllegalIdentities) {
     constexpr std::array invalids{std::string_view{""},
                                   std::string_view{"shape"},
