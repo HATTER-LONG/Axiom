@@ -44,4 +44,4 @@ TOOL = FormatTool
 
 
 def _source_files(project_root: Path) -> list[Path]:
-    return sorted(path for root in ("src", "apps", "tests") for path in (project_root / root).rglob("*") if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES)
+    return sorted(path for root in ("include", "src", "apps", "tests") for path in (project_root / root).rglob("*") if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES)

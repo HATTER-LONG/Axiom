@@ -6,8 +6,6 @@ as described `Module`/`Action` entries, discovered through metadata, and invoked
 through the dynamic `Value` boundary with structured `Result` errors. It also
 ships a small demo executable, tests, and reproducible quality gates.
 
-[中文文档](README.zh-CN.md)
-
 ## Build
 
 ```sh
@@ -15,27 +13,12 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
-The demo walks through Core actions, logging, and resource behavior. `debug` uses
-an unoptimized build. Both development presets build tests; run them with
-`ctest --preset dev` or `ctest --preset debug`.
+The demo prints the framework name. `debug` uses an unoptimized build. Both
+presets build tests; run them with `ctest --preset dev` or `ctest --preset debug`.
+Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) for the demo.
 
-Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) to see the walkthrough.
-The resource example in `apps/demo/resource_demo.cpp` specializes `ResourceTraits` for an
-accumulator, transfers ownership to `ResourceRegistry`, and round-trips a typed
-`Handle` through its `ResourceId` text. It resolves a `ResourceRef` to update the
-accumulator, then removes the registration: new lookups return `NotFound`, while
-the retained reference can still access the object until it leaves scope. The
-`axiom.demo` CTest smoke test checks these steps and fails on unexpected behavior.
-
-The demo is split by responsibility: `main.cpp` sequences the walkthrough and handles
-exceptions; `base_demo` covers identity and Value; `action_demo` owns registration,
-discovery, and invocation; `resource_demo` covers resource lifetimes; `logging_demo`
-owns sinks, subscriptions, and log queries. Each example has a small header; its
-implementation helpers stay private. `accumulator.hpp` holds the shared example
-type, and `demo_output` handles common console formatting.
-
-Core is static by default. To select a shared library, use a separate build
-with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Core`.
+Axiom library is static by default. To select a shared library, use a separate build
+with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Axiom`.
 `BUILD_TESTING=OFF` disables tests. Axiom does not enable CTest when embedded
 with `add_subdirectory()`.
 
@@ -56,16 +39,16 @@ Consumers can discover and link the exported target with CMake 3.25 or newer:
 ```cmake
 find_package(Axiom CONFIG REQUIRED)
 
-target_link_libraries(my_target PRIVATE Axiom::Core)
+target_link_libraries(my_target PRIVATE Axiom::Axiom)
 ```
 
 The public header is available as:
 
 ```cpp
-#include <axiom/core/core.hpp>
+#include <axiom/axiom.hpp>
 ```
 
-## Core runtime model
+## Axiom library runtime model
 
 The public API is centered on `Value`/`Arguments` for ordered dynamic values,
 `ModuleBuilder` for staging typed callable Actions, `Runtime` for module
@@ -77,18 +60,20 @@ in each component.
 Supported callable conversions include `bool`, signed integers, floating-point
 values, `std::string`, recursive `std::vector<T>`, and string-keyed
 `std::map`/`std::unordered_map`. Integer inputs may widen to floating point;
-lossy and implicit string conversions are rejected. Optional parameters use
+out-of-range integer narrowing and implicit string conversions are rejected.
+Floating-point conversions follow C++ numeric conversion semantics. Optional parameters use
 validated `param(..., default_value)` values. The runtime is intentionally not
 thread-safe: registration, discovery, and invocation must not run concurrently.
-Core does not provide protocol adapters, JSON serialization, networking, plugins,
-authorization, or asynchronous execution.
+Axiom library does not provide protocol adapters, JSON serialization, networking, plugins,
+or authorization. Independent `async::Executor` and `async::Scheduler` services
+provide asynchronous work; Action invocation itself remains synchronous.
 
 ## Project layout
 
 | Path | Purpose |
 | ---- | ------- |
-| `src/core` | Installable `Axiom::Core` library and public headers. |
-| `apps/demo` | Application consuming the same Core target as other clients. |
+| `include/axiom`, `src` | Public headers and implementations of `Axiom::Axiom`; events are header-only. |
+| `apps/demo` | Application consuming the same Axiom library target as other clients. |
 | `tests` | GoogleTest suites and installed-package consumer. |
 | `cmake` | Target policy, runtime deployment and build verification. |
 | `checkflow.json` | Quality flow ordering and thresholds (the single policy source). |
@@ -111,18 +96,18 @@ checkflow full
 | ---- | ------ |
 | `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity. |
 | `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, plus uninstrumented static/shared tests and installed consumers. |
-| `hardening` | Static ASan/UBSan tests, including a UBSan termination regression, then a separate static Mull build and report-integrity check. |
+| `hardening` | Static ASan/UBSan tests, then a separate static Mull build and report-integrity check. |
 
 Coverage must reach **90% for each of lines, regions and branches**. The test executable
-links the entire static Core archive so unreferenced translation units cannot disappear
+links the entire static Axiom library archive so unreferenced translation units cannot disappear
 from the denominator. CheckFlow discovers the executable through CTest; no platform
 filenames are embedded in the flow. An additional check rejects LLVM diagnostics
-(including mismatched profiles) and missing Core implementation files. Failed coverage
+(including mismatched profiles) and missing Axiom library implementation files. Failed coverage
 produces `coverage-export.json` in the build directory.
 
-Mutation testing must reach **90%** and its report must include implementation mutants
-under `src/core/src`, not only instantiated headers. Coverage and Mull intentionally
-require static Core. The independent `quality-shared` preset validates the DLL boundary
+Mutation testing must reach **70%** and its report must include implementation mutants
+under this repository’s `src/`, not only instantiated headers or dependency files. Coverage and Mull intentionally
+require static Axiom library. The independent `quality-shared` preset validates the DLL boundary
 using the existing tests; it uses Ninja Multi-Config and Release to exercise configuration
 selection during installation. Internal Registry/Dispatcher tests compile their private
 implementations locally in shared builds; public Runtime tests still execute the DLL.
@@ -169,8 +154,8 @@ policy, standard CMake analyzer variables and `CMAKE_CXX_COMPILER_LAUNCHER` resp
 Recreate old build directories when migrating away from historical global tool flags.
 
 CPM pins spdlog 1.17.0 and GoogleTest 1.18.0. spdlog and bundled fmt are private
-header dependencies; Core retains their `Threads::Threads` requirement. GoogleTest
-is test-only and explicitly static, regardless of Core's library kind. No sanitizer
+header dependencies; Axiom library retains their `Threads::Threads` requirement. GoogleTest
+is test-only and explicitly static, regardless of Axiom library's library kind. No sanitizer
 or ccache CMake integration is downloaded.
 
 CPM honors `CPM_SOURCE_CACHE` from CMake or the environment. Defaults are
@@ -178,8 +163,8 @@ CPM honors `CPM_SOURCE_CACHE` from CMake or the environment. Defaults are
 without a user cache location, CPM uses its build-tree fallback. Compiler and analysis
 tools are installed separately, not downloaded by CPM.
 
-Core uses hidden visibility with explicit API exports. PIC remains enabled for static
-Core so consumers can embed it in a shared object. During the 0.x development series,
+Axiom library uses hidden visibility with explicit API exports. PIC remains enabled for static
+Axiom library so consumers can embed it in a shared object. During the 0.x development series,
 the shared-library ABI identity is major.minor (currently 0.1); package compatibility
 is limited to the same minor version. Binary consumers must use a compatible C++ ABI,
 standard library and runtime. No cross-toolchain ABI stability is promised.

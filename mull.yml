@@ -2,4 +2,5 @@ mutators:
   - cxx_all
 includePaths:
   - .*/src/.*
+  - .*/include/axiom/.*
 compilationDatabasePath: compile_commands.json

@@ -1,7 +1,7 @@
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/result.hpp>
-#include <axiom/core/base/value.hpp>
-#include <axiom/core/core.hpp>
+#include <axiom/axiom.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/foundation/value.hpp>
 
 #include <gtest/gtest.h>
 
@@ -11,24 +11,20 @@
 #include <string>
 #include <utility>
 
-TEST(CoreFrameworkName, ReturnsAxiom) { EXPECT_STREQ(axiom::core::frameworkName(), "Axiom"); }
+TEST(CoreFrameworkName, ReturnsAxiom) { EXPECT_STREQ(axiom::frameworkName(), "Axiom"); }
 
-TEST(CoreFrameworkName, AcceptsExactName) { EXPECT_TRUE(axiom::core::isFrameworkName("Axiom")); }
+TEST(CoreFrameworkName, AcceptsExactName) { EXPECT_TRUE(axiom::isFrameworkName("Axiom")); }
 
-TEST(CoreFrameworkName, RejectsDifferentName) {
-    EXPECT_FALSE(axiom::core::isFrameworkName("Other"));
-}
+TEST(CoreFrameworkName, RejectsDifferentName) { EXPECT_FALSE(axiom::isFrameworkName("Other")); }
 
 TEST(Value, RepresentsEverySupportedLogicalType) {
-    const axiom::core::Value null_value;
-    const axiom::core::Value boolean_value{true};
-    const axiom::core::Value integer_value{std::int64_t{42}};
-    const axiom::core::Value number_value{3.5};
-    const axiom::core::Value string_value{"Axiom"};
-    const axiom::core::Value array_value{
-        axiom::core::Value::Array{axiom::core::Value{1}, axiom::core::Value{2}}};
-    const axiom::core::Value object_value{
-        axiom::core::Value::Object{{"name", axiom::core::Value{"Axiom"}}}};
+    const axiom::Value null_value;
+    const axiom::Value boolean_value{true};
+    const axiom::Value integer_value{std::int64_t{42}};
+    const axiom::Value number_value{3.5};
+    const axiom::Value string_value{"Axiom"};
+    const axiom::Value array_value{axiom::Value::Array{axiom::Value{1}, axiom::Value{2}}};
+    const axiom::Value object_value{axiom::Value::Object{{"name", axiom::Value{"Axiom"}}}};
 
     EXPECT_TRUE(null_value.isNull());
     EXPECT_TRUE(boolean_value.isBoolean());
@@ -40,16 +36,15 @@ TEST(Value, RepresentsEverySupportedLogicalType) {
 }
 
 TEST(Value, ProvidesSafeAccessForEveryPayloadType) {
-    const axiom::core::Value null_value{nullptr};
-    const axiom::core::Value boolean_value{true};
-    const axiom::core::Value integer_value{std::int64_t{4}};
-    const axiom::core::Value number_value{4.5};
-    const axiom::core::Value string_value{std::string{"four"}};
-    const axiom::core::Value array_value{axiom::core::Value::Array{axiom::core::Value{4}}};
-    const axiom::core::Value object_value{
-        axiom::core::Value::Object{{"four", axiom::core::Value{4}}}};
+    const axiom::Value null_value{nullptr};
+    const axiom::Value boolean_value{true};
+    const axiom::Value integer_value{std::int64_t{4}};
+    const axiom::Value number_value{4.5};
+    const axiom::Value string_value{std::string{"four"}};
+    const axiom::Value array_value{axiom::Value::Array{axiom::Value{4}}};
+    const axiom::Value object_value{axiom::Value::Object{{"four", axiom::Value{4}}}};
 
-    EXPECT_EQ(null_value.type(), axiom::core::Value::Type::Null);
+    EXPECT_EQ(null_value.type(), axiom::Value::Type::Null);
     EXPECT_TRUE(null_value.isNull());
     EXPECT_TRUE(boolean_value.isBoolean());
     EXPECT_TRUE(integer_value.isInteger());
@@ -66,9 +61,8 @@ TEST(Value, ProvidesSafeAccessForEveryPayloadType) {
 }
 
 TEST(Value, IteratesObjectKeysInStableLexicographicOrder) {
-    const axiom::core::Value value{axiom::core::Value::Object{{"zeta", axiom::core::Value{1}},
-                                                              {"alpha", axiom::core::Value{2}},
-                                                              {"middle", axiom::core::Value{3}}}};
+    const axiom::Value value{axiom::Value::Object{
+        {"zeta", axiom::Value{1}}, {"alpha", axiom::Value{2}}, {"middle", axiom::Value{3}}}};
 
     std::string keys;
     for(const auto& [key, ignored] : value.asObject()) {
@@ -81,63 +75,63 @@ TEST(Value, IteratesObjectKeysInStableLexicographicOrder) {
 }
 
 TEST(Value, RejectsIncompatibleAccessWithoutUndefinedBehavior) {
-    const axiom::core::Value value{"not a scalar"};
+    const axiom::Value value{"not a scalar"};
 
-    EXPECT_THROW(static_cast<void>(value.asBoolean()), axiom::core::ValueTypeError);
-    EXPECT_THROW(static_cast<void>(value.asInteger()), axiom::core::ValueTypeError);
-    EXPECT_THROW(static_cast<void>(value.asNumber()), axiom::core::ValueTypeError);
-    EXPECT_THROW(static_cast<void>(value.asArray()), axiom::core::ValueTypeError);
-    EXPECT_THROW(static_cast<void>(value.asObject()), axiom::core::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(value.asBoolean()), axiom::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(value.asInteger()), axiom::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(value.asNumber()), axiom::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(value.asArray()), axiom::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(value.asObject()), axiom::ValueTypeError);
 }
 
 TEST(Value, MoveConstructionTransfersArrayAndResetsSourceToNull) {
-    axiom::core::Value source{axiom::core::Value::Array{axiom::core::Value{1}}};
-    const axiom::core::Value& source_view = source;
+    axiom::Value source{axiom::Value::Array{axiom::Value{1}}};
+    const axiom::Value& source_view = source;
 
-    const axiom::core::Value moved{std::move(source)};
+    const axiom::Value moved{std::move(source)};
 
     EXPECT_TRUE(source_view.isNull());
-    EXPECT_THROW(static_cast<void>(source_view.asArray()), axiom::core::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(source_view.asArray()), axiom::ValueTypeError);
     EXPECT_EQ(moved.asArray().front().asInteger(), 1);
 }
 
 TEST(Value, MoveConstructionTransfersObjectAndResetsSourceToNull) {
-    axiom::core::Value source{axiom::core::Value::Object{{"name", axiom::core::Value{"Axiom"}}}};
-    const axiom::core::Value& source_view = source;
+    axiom::Value source{axiom::Value::Object{{"name", axiom::Value{"Axiom"}}}};
+    const axiom::Value& source_view = source;
 
-    const axiom::core::Value moved{std::move(source)};
+    const axiom::Value moved{std::move(source)};
 
     EXPECT_TRUE(source_view.isNull());
-    EXPECT_THROW(static_cast<void>(source_view.asObject()), axiom::core::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(source_view.asObject()), axiom::ValueTypeError);
     EXPECT_EQ(moved.asObject().at("name").asString(), "Axiom");
 }
 
 TEST(Value, MoveAssignmentTransfersArrayAndResetsSourceToNull) {
-    axiom::core::Value source{axiom::core::Value::Array{axiom::core::Value{1}}};
-    axiom::core::Value destination{nullptr};
-    const axiom::core::Value& source_view = source;
+    axiom::Value source{axiom::Value::Array{axiom::Value{1}}};
+    axiom::Value destination{nullptr};
+    const axiom::Value& source_view = source;
 
     destination = std::move(source);
 
     EXPECT_TRUE(source_view.isNull());
-    EXPECT_THROW(static_cast<void>(source_view.asArray()), axiom::core::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(source_view.asArray()), axiom::ValueTypeError);
     EXPECT_EQ(destination.asArray().front().asInteger(), 1);
 }
 
 TEST(Value, MoveAssignmentTransfersObjectAndResetsSourceToNull) {
-    axiom::core::Value source{axiom::core::Value::Object{{"name", axiom::core::Value{"Axiom"}}}};
-    axiom::core::Value destination{nullptr};
-    const axiom::core::Value& source_view = source;
+    axiom::Value source{axiom::Value::Object{{"name", axiom::Value{"Axiom"}}}};
+    axiom::Value destination{nullptr};
+    const axiom::Value& source_view = source;
 
     destination = std::move(source);
 
     EXPECT_TRUE(source_view.isNull());
-    EXPECT_THROW(static_cast<void>(source_view.asObject()), axiom::core::ValueTypeError);
+    EXPECT_THROW(static_cast<void>(source_view.asObject()), axiom::ValueTypeError);
     EXPECT_EQ(destination.asObject().at("name").asString(), "Axiom");
 }
 
 TEST(Value, SelfMoveAssignmentPreservesValue) {
-    axiom::core::Value value{axiom::core::Value::Object{{"answer", axiom::core::Value{42}}}};
+    axiom::Value value{axiom::Value::Object{{"answer", axiom::Value{42}}}};
 
     auto& same_value = value;
     value = std::move(same_value);
@@ -146,40 +140,38 @@ TEST(Value, SelfMoveAssignmentPreservesValue) {
 }
 
 TEST(Value, CopyPreservesArrayAndObjectPayloads) {
-    const axiom::core::Value array{axiom::core::Value::Array{axiom::core::Value{42}}};
-    const axiom::core::Value object{axiom::core::Value::Object{{"answer", axiom::core::Value{42}}}};
+    const axiom::Value array{axiom::Value::Array{axiom::Value{42}}};
+    const axiom::Value object{axiom::Value::Object{{"answer", axiom::Value{42}}}};
 
-    axiom::core::Value array_copy = array;
-    axiom::core::Value object_copy = object;
+    axiom::Value array_copy = array;
+    axiom::Value object_copy = object;
 
     EXPECT_EQ(array_copy.asArray().front().asInteger(), 42);
     EXPECT_EQ(object_copy.asObject().at("answer").asInteger(), 42);
 
-    array_copy = axiom::core::Value{nullptr};
-    object_copy = axiom::core::Value{nullptr};
+    array_copy = axiom::Value{nullptr};
+    object_copy = axiom::Value{nullptr};
 
     EXPECT_EQ(array.asArray().front().asInteger(), 42);
     EXPECT_EQ(object.asObject().at("answer").asInteger(), 42);
 }
 
 TEST(Arguments, IsAnOrderedNamedValueObject) {
-    const axiom::core::Arguments arguments{{"second", axiom::core::Value{2}},
-                                           {"first", axiom::core::Value{1}}};
+    const axiom::Arguments arguments{{"second", axiom::Value{2}}, {"first", axiom::Value{1}}};
 
     EXPECT_EQ(arguments.at("first").asInteger(), 1);
     EXPECT_EQ(arguments.begin()->first, "first");
 }
 
 TEST(Error, RetainsCodeMessagePathAndStructuredDetails) {
-    const axiom::core::Error error{
-        .code = axiom::core::ErrorCode::TypeMismatch,
+    const axiom::Error error{
+        .code = axiom::ErrorCode::TypeMismatch,
         .message = "expected integer",
         .path = "points[2]",
-        .details = axiom::core::Value{axiom::core::Value::Object{
-            {"expected", axiom::core::Value{"integer"}}}},
+        .details = axiom::Value{axiom::Value::Object{{"expected", axiom::Value{"integer"}}}},
     };
 
-    EXPECT_EQ(error.code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(error.code, axiom::ErrorCode::TypeMismatch);
     EXPECT_EQ(error.message, "expected integer");
     ASSERT_TRUE(error.path.has_value());
     EXPECT_EQ(*error.path, "points[2]");
@@ -188,8 +180,7 @@ TEST(Error, RetainsCodeMessagePathAndStructuredDetails) {
 }
 
 TEST(ResultValue, ExposesSuccessfulValue) {
-    const auto result =
-        axiom::core::Result<axiom::core::Value>::success(axiom::core::Value{std::int64_t{7}});
+    const auto result = axiom::Result<axiom::Value>::success(axiom::Value{std::int64_t{7}});
 
     EXPECT_TRUE(result.hasValue());
     EXPECT_FALSE(result.hasError());
@@ -199,8 +190,8 @@ TEST(ResultValue, ExposesSuccessfulValue) {
 }
 
 TEST(ResultValue, ExposesStructuredFailure) {
-    const auto result = axiom::core::Result<axiom::core::Value>::failure({
-        .code = axiom::core::ErrorCode::MissingArgument,
+    const auto result = axiom::Result<axiom::Value>::failure({
+        .code = axiom::ErrorCode::MissingArgument,
         .message = "size",
         .path = "size",
         .details = std::nullopt,
@@ -209,20 +200,20 @@ TEST(ResultValue, ExposesStructuredFailure) {
     EXPECT_FALSE(result.hasValue());
     EXPECT_TRUE(result.hasError());
     EXPECT_FALSE(result);
-    EXPECT_EQ(result.error().code, axiom::core::ErrorCode::MissingArgument);
+    EXPECT_EQ(result.error().code, axiom::ErrorCode::MissingArgument);
     EXPECT_THROW(static_cast<void>(result.value()), std::logic_error);
 }
 
 TEST(ResultValue, AllowsMutableAccessToTheActiveAlternative) {
-    auto successful = axiom::core::Result<axiom::core::Value>::success(axiom::core::Value{1});
-    auto failed = axiom::core::Result<axiom::core::Value>::failure({
-        .code = axiom::core::ErrorCode::InvalidArgument,
+    auto successful = axiom::Result<axiom::Value>::success(axiom::Value{1});
+    auto failed = axiom::Result<axiom::Value>::failure({
+        .code = axiom::ErrorCode::InvalidArgument,
         .message = "invalid",
         .path = std::nullopt,
         .details = std::nullopt,
     });
 
-    successful.value() = axiom::core::Value{2};
+    successful.value() = axiom::Value{2};
     failed.error().message = "updated";
 
     EXPECT_EQ(successful.value().asInteger(), 2);
@@ -230,9 +221,9 @@ TEST(ResultValue, AllowsMutableAccessToTheActiveAlternative) {
 }
 
 TEST(ResultVoid, DistinguishesSuccessfulAndFailedOperations) {
-    const auto successful = axiom::core::Result<void>::success();
-    const auto failed = axiom::core::Result<void>::failure({
-        .code = axiom::core::ErrorCode::NotFound,
+    const auto successful = axiom::Result<void>::success();
+    const auto failed = axiom::Result<void>::failure({
+        .code = axiom::ErrorCode::NotFound,
         .message = "missing",
         .path = std::nullopt,
         .details = std::nullopt,
@@ -241,14 +232,14 @@ TEST(ResultVoid, DistinguishesSuccessfulAndFailedOperations) {
     EXPECT_TRUE(successful);
     EXPECT_NO_THROW(successful.value());
     EXPECT_FALSE(failed);
-    EXPECT_EQ(failed.error().code, axiom::core::ErrorCode::NotFound);
+    EXPECT_EQ(failed.error().code, axiom::ErrorCode::NotFound);
     EXPECT_THROW(failed.value(), std::logic_error);
     EXPECT_THROW(static_cast<void>(successful.error()), std::logic_error);
 }
 
 TEST(ResultVoid, AllowsMutableErrorAccess) {
-    auto result = axiom::core::Result<void>::failure({
-        .code = axiom::core::ErrorCode::InternalError,
+    auto result = axiom::Result<void>::failure({
+        .code = axiom::ErrorCode::InternalError,
         .message = "before",
         .path = std::nullopt,
         .details = std::nullopt,
@@ -259,27 +250,27 @@ TEST(ResultVoid, AllowsMutableErrorAccess) {
     EXPECT_EQ(result.error().message, "after");
 }
 TEST(ResultVoid, MutableFailureAccessPreservesStructuredError) {
-    auto failure = axiom::core::Result<void>::failure({
-        .code = axiom::core::ErrorCode::NotFound,
+    auto failure = axiom::Result<void>::failure({
+        .code = axiom::ErrorCode::NotFound,
         .message = "missing",
         .path = "resource",
-        .details = axiom::core::Value{7},
+        .details = axiom::Value{7},
     });
     auto& error = failure.error();
-    EXPECT_EQ(error.code, axiom::core::ErrorCode::NotFound);
+    EXPECT_EQ(error.code, axiom::ErrorCode::NotFound);
     EXPECT_EQ(error.path, "resource");
     ASSERT_TRUE(error.details.has_value());
-    EXPECT_EQ(error.details.value_or(axiom::core::Value{}).asInteger(), 7);
+    EXPECT_EQ(error.details.value_or(axiom::Value{}).asInteger(), 7);
     error.message = "changed";
     EXPECT_EQ(std::as_const(failure).error().message, "changed");
 }
 
 TEST(ResultValue, RejectsMutableErrorAccessOnSuccess) {
-    auto result = axiom::core::Result<axiom::core::Value>::success(axiom::core::Value{7});
+    auto result = axiom::Result<axiom::Value>::success(axiom::Value{7});
     EXPECT_THROW(static_cast<void>(result.error()), std::logic_error);
 }
 
 TEST(ResultVoid, RejectsMutableErrorAccessOnSuccess) {
-    auto result = axiom::core::Result<void>::success();
+    auto result = axiom::Result<void>::success();
     EXPECT_THROW(static_cast<void>(result.error()), std::logic_error);
 }

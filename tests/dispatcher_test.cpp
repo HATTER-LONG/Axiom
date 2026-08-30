@@ -1,13 +1,13 @@
-#include <axiom/core/action/action_id.hpp>
-#include <axiom/core/action/descriptor.hpp>
-#include <axiom/core/action/detail/action.hpp>
-#include <axiom/core/action/detail/dispatcher.hpp>
-#include <axiom/core/action/detail/registry.hpp>
-#include <axiom/core/action/invocation_context.hpp>
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/result.hpp>
-#include <axiom/core/base/type_descriptor.hpp>
-#include <axiom/core/base/value.hpp>
+#include "../src/action/detail/dispatcher.hpp"
+#include "../src/action/detail/registry.hpp"
+#include <axiom/action/action_id.hpp>
+#include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
+#include <axiom/action/invocation_context.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/foundation/type_descriptor.hpp>
+#include <axiom/foundation/value.hpp>
 
 #include <gtest/gtest.h>
 
@@ -22,18 +22,18 @@
 
 namespace {
 
-using axiom::core::ActionDescriptor;
-using axiom::core::ActionId;
-using axiom::core::Arguments;
-using axiom::core::ErrorCode;
-using axiom::core::InvocationContext;
-using axiom::core::ParameterDescriptor;
-using axiom::core::Result;
-using axiom::core::TypeDescriptor;
-using axiom::core::Value;
-using axiom::core::detail::Dispatcher;
-using axiom::core::detail::IAction;
-using axiom::core::detail::Registry;
+using axiom::ActionDescriptor;
+using axiom::ActionId;
+using axiom::Arguments;
+using axiom::ErrorCode;
+using axiom::InvocationContext;
+using axiom::ParameterDescriptor;
+using axiom::Result;
+using axiom::TypeDescriptor;
+using axiom::Value;
+using axiom::detail::Dispatcher;
+using axiom::detail::IAction;
+using axiom::detail::Registry;
 
 class RecordingAction final : public IAction {
 public:

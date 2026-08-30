@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Fail on LLVM mapping diagnostics even when llvm-cov exits successfully, and ensure every Core
+# Fail on LLVM mapping diagnostics even when llvm-cov exits successfully, and ensure every Axiom
 # implementation file participates in the coverage denominator.
 execute_process(
     COMMAND "${AXIOM_LLVM_COV}" export "${AXIOM_TEST_BINARY}" "--instr-profile=${AXIOM_PROFILE}"
@@ -29,9 +29,12 @@ if (file_count GREATER 0)
         list(APPEND covered_sources "${source}")
     endforeach ()
 endif ()
-file(GLOB_RECURSE core_sources "${AXIOM_SOURCE_DIR}/src/core/src/*.cpp")
-foreach (source IN LISTS core_sources)
+file(GLOB_RECURSE axiom_sources "${AXIOM_SOURCE_DIR}/src/*.cpp")
+if (NOT axiom_sources)
+    message(FATAL_ERROR "No Axiom implementation sources found")
+endif ()
+foreach (source IN LISTS axiom_sources)
     if (NOT source IN_LIST covered_sources)
-        message(FATAL_ERROR "Core source missing from coverage: ${source}")
+        message(FATAL_ERROR "Axiom source missing from coverage: ${source}")
     endif ()
 endforeach ()

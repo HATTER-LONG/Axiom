@@ -1,10 +1,10 @@
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/value.hpp>
-#include <axiom/core/resource/handle.hpp>
-#include <axiom/core/resource/resource_id.hpp>
-#include <axiom/core/resource/resource_ref.hpp>
-#include <axiom/core/resource/resource_registry.hpp>
-#include <axiom/core/resource/resource_traits.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/value.hpp>
+#include <axiom/resource/handle.hpp>
+#include <axiom/resource/resource_id.hpp>
+#include <axiom/resource/resource_ref.hpp>
+#include <axiom/resource/resource_registry.hpp>
+#include <axiom/resource/resource_traits.hpp>
 #include <resource/resource_serial.hpp>
 
 #include <gtest/gtest.h>
@@ -78,62 +78,62 @@ struct EmptyName {};
 } // namespace
 
 // NOLINTBEGIN(readability-identifier-naming): ResourceTraits contract mandates type_name.
-template <> struct axiom::core::resource::ResourceTraits<Shape> {
+template <> struct axiom::resource::ResourceTraits<Shape> {
     static constexpr std::string_view type_name = "shape";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<Mesh> {
+template <> struct axiom::resource::ResourceTraits<Mesh> {
     static constexpr std::string_view type_name = "mesh";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<UniqueBody> {
+template <> struct axiom::resource::ResourceTraits<UniqueBody> {
     static constexpr std::string_view type_name = "body";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<Counted> {
+template <> struct axiom::resource::ResourceTraits<Counted> {
     static constexpr std::string_view type_name = "counted";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<ShapeImpostor> {
+template <> struct axiom::resource::ResourceTraits<ShapeImpostor> {
     static constexpr std::string_view type_name = "shape";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<ThrowingDestructor> {
+template <> struct axiom::resource::ResourceTraits<ThrowingDestructor> {
     static constexpr std::string_view type_name = "throwing";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<UppercaseName> {
+template <> struct axiom::resource::ResourceTraits<UppercaseName> {
     static constexpr std::string_view type_name = "Shape";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<DigitPrefixedName> {
+template <> struct axiom::resource::ResourceTraits<DigitPrefixedName> {
     static constexpr std::string_view type_name = "1shape";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<UnderscorePrefixedName> {
+template <> struct axiom::resource::ResourceTraits<UnderscorePrefixedName> {
     static constexpr std::string_view type_name = "_shape";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<HyphenatedName> {
+template <> struct axiom::resource::ResourceTraits<HyphenatedName> {
     static constexpr std::string_view type_name = "shape-name";
 };
 
-template <> struct axiom::core::resource::ResourceTraits<EmptyName> {
+template <> struct axiom::resource::ResourceTraits<EmptyName> {
     static constexpr std::string_view type_name{};
 };
 
-template <> struct axiom::core::resource::ResourceTraits<Incomplete> {
+template <> struct axiom::resource::ResourceTraits<Incomplete> {
     static constexpr std::string_view type_name = "incomplete";
 };
 // NOLINTEND(readability-identifier-naming)
 
 namespace {
 
-using axiom::core::ErrorCode;
-using axiom::core::resource::Handle;
-using axiom::core::resource::ResourceId;
-using axiom::core::resource::ResourceRef;
-using axiom::core::resource::ResourceRegistry;
+using axiom::ErrorCode;
+using axiom::resource::Handle;
+using axiom::resource::ResourceId;
+using axiom::resource::ResourceRef;
+using axiom::resource::ResourceRegistry;
 
 template <typename T>
 concept CanFormHandle = requires { typename Handle<T>; };
@@ -141,8 +141,8 @@ concept CanFormHandle = requires { typename Handle<T>; };
 using ShapeAlias = Shape;
 
 // These types have valid names; rejection must come from lifetime/completeness constraints.
-static_assert(axiom::core::resource::detail::HasValidResourceTraits<ThrowingDestructor>);
-static_assert(axiom::core::resource::detail::HasValidResourceTraits<Incomplete>);
+static_assert(axiom::resource::detail::HasValidResourceTraits<ThrowingDestructor>);
+static_assert(axiom::resource::detail::HasValidResourceTraits<Incomplete>);
 
 [[nodiscard]] ResourceId resourceId(const std::string_view text) {
     auto result = ResourceId::parse(text);
@@ -173,26 +173,25 @@ void expectNoDiagnosticLeak(const std::string_view text) {
     EXPECT_FALSE(looksLikeAddressOrRtti(text));
 }
 
-void expectMismatchIdField(const axiom::core::Value::Object& details, const std::string_view id) {
+void expectMismatchIdField(const axiom::Value::Object& details, const std::string_view id) {
     EXPECT_EQ(details.at("id").asString(), id);
     expectNoDiagnosticLeak(details.at("id").asString());
 }
 
-void expectMismatchNameFields(const axiom::core::Value::Object& details) {
+void expectMismatchNameFields(const axiom::Value::Object& details) {
     EXPECT_EQ(details.at("expected").asString(), "shape");
     EXPECT_EQ(details.at("actual").asString(), "shape");
     expectNoDiagnosticLeak(details.at("expected").asString());
     expectNoDiagnosticLeak(details.at("actual").asString());
 }
 
-void expectMismatchObjectFields(const axiom::core::Value::Object& details,
-                                const std::string_view id) {
+void expectMismatchObjectFields(const axiom::Value::Object& details, const std::string_view id) {
     ASSERT_EQ(details.size(), 3U);
     expectMismatchIdField(details, id);
     expectMismatchNameFields(details);
 }
 
-void expectMismatchDiagnostics(const axiom::core::Error& error, const std::string_view id) {
+void expectMismatchDiagnostics(const axiom::Error& error, const std::string_view id) {
     EXPECT_EQ(error.code, ErrorCode::TypeMismatch);
     EXPECT_FALSE(error.path.has_value());
     if(!error.details.has_value() || !error.details->isObject()) {
@@ -645,7 +644,7 @@ TEST(ResourceRegistry, SerialExhaustionReturnsInternalErrorWithoutMutation) {
     ASSERT_TRUE(existing);
     resetLifetimeCounters();
     {
-        const axiom::core::resource::detail::ResourceSerialExhaustionGuard guard;
+        const axiom::resource::detail::ResourceSerialExhaustionGuard guard;
         const auto rejected = registry.add(std::make_unique<Counted>());
         EXPECT_FALSE(rejected);
         EXPECT_EQ(rejected.error().code, ErrorCode::InternalError);

@@ -49,7 +49,7 @@ TOOL = ArchitectureTool
 def _violations(project_root: Path, rules: Mapping[str, Any]) -> list[dict[str, object]]:
     if rules.get("schema") != "axiom-architecture-rules/v1":
         raise ValueError("unsupported architecture rules schema")
-    files = [path for root in ("src", "apps", "tests") for path in (project_root / root).rglob("*") if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES]
+    files = [path for root in ("include", "src", "apps", "tests") for path in (project_root / root).rglob("*") if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES]
     findings: list[dict[str, object]] = []
     for rule in rules.get("forbidden_include_prefixes", []):
         if not isinstance(rule, dict):

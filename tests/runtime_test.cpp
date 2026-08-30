@@ -1,17 +1,16 @@
-#include <axiom/core/action/action_id.hpp>
-#include <axiom/core/action/detail/typed_action_adapter.hpp>
-#include <axiom/core/action/invocation_context.hpp>
-#include <axiom/core/action/module.hpp>
-#include <axiom/core/action/module_builder.hpp>
-#include <axiom/core/action/runtime.hpp>
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/result.hpp>
-#include <axiom/core/base/type_descriptor.hpp>
-#include <axiom/core/base/value.hpp>
-#include <axiom/core/logging/log_level.hpp>
-#include <axiom/core/logging/log_record.hpp>
-#include <axiom/core/logging/log_sink.hpp>
-#include <axiom/core/logging/logging_service.hpp>
+#include <axiom/action/action_id.hpp>
+#include <axiom/action/invocation_context.hpp>
+#include <axiom/action/module.hpp>
+#include <axiom/action/module_builder.hpp>
+#include <axiom/action/runtime.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/foundation/type_descriptor.hpp>
+#include <axiom/foundation/value.hpp>
+#include <axiom/logging/log_level.hpp>
+#include <axiom/logging/log_record.hpp>
+#include <axiom/logging/log_sink.hpp>
+#include <axiom/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
 
@@ -30,19 +29,19 @@
 
 namespace {
 
-using axiom::core::ActionId;
-using axiom::core::Arguments;
-using axiom::core::ErrorCode;
-using axiom::core::InvocationContext;
-using axiom::core::ModuleBuilder;
-using axiom::core::param;
-using axiom::core::Result;
-using axiom::core::Runtime;
-using axiom::core::Value;
-using axiom::core::logging::ILogSink;
-using axiom::core::logging::LoggingService;
-using axiom::core::logging::LogLevel;
-using axiom::core::logging::LogRecord;
+using axiom::ActionId;
+using axiom::Arguments;
+using axiom::ErrorCode;
+using axiom::InvocationContext;
+using axiom::ModuleBuilder;
+using axiom::param;
+using axiom::Result;
+using axiom::Runtime;
+using axiom::Value;
+using axiom::logging::ILogSink;
+using axiom::logging::LoggingService;
+using axiom::logging::LogLevel;
+using axiom::logging::LogRecord;
 
 class RuntimeRecordingSink final : public ILogSink {
 public:
@@ -120,16 +119,6 @@ private:
     int factor_;
 };
 
-static_assert(axiom::core::detail::isAdaptableCallable<decltype(&add)>());
-static_assert(
-    axiom::core::detail::isAdaptableCallable<decltype([](const int value) { return value; })>());
-static_assert(
-    !axiom::core::detail::isAdaptableCallable<decltype([](const auto value) { return value; })>());
-static_assert(!axiom::core::detail::isAdaptableCallable<OverloadedCallable>());
-static_assert(!axiom::core::detail::isAdaptableCallable<NonCopyableCallable>());
-static_assert(!axiom::core::detail::isAdaptableCallable<decltype(&Multiplier::multiply)>());
-static_assert(!axiom::core::detail::isAdaptableCallable<std::function<int(int)>>());
-
 template <typename Callable, typename... Documentation>
 concept PubliclyAddable =
     requires(ModuleBuilder& builder, Callable&& callable, Documentation&&... documentation) {
@@ -137,7 +126,7 @@ concept PubliclyAddable =
                     std::forward<Documentation>(documentation)...);
     };
 
-using ParameterDoc = axiom::core::ParameterDocumentation;
+using ParameterDoc = axiom::ParameterDocumentation;
 using CopyableLambda = decltype([](const int value) { return value; });
 
 struct NonDefaultConstructibleCompare {
@@ -202,7 +191,6 @@ static_assert(!PubliclyAddable<std::function<int(int)>, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyEntriesCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyHashMapCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyVectorCallable, ParameterDoc>);
-static_assert(!axiom::core::detail::isAdaptableCallable<PolicyEntriesCallable>());
 
 ActionId id(const std::string_view text) {
     const auto parsed = ActionId::parse(text);
@@ -212,7 +200,7 @@ ActionId id(const std::string_view text) {
 
 ModuleBuilder mathBuilder() {
     return ModuleBuilder{
-        axiom::core::ModuleDescriptor{.namespace_name = "math", .metadata = {{"title", "Math"}}}};
+        axiom::ModuleDescriptor{.namespace_name = "math", .metadata = {{"title", "Math"}}}};
 }
 
 void addArithmeticActions(ModuleBuilder& math) {
@@ -234,10 +222,9 @@ void addExceptionActions(ModuleBuilder& math) {
 }
 
 void addMemberAction(ModuleBuilder& math) {
-    EXPECT_TRUE(
-        math.add("multiply", "Uses an explicitly owned object",
-                 axiom::core::bindMember<&Multiplier::multiply>(std::make_shared<Multiplier>(3)),
-                 param("value", "Operand")));
+    EXPECT_TRUE(math.add("multiply", "Uses an explicitly owned object",
+                         axiom::bindMember<&Multiplier::multiply>(std::make_shared<Multiplier>(3)),
+                         param("value", "Operand")));
 }
 
 void configureRuntime(Runtime& runtime) {
@@ -314,7 +301,7 @@ TEST(Runtime, InvokesTypedFunctionsAndDiscoversStableDescriptors) {
     const auto descriptor = runtime.findAction(id("math.add"));
     ASSERT_TRUE(descriptor);
     EXPECT_EQ(descriptor.value().get().parameters[0].type.kind,
-              axiom::core::TypeDescriptor::Kind::Integer);
+              axiom::TypeDescriptor::Kind::Integer);
 }
 
 TEST(Runtime, PreservesBusinessErrorsAndSupportsVoidResults) {
@@ -400,11 +387,10 @@ TEST(Runtime, NormalizesStandardAndUnknownCallableExceptions) {
 TEST(Runtime, RejectsDuplicateAndInvalidModuleRegistrationsWithoutChangingRuntime) {
     Runtime runtime;
     configureRuntime(runtime);
-    ModuleBuilder duplicate{
-        axiom::core::ModuleDescriptor{.namespace_name = "math", .metadata = {}}};
+    ModuleBuilder duplicate{axiom::ModuleDescriptor{.namespace_name = "math", .metadata = {}}};
     EXPECT_TRUE(duplicate.add("second", "Second action", [] { return 2; }));
     ModuleBuilder invalid{
-        axiom::core::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
+        axiom::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
 
     const auto duplicate_result = runtime.registerModule(std::move(duplicate));
     const auto invalid_result = runtime.registerModule(std::move(invalid));
@@ -477,11 +463,9 @@ TEST(Runtime, RecordsExpectedRegistrationFailuresAsWarnings) {
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
     ModuleBuilder invalid{
-        axiom::core::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
-    ModuleBuilder first{
-        axiom::core::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
-    ModuleBuilder duplicate{
-        axiom::core::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
+        axiom::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
+    ModuleBuilder first{axiom::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
+    ModuleBuilder duplicate{axiom::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
     ASSERT_TRUE(first.add("first", "First action", [] { return 1; }));
     ASSERT_TRUE(duplicate.add("second", "Second action", [] { return 2; }));
 
@@ -505,8 +489,7 @@ TEST(Runtime, LogsAnEmptyBuilderRegistrationFailureWithoutAModuleField) {
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
-    ModuleBuilder source{
-        axiom::core::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
+    ModuleBuilder source{axiom::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
     ModuleBuilder empty{transferOwnership(source)};
 
     const auto result = runtime.registerModule(std::move(source));
@@ -527,8 +510,7 @@ TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
     const auto business_logger = logging.logger("business");
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
     ASSERT_TRUE(builder.add("emit", "Emits a business record", [business_logger] {
         business_logger.write(LogLevel::Info, "business event");
         return 42;
@@ -572,7 +554,7 @@ TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
     ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "context_fields", .metadata = {}}};
+        axiom::ModuleDescriptor{.namespace_name = "context_fields", .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
 
@@ -605,8 +587,7 @@ TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
     auto bad_subscription = logging.addSink(std::make_shared<RuntimeThrowingSink>());
     auto good_subscription = logging.addSink(good_sink);
     int invocations = 0;
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "resilient", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "resilient", .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
         ++invocations;
         return 7;
@@ -624,8 +605,7 @@ TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
 
 TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
     int invocations = 0;
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "silent", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "silent", .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
         ++invocations;
         return 11;
@@ -641,8 +621,7 @@ TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
 }
 
 TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "lambda", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "lambda", .metadata = {}}};
     int offset = 5;
 
     EXPECT_TRUE(builder.add(
@@ -659,7 +638,7 @@ TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {
 }
 
 TEST(Runtime, DescribesAndConvertsHomogeneousStringKeyMaps) {
-    ModuleBuilder builder{axiom::core::ModuleDescriptor{.namespace_name = "maps", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "maps", .metadata = {}}};
     ASSERT_TRUE(builder.add("sum", "Sums values by name", &sumMap, param("values", "Values")));
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
@@ -673,15 +652,14 @@ TEST(Runtime, DescribesAndConvertsHomogeneousStringKeyMaps) {
     const auto& type = descriptor.value().get().parameters.front().type;
     ASSERT_NE(type.value_type, nullptr);
     EXPECT_TRUE(type.fields.empty());
-    EXPECT_EQ(type.kind, axiom::core::TypeDescriptor::Kind::Object);
-    EXPECT_EQ(type.value_type->kind, axiom::core::TypeDescriptor::Kind::Number);
+    EXPECT_EQ(type.kind, axiom::TypeDescriptor::Kind::Object);
+    EXPECT_EQ(type.value_type->kind, axiom::TypeDescriptor::Kind::Number);
     ASSERT_TRUE(invoked);
     EXPECT_DOUBLE_EQ(invoked.value().asNumber(), 3.5);
 }
 
 TEST(Runtime, ConvertsCompatibleIntegerDefaultsForInferredNumberParameters) {
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
     ASSERT_TRUE(builder.add(
         "scale", "Scales an inferred number", [](const double factor) { return factor * 1.5; },
         param("factor", "Optional factor", Value{std::int64_t{2}})));
@@ -699,8 +677,7 @@ TEST(Runtime, ConvertsCompatibleIntegerDefaultsForInferredNumberParameters) {
 }
 
 TEST(ModuleBuilder, RejectsDefaultsThatCannotConvertToInferredCppTypes) {
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
     const Value narrow_default{std::int64_t{128}};
     const Value nested_default{Value::Array{Value{Value::Array{Value{std::int64_t{128}}}}}};
 
@@ -727,8 +704,7 @@ TEST(ModuleBuilder, RejectsDefaultsThatCannotConvertToInferredCppTypes) {
 }
 
 TEST(ModuleBuilder, RejectsRegistrationAfterRuntimeConsumedTheBuilder) {
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "consumed", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "consumed", .metadata = {}}};
     ASSERT_TRUE(builder.add("first", "Valid action", [] { return 1; }));
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
@@ -740,7 +716,7 @@ TEST(ModuleBuilder, RejectsRegistrationAfterRuntimeConsumedTheBuilder) {
 }
 
 TEST(ModuleBuilder, RejectsUseAfterMoveAndRegistrationOfEmptyBuilders) {
-    ModuleBuilder source{axiom::core::ModuleDescriptor{.namespace_name = "moved", .metadata = {}}};
+    ModuleBuilder source{axiom::ModuleDescriptor{.namespace_name = "moved", .metadata = {}}};
     ModuleBuilder destination{std::move(source)};
 
     const auto moved_from = addLateAction(source);
@@ -754,8 +730,7 @@ TEST(ModuleBuilder, RejectsUseAfterMoveAndRegistrationOfEmptyBuilders) {
 }
 
 TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutation) {
-    ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "builder", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "builder", .metadata = {}}};
 
     const auto invalid_name =
         builder.add("not-valid", "Invalid local identifier", [] { return 1; });

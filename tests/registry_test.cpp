@@ -1,12 +1,12 @@
-#include <axiom/core/action/action_id.hpp>
-#include <axiom/core/action/descriptor.hpp>
-#include <axiom/core/action/detail/action.hpp>
-#include <axiom/core/action/detail/registry.hpp>
-#include <axiom/core/action/invocation_context.hpp>
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/result.hpp>
-#include <axiom/core/base/type_descriptor.hpp>
-#include <axiom/core/base/value.hpp>
+#include "../src/action/detail/registry.hpp"
+#include <axiom/action/action_id.hpp>
+#include <axiom/action/descriptor.hpp>
+#include <axiom/action/detail/action.hpp>
+#include <axiom/action/invocation_context.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/foundation/type_descriptor.hpp>
+#include <axiom/foundation/value.hpp>
 
 #include <gtest/gtest.h>
 
@@ -20,12 +20,12 @@
 
 namespace {
 
-using axiom::core::ActionDescriptor;
-using axiom::core::ActionId;
-using axiom::core::TypeDescriptor;
-using axiom::core::detail::IAction;
-using axiom::core::detail::PendingAction;
-using axiom::core::detail::Registry;
+using axiom::ActionDescriptor;
+using axiom::ActionId;
+using axiom::TypeDescriptor;
+using axiom::detail::IAction;
+using axiom::detail::PendingAction;
+using axiom::detail::Registry;
 
 class LifetimeTrackingAction final : public IAction {
 public:
@@ -33,12 +33,11 @@ public:
         : destruction_count_(destruction_count) {}
     ~LifetimeTrackingAction() noexcept override { ++destruction_count_; }
 
-    [[nodiscard]] axiom::core::Result<axiom::core::Value>
-    invoke(const axiom::core::Arguments& arguments,
-           const axiom::core::InvocationContext& context) override {
+    [[nodiscard]] axiom::Result<axiom::Value>
+    invoke(const axiom::Arguments& arguments, const axiom::InvocationContext& context) override {
         static_cast<void>(arguments);
         static_cast<void>(context);
-        return axiom::core::Result<axiom::core::Value>::success(axiom::core::Value{});
+        return axiom::Result<axiom::Value>::success(axiom::Value{});
     }
 
 private:
@@ -161,11 +160,11 @@ TEST(Registry, RejectsInvalidAndConflictingRegistrationsWithoutChangingState) {
     const auto duplicate_action =
         registry.registerAction(action("math.add"), implementation(destruction_count));
 
-    EXPECT_EQ(invalid_module.error().code, axiom::core::ErrorCode::InvalidDescriptor);
-    EXPECT_EQ(duplicate_module.error().code, axiom::core::ErrorCode::AlreadyExists);
-    EXPECT_EQ(invalid_action_result.error().code, axiom::core::ErrorCode::InvalidDescriptor);
-    EXPECT_EQ(unknown_module.error().code, axiom::core::ErrorCode::NotFound);
-    EXPECT_EQ(duplicate_action.error().code, axiom::core::ErrorCode::AlreadyExists);
+    EXPECT_EQ(invalid_module.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(duplicate_module.error().code, axiom::ErrorCode::AlreadyExists);
+    EXPECT_EQ(invalid_action_result.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(unknown_module.error().code, axiom::ErrorCode::NotFound);
+    EXPECT_EQ(duplicate_action.error().code, axiom::ErrorCode::AlreadyExists);
     ASSERT_EQ(registry.discoverModules().size(), 1U);
     ASSERT_EQ(registry.discoverActions().size(), 1U);
     EXPECT_EQ(registry.discoverActions().front().get().id.str(), "math.add");
@@ -182,7 +181,7 @@ TEST(Registry, RejectsUnknownDescriptorKindWithoutChangingState) {
     const auto result = registry.registerAction(invalid, implementation(destruction_count));
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, axiom::core::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(result.error().code, axiom::ErrorCode::InvalidDescriptor);
     EXPECT_EQ(registry.discoverModules().size(), 1U);
     EXPECT_TRUE(registry.discoverActions().empty());
     EXPECT_EQ(destruction_count, 1);
@@ -220,7 +219,7 @@ TEST(Registry, PreservesRegistryAndPendingActionsWhenPreparedModuleRegistrationF
         {.namespace_name = "math", .metadata = {}}, pending_actions);
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, axiom::core::ErrorCode::AlreadyExists);
+    EXPECT_EQ(result.error().code, axiom::ErrorCode::AlreadyExists);
     EXPECT_TRUE(registry.discoverModules().empty());
     EXPECT_TRUE(registry.discoverActions().empty());
     ASSERT_EQ(pending_actions.size(), 2U);
@@ -233,7 +232,7 @@ TEST(Registry, PreservesRegistryAndPendingActionsWhenPreparedModuleRegistrationF
 
 TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     int destruction_count = 0;
-    const axiom::core::ModuleDescriptor module{.namespace_name = "math", .metadata = {}};
+    const axiom::ModuleDescriptor module{.namespace_name = "math", .metadata = {}};
 
     Registry missing_descriptor_registry;
     std::vector<PendingAction> missing_descriptor;
@@ -242,7 +241,7 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     const auto missing_descriptor_result =
         missing_descriptor_registry.registerModuleWithActions(module, missing_descriptor);
 
-    EXPECT_EQ(missing_descriptor_result.error().code, axiom::core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(missing_descriptor_result.error().code, axiom::ErrorCode::InvalidArgument);
     EXPECT_TRUE(missing_descriptor_registry.discoverModules().empty());
     EXPECT_NE(missing_descriptor.front().implementation, nullptr);
 
@@ -258,7 +257,7 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     const auto invalid_descriptor_result =
         invalid_descriptor_registry.registerModuleWithActions(module, invalid_descriptor);
 
-    EXPECT_EQ(invalid_descriptor_result.error().code, axiom::core::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(invalid_descriptor_result.error().code, axiom::ErrorCode::InvalidDescriptor);
     EXPECT_TRUE(invalid_descriptor_registry.discoverModules().empty());
     EXPECT_NE(invalid_descriptor.front().implementation, nullptr);
 
@@ -270,7 +269,7 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     const auto missing_implementation_result =
         missing_implementation_registry.registerModuleWithActions(module, missing_implementation);
 
-    EXPECT_EQ(missing_implementation_result.error().code, axiom::core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(missing_implementation_result.error().code, axiom::ErrorCode::InvalidArgument);
     EXPECT_TRUE(missing_implementation_registry.discoverModules().empty());
     EXPECT_NE(missing_implementation.front().descriptor, nullptr);
 
@@ -281,7 +280,7 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     const auto wrong_module_result =
         wrong_module_registry.registerModuleWithActions(module, wrong_module);
 
-    EXPECT_EQ(wrong_module_result.error().code, axiom::core::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(wrong_module_result.error().code, axiom::ErrorCode::InvalidDescriptor);
     EXPECT_TRUE(wrong_module_registry.discoverModules().empty());
     EXPECT_NE(wrong_module.front().implementation, nullptr);
 }
@@ -293,7 +292,7 @@ TEST(Registry, RejectsNullDirectActionImplementationWithoutChangingRegisteredMod
     const auto result = registry.registerAction(action("math.add"), nullptr);
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(result.error().code, axiom::core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(result.error().code, axiom::ErrorCode::InvalidArgument);
     EXPECT_EQ(registry.discoverModules().size(), 1U);
     EXPECT_TRUE(registry.discoverActions().empty());
 }
@@ -304,8 +303,8 @@ TEST(Registry, ReturnsNotFoundForUnknownModuleAndAction) {
     const auto module = registry.findModule("math");
     const auto registered_action = registry.findAction(actionId("math.add"));
 
-    EXPECT_EQ(module.error().code, axiom::core::ErrorCode::NotFound);
-    EXPECT_EQ(registered_action.error().code, axiom::core::ErrorCode::NotFound);
+    EXPECT_EQ(module.error().code, axiom::ErrorCode::NotFound);
+    EXPECT_EQ(registered_action.error().code, axiom::ErrorCode::NotFound);
 }
 
 TEST(Registry, DiscoversDescriptionsInStableCanonicalOrder) {

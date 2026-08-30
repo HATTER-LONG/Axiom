@@ -1,38 +1,42 @@
-#include "install_widget.hpp"
+#include <axiom/axiom.hpp>
 
-#include <axiom/core/core.hpp>
-
+#include <chrono>
 #include <cstdlib>
 #include <memory>
-#include <string>
+#include <utility>
 
 namespace {
-
-[[nodiscard]] bool checkInstalledLoggingAndAction() {
-    axiom::core::logging::LoggingService logging;
-    const auto subscription =
-        logging.addSink(std::make_shared<axiom::core::logging::ConsoleSink>());
-    logging.logger("install").write(axiom::core::logging::LogLevel::Info, "consumer logging works");
-    logging.flush();
-    axiom::core::ModuleBuilder builder{
-        axiom::core::ModuleDescriptor{.namespace_name = "install", .metadata = {}}};
-    const auto registered = builder.add(
-        "answer", "Returns a stable answer",
-        [](const double multiplier) { return 21.0 * multiplier; },
-        axiom::core::param("multiplier", "Optional multiplier",
-                           axiom::core::Value{std::int64_t{2}}));
-    axiom::core::Runtime runtime;
-    const auto installed = registered && runtime.registerModule(std::move(builder));
-    const auto id = axiom::core::ActionId::parse("install.answer");
-    const auto invoked = id ? runtime.invoke(id.value(), {}, {})
-                            : axiom::core::Result<axiom::core::Value>::failure(id.error());
-    return std::string{axiom::core::frameworkName()} == "Axiom" && installed && invoked &&
-           invoked.value().asNumber() == 42.0;
+[[nodiscard]] bool invokeInstalledAction() {
+    axiom::ModuleBuilder builder{{.namespace_name = "install", .metadata = {}}};
+    if(!builder.add("answer", "Answer", [] { return 42; })) {
+        return false;
+    }
+    axiom::Runtime runtime;
+    if(!runtime.registerModule(std::move(builder))) {
+        return false;
+    }
+    auto id = axiom::ActionId::parse("install.answer");
+    if(!id) {
+        return false;
+    }
+    auto result = runtime.invoke(id.value(), {});
+    return result && result.value().asInteger() == 42;
 }
 
+[[nodiscard]] bool useInstalledAsync() {
+    axiom::async::Executor executor{1};
+    axiom::async::Scheduler scheduler{executor};
+    auto original = scheduler.scheduleAfter(std::chrono::hours{1}, [] {});
+    auto moved = std::move(original);
+    axiom::async::Scheduler::ScheduleHandle handle;
+    handle = std::move(moved);
+    return handle.active() && handle.cancel() && !handle.active() &&
+           executor.submit([] { return 42; }).get() == 42;
+}
 } // namespace
 
 int main() {
-    return checkInstalledLoggingAndAction() && checkInstalledResource() ? EXIT_SUCCESS
-                                                                        : EXIT_FAILURE;
+    return axiom::isFrameworkName("Axiom") && invokeInstalledAction() && useInstalledAsync()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

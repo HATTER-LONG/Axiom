@@ -1,6 +1,6 @@
-# Axiom Agent Guide
+# Agent Guide
 
-Build Axiom in small, verifiable increments. Reuse existing design, keep public
+Build in small, verifiable increments. Reuse existing design, keep public
 interfaces small, and never weaken a quality check to make it pass.
 
 ## Design and scope
@@ -20,10 +20,10 @@ interfaces small, and never weaken a quality check to make it pass.
 - Avoid leaky abstractions: do not expose storage, third-party types, platform
   handles, mutable internal collections, or implementation-specific error details
   unless the module is explicitly an adapter boundary.
-- Put behavior in the module that owns it; keep dependencies one-way: Core must not
+- Put behavior in the module that owns it; keep dependencies one-way: Axiom library must not
   depend on UI, libraries on applications, or production on tests.
-- Prefer RAII, explicit ownership, and composition. Do not expose Qt, OCC, Boost,
-  or other third-party implementation types outside an adapter boundary.
+- Prefer RAII, explicit ownership, and composition. Do not expose third-party
+  implementation types outside an adapter boundary.
 - Change implementation before expanding a public API. Avoid speculative abstractions,
   catch-all modules such as `utils`, `common`, or `manager`, and unrelated refactors.
 - Before editing, identify the owning module, existing applicable interface,
@@ -36,8 +36,8 @@ isolated behind a small portability boundary and selected with CMake platform or
 compiler predicates (`WIN32`, `APPLE`, `UNIX`, `MSVC`) rather than host assumptions.
 
 - Use standard C++ facilities first; do not add OS headers or APIs unless required.
-- Shared-library public symbols use the module export macro. `AXIOM_CORE_API` maps
-  to `__declspec(dllexport/dllimport)` on Windows and default visibility on
+- Shared-library public symbols use the module export macro. `TESTLIB_CORE_API`
+  maps to `__declspec(dllexport/dllimport)` on Windows and default visibility on
   Linux/macOS. Never expose a Windows-only declaration unguarded.
 - Keep the static-library default working. When changing build or install behavior,
   also verify `-DBUILD_SHARED_LIBS=ON` and an installed-package consumer.
@@ -63,15 +63,10 @@ obvious control flow. Keep documentation synchronized with behavior.
 
 ```cpp
 /**
- * @brief Registers a sink and returns an RAII subscription that unregisters it.
- *
- * @param sink Shared ownership retained until the subscription ends.
- * @param filter Selection applied before consume().
- * @return Move-only subscription; destroying it removes the sink.
- * @throws std::bad_alloc If registration storage cannot be allocated.
- * @note Dispatch is synchronous in the current implementation.
+ * @brief Returns the library ABI version encoded by this build.
+ * @return Positive version integer for the current Axiom ABI.
  */
-[[nodiscard]] LogSubscription addSink(std::shared_ptr<ILogSink> sink, LogFilter filter = {});
+[[nodiscard]] int version();
 ```
 
 Use `@file` and `@brief` in public headers and add `@tparam`, `@param`, `@return`,

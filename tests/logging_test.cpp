@@ -1,13 +1,13 @@
-#include <axiom/core/base/value.hpp>
-#include <axiom/core/logging/callback_sink.hpp>
-#include <axiom/core/logging/console_sink.hpp>
-#include <axiom/core/logging/log_collector.hpp>
-#include <axiom/core/logging/log_filter.hpp>
-#include <axiom/core/logging/log_level.hpp>
-#include <axiom/core/logging/log_record.hpp>
-#include <axiom/core/logging/log_sink.hpp>
-#include <axiom/core/logging/logger.hpp>
-#include <axiom/core/logging/logging_service.hpp>
+#include <axiom/foundation/value.hpp>
+#include <axiom/logging/callback_sink.hpp>
+#include <axiom/logging/console_sink.hpp>
+#include <axiom/logging/log_collector.hpp>
+#include <axiom/logging/log_filter.hpp>
+#include <axiom/logging/log_level.hpp>
+#include <axiom/logging/log_record.hpp>
+#include <axiom/logging/log_sink.hpp>
+#include <axiom/logging/logger.hpp>
+#include <axiom/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
 
@@ -35,15 +35,15 @@
 
 namespace {
 
-using axiom::core::Value;
-using axiom::core::logging::CallbackSink;
-using axiom::core::logging::ConsoleSink;
-using axiom::core::logging::ILogSink;
-using axiom::core::logging::LogCollector;
-using axiom::core::logging::LogFilter;
-using axiom::core::logging::LoggingService;
-using axiom::core::logging::LogLevel;
-using axiom::core::logging::LogRecord;
+using axiom::Value;
+using axiom::logging::CallbackSink;
+using axiom::logging::ConsoleSink;
+using axiom::logging::ILogSink;
+using axiom::logging::LogCollector;
+using axiom::logging::LogFilter;
+using axiom::logging::LoggingService;
+using axiom::logging::LogLevel;
+using axiom::logging::LogRecord;
 
 template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 
@@ -72,7 +72,7 @@ public:
 
 class ReentrantSink final : public ILogSink {
 public:
-    explicit ReentrantSink(axiom::core::logging::Logger logger) : logger_(std::move(logger)) {}
+    explicit ReentrantSink(axiom::logging::Logger logger) : logger_(std::move(logger)) {}
 
     void consume(const LogRecord& record) override {
         messages.push_back(record.message);
@@ -84,7 +84,7 @@ public:
     std::vector<std::string> messages;
 
 private:
-    axiom::core::logging::Logger logger_;
+    axiom::logging::Logger logger_;
 };
 
 LogRecord record(std::string message,
@@ -122,13 +122,13 @@ void expectLastThreeLevels(const std::vector<LogRecord>& records) {
     EXPECT_EQ(records.at(5).level, LogLevel::Critical);
 }
 
-void writeFirstThreeLevels(const axiom::core::logging::Logger& logger) {
+void writeFirstThreeLevels(const axiom::logging::Logger& logger) {
     AXIOM_LOG_TRACE(logger, "trace");
     AXIOM_LOG_DEBUG(logger, "debug");
     AXIOM_LOG_INFO(logger, "info");
 }
 
-void writeLastThreeLevels(const axiom::core::logging::Logger& logger) {
+void writeLastThreeLevels(const axiom::logging::Logger& logger) {
     AXIOM_LOG_WARNING(logger, "warning");
     AXIOM_LOG_ERROR(logger, "error");
     AXIOM_LOG_CRITICAL(logger, "critical");
@@ -192,8 +192,8 @@ TEST(LogFilter, RejectsCategoriesThatOnlyShareCharacterPrefixes) {
     EXPECT_FALSE(filter.matches(LogLevel::Info, "runtime.act"));
 }
 
-static_assert(!std::is_copy_constructible_v<axiom::core::logging::LogSubscription>);
-static_assert(std::is_move_constructible_v<axiom::core::logging::LogSubscription>);
+static_assert(!std::is_copy_constructible_v<axiom::logging::LogSubscription>);
+static_assert(std::is_move_constructible_v<axiom::logging::LogSubscription>);
 
 TEST(LoggingService, FansOutToMatchingSinksAndRemovesSubscriptions) {
     LoggingService service;
@@ -479,7 +479,7 @@ TEST(LoggingService, AllowsSinksToLogRecursivelyAfterTakingTheSinkSnapshot) {
 }
 
 TEST(Logger, IsSafeNoOpWhenDefaultConstructed) {
-    const axiom::core::logging::Logger logger;
+    const axiom::logging::Logger logger;
 
     EXPECT_FALSE(logger.enabled(LogLevel::Critical));
     logger.write(LogLevel::Critical, "ignored");
@@ -733,7 +733,7 @@ TEST(Logger, RemovesAnOuterContextWithoutRemovingTheLiveInnerContext) {
 TEST(LoggingService, RepeatedUnsubscribeDoesNotRemoveOtherSubscriptions) {
     LoggingService service;
     const auto sink = std::make_shared<RecordingSink>();
-    std::vector<axiom::core::logging::LogSubscription> subscriptions;
+    std::vector<axiom::logging::LogSubscription> subscriptions;
     subscriptions.reserve(64);
     for(int index = 0; index < 64; ++index) {
         subscriptions.push_back(service.addSink(sink));
@@ -779,6 +779,23 @@ TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
     }
     EXPECT_EQ(output,
               "1970-01-01T00:00:00.000Z [info] [runtime] message (logging_test.cpp:1 record)\n");
+}
+
+TEST(LoggingService, AllowsSinkDestructorsToLogDuringUnsubscribe) {
+    LoggingService service;
+    auto collector = std::make_shared<LogCollector>();
+    const auto collected = service.addSink(collector);
+    const auto logger = service.logger("destruction");
+    auto sink = std::shared_ptr<ILogSink>{new CallbackSink{{}}, [logger](ILogSink* value) {
+                                              logger.write(LogLevel::Info, "sink released");
+                                              delete value;
+                                          }};
+    auto subscription = service.addSink(std::move(sink));
+
+    subscription.reset();
+    const auto records = collector->records();
+    ASSERT_EQ(records.size(), 1U);
+    EXPECT_EQ(records.front().message, "sink released");
 }
 
 } // namespace

@@ -2,39 +2,34 @@
   "schema": "axiom-architecture-rules/v1",
   "forbidden_include_prefixes": [
     {
-      "id": "core-must-not-depend-on-app-or-test",
-      "from": ["src/core/"],
+      "id": "library-must-not-depend-on-app-or-test",
+      "from": ["src/", "include/axiom/"],
       "forbidden": ["apps/", "tests/"]
     },
     {
-      "id": "core-base-must-not-depend-on-action",
-      "from": ["src/core/include/axiom/core/base/", "src/core/src/base/"],
-      "forbidden": ["axiom/core/action/"]
+      "id": "foundation-must-remain-independent",
+      "from": ["src/foundation/", "include/axiom/foundation/"],
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/async/"]
     },
     {
-      "id": "core-base-must-not-depend-on-resource",
-      "from": ["src/core/include/axiom/core/base/", "src/core/src/base/"],
-      "forbidden": ["axiom/core/resource/"]
+      "id": "logging-must-not-depend-on-higher-layers",
+      "from": ["src/logging/", "include/axiom/logging/"],
+      "forbidden": ["axiom/action/", "axiom/resource/", "axiom/events/", "axiom/async/", "apps/", "tests/"]
     },
     {
-      "id": "core-logging-must-not-depend-on-upper-layers",
-      "from": ["src/core/include/axiom/core/logging/", "src/core/src/logging/"],
-      "forbidden": ["axiom/core/action/", "apps/", "Qt", "Q", "axiom/agent/", "agent/"]
+      "id": "resource-must-remain-independent",
+      "from": ["src/resource/", "include/axiom/resource/"],
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/events/", "axiom/async/", "apps/", "tests/"]
     },
     {
-      "id": "core-resource-must-not-depend-on-upper-layers",
-      "from": ["src/core/include/axiom/core/resource/", "src/core/src/resource/"],
-      "forbidden": [
-        "axiom/core/action/",
-        "axiom/core/logging/",
-        "apps/",
-        "Qt",
-        "Q",
-        "boost/",
-        "Boost/",
-        "opencascade/",
-        "OpenCASCADE"
-      ]
+      "id": "events-must-not-depend-on-services",
+      "from": ["src/events/", "include/axiom/events/"],
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/async/"]
+    },
+    {
+      "id": "async-must-not-depend-on-services",
+      "from": ["src/async/", "include/axiom/async/"],
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/"]
     }
   ]
 }

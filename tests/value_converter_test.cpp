@@ -1,6 +1,7 @@
-#include <axiom/core/action/detail/value_converter.hpp>
-#include <axiom/core/base/error.hpp>
-#include <axiom/core/base/value.hpp>
+#include <axiom/action/detail/value_converter.hpp>
+#include <axiom/action/module_builder.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/value.hpp>
 
 #include <gtest/gtest.h>
 
@@ -16,11 +17,11 @@
 
 namespace {
 
-using axiom::core::Value;
-using axiom::core::detail::appendObjectPath;
-using axiom::core::detail::fromValue;
-using axiom::core::detail::toValue;
-using axiom::core::detail::ValueConvertible;
+using axiom::Value;
+using axiom::detail::appendObjectPath;
+using axiom::detail::fromValue;
+using axiom::detail::toValue;
+using axiom::detail::ValueConvertible;
 
 struct UnsupportedObject {};
 
@@ -79,6 +80,16 @@ static_assert(!ValueConvertible<std::vector<int, NonDefaultConstructibleIntAlloc
 static_assert(
     !ValueConvertible<std::vector<std::map<std::string, int, NonDefaultConstructibleCompare>>>);
 
+TEST(ValueConverter, SharesDefinitionsWithPublicCallableRegistration) {
+    axiom::ModuleBuilder builder{{.namespace_name = "conversion", .metadata = {}}};
+    const auto registered =
+        builder.add("echo", "Echo", [](int value) { return value; }, axiom::param("value"));
+    EXPECT_TRUE(registered);
+    auto converted = fromValue<int>(Value{42}, "value");
+    ASSERT_TRUE(converted);
+    EXPECT_EQ(converted.value(), 42);
+}
+
 } // namespace
 
 TEST(ValueConverter, ConvertsSupportedScalarValuesInBothDirections) {
@@ -109,9 +120,9 @@ TEST(ValueConverter, RejectsLossyAndImplicitScalarConversionsAtTheInputPath) {
     ASSERT_FALSE(number_to_integer);
     ASSERT_FALSE(string_to_integer);
     ASSERT_FALSE(overflowing_integer);
-    EXPECT_EQ(number_to_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
-    EXPECT_EQ(string_to_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
-    EXPECT_EQ(overflowing_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(number_to_integer.error().code, axiom::ErrorCode::TypeMismatch);
+    EXPECT_EQ(string_to_integer.error().code, axiom::ErrorCode::TypeMismatch);
+    EXPECT_EQ(overflowing_integer.error().code, axiom::ErrorCode::TypeMismatch);
     const auto& number_to_integer_path = number_to_integer.error().path;
     const auto& string_to_integer_path = string_to_integer.error().path;
     const auto& overflowing_integer_path = overflowing_integer.error().path;
@@ -153,7 +164,7 @@ TEST(ValueConverter, PreservesPreciseNestedArrayAndObjectPaths) {
                                                                                            "shape");
 
     ASSERT_FALSE(converted);
-    EXPECT_EQ(converted.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(converted.error().code, axiom::ErrorCode::TypeMismatch);
     const auto& path = converted.error().path;
     ASSERT_TRUE(path.has_value());
     if(!path.has_value()) {
@@ -230,8 +241,8 @@ TEST(ValueConverter, RejectsMismatchedContainerShapesAtTheTopLevelPath) {
 
     ASSERT_FALSE(array);
     ASSERT_FALSE(object);
-    EXPECT_EQ(array.error().code, axiom::core::ErrorCode::TypeMismatch);
-    EXPECT_EQ(object.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(array.error().code, axiom::ErrorCode::TypeMismatch);
+    EXPECT_EQ(object.error().code, axiom::ErrorCode::TypeMismatch);
     const auto& array_path = array.error().path;
     const auto& object_path = object.error().path;
     ASSERT_TRUE(array_path.has_value());
@@ -252,8 +263,8 @@ TEST(ValueConverter, ConvertsAndRejectsEveryScalarInputCategory) {
     ASSERT_FALSE(invalid_floating);
     ASSERT_FALSE(invalid_small_integer);
     EXPECT_DOUBLE_EQ(floating.value(), 1.5);
-    EXPECT_EQ(invalid_floating.error().code, axiom::core::ErrorCode::TypeMismatch);
-    EXPECT_EQ(invalid_small_integer.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(invalid_floating.error().code, axiom::ErrorCode::TypeMismatch);
+    EXPECT_EQ(invalid_small_integer.error().code, axiom::ErrorCode::TypeMismatch);
 }
 
 TEST(ValueConverter, ConvertsSuccessfulVectorAndMapContainers) {
@@ -278,7 +289,7 @@ TEST(ValueConverter, PreservesSuccessfulAndRejectedSpecializedContainerConversio
     ASSERT_FALSE(invalid_string);
     ASSERT_TRUE(bytes);
     ASSERT_TRUE(nested);
-    EXPECT_EQ(invalid_string.error().code, axiom::core::ErrorCode::TypeMismatch);
+    EXPECT_EQ(invalid_string.error().code, axiom::ErrorCode::TypeMismatch);
     EXPECT_EQ(bytes.value(), (std::vector<std::int8_t>{1}));
     EXPECT_EQ(nested.value().at("items"), (std::vector<std::int32_t>{1}));
 }
