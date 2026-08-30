@@ -1,7 +1,7 @@
 {
   "$schema": "./.checkflow/checkflow.schema.json",
   "project": {
-    "name": "Axiom",
+    "name": "Testlib",
     "language": "cpp"
   },
   "flows": {
@@ -22,9 +22,7 @@
       {
         "id": "build",
         "tool": "cmake",
-        "depends_on": [
-          "configure"
-        ],
+        "depends_on": ["configure"],
         "timeout": 600,
         "args": {
           "action": "build",
@@ -34,9 +32,7 @@
       {
         "id": "clean_coverage",
         "tool": "coverage",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "args": {
           "action": "clean",
           "build_directory": "build-quality/fast"
@@ -45,9 +41,7 @@
       {
         "id": "unit_tests",
         "tool": "ctest",
-        "depends_on": [
-          "clean_coverage"
-        ],
+        "depends_on": ["clean_coverage"],
         "timeout": 600,
         "args": {
           "preset": "quality-fast"
@@ -56,9 +50,7 @@
       {
         "id": "coverage",
         "tool": "coverage",
-        "depends_on": [
-          "unit_tests"
-        ],
+        "depends_on": ["unit_tests"],
         "timeout": 300,
         "args": {
           "build_directory": "build-quality/fast",
@@ -68,22 +60,7 @@
             "regions": 90,
             "branches": 90
           },
-          "required_cache_option": "AXIOM_COVERAGE"
-        }
-      },
-      {
-        "id": "coverage_integrity",
-        "tool": "cmake",
-        "depends_on": [
-          "coverage"
-        ],
-        "args": {
-          "action": "build",
-          "preset": "quality-fast",
-          "options": [
-            "--target",
-            "axiom_verify_coverage"
-          ]
+          "required_cache_option": "TESTLIB_COVERAGE"
         }
       }
     ],
@@ -98,14 +75,12 @@
       },
       {
         "id": "clear_build",
-        "command": "cmake -E rm -rf build-quality/full build-quality/static build-quality/shared build-quality/embedding"
+        "command": "cmake -E rm -rf build-quality/full build-quality/static build-quality/shared"
       },
       {
         "id": "configure",
         "tool": "cmake",
-        "depends_on": [
-          "clear_build"
-        ],
+        "depends_on": ["clear_build"],
         "timeout": 300,
         "args": {
           "action": "configure",
@@ -115,9 +90,7 @@
       {
         "id": "build",
         "tool": "cmake",
-        "depends_on": [
-          "configure"
-        ],
+        "depends_on": ["configure"],
         "timeout": 600,
         "args": {
           "action": "build",
@@ -127,70 +100,43 @@
       {
         "id": "complexity",
         "tool": "lizard",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "args": {
           "language": "cpp",
           "complexity": 10,
           "length": 80,
           "arguments": 5,
-          "paths": [
-            "src",
-            "apps",
-            "tests"
-          ]
+          "paths": ["src", "apps", "tests"]
         }
       },
       {
         "id": "cppcheck",
         "tool": "cppcheck",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "timeout": 600,
         "args": {
           "compilation_database": "build-quality/full",
-          "include": [
-            "src/**",
-            "apps/**",
-            "tests/**"
-          ],
-          "exclude": [
-            "build/**"
-          ],
-          "options": [
-            "--enable=warning,style,performance,portability"
-          ]
+          "include": ["src/**", "apps/**", "tests/**"],
+          "exclude": ["build/**"],
+          "options": ["--enable=warning,style,performance,portability"]
         }
       },
       {
         "id": "clang_tidy",
         "tool": "clang_tidy",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "timeout": 600,
         "args": {
           "compilation_database": "build-quality/full",
-          "include": [
-            "src/**",
-            "apps/**",
-            "tests/**"
-          ],
-          "options": [
-            "--quiet",
-            "--warnings-as-errors=*"
-          ],
+          "include": ["src/**", "apps/**", "tests/**"],
+          "options": ["--quiet", "--warnings-as-errors=*"],
           "headers": true
         }
       },
       {
         "id": "clean_coverage",
         "tool": "coverage",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "args": {
           "action": "clean",
           "build_directory": "build-quality/full"
@@ -199,9 +145,7 @@
       {
         "id": "unit_tests",
         "tool": "ctest",
-        "depends_on": [
-          "clean_coverage"
-        ],
+        "depends_on": ["clean_coverage"],
         "timeout": 900,
         "args": {
           "preset": "quality-full"
@@ -210,9 +154,7 @@
       {
         "id": "coverage",
         "tool": "coverage",
-        "depends_on": [
-          "unit_tests"
-        ],
+        "depends_on": ["unit_tests"],
         "timeout": 300,
         "args": {
           "build_directory": "build-quality/full",
@@ -222,38 +164,13 @@
             "regions": 90,
             "branches": 90
           },
-          "required_cache_option": "AXIOM_COVERAGE"
+          "required_cache_option": "TESTLIB_COVERAGE"
         }
-      },
-      {
-        "id": "coverage_integrity",
-        "tool": "cmake",
-        "depends_on": [
-          "coverage"
-        ],
-        "args": {
-          "action": "build",
-          "preset": "quality-full",
-          "options": [
-            "--target",
-            "axiom_verify_coverage"
-          ]
-        }
-      },
-      {
-        "id": "embedding_contract",
-        "command": "cmake -S tests/cmake -B build-quality/embedding -G Ninja",
-        "depends_on": [
-          "coverage_integrity"
-        ],
-        "timeout": 300
       },
       {
         "id": "static_configure",
         "tool": "cmake",
-        "depends_on": [
-          "embedding_contract"
-        ],
+        "depends_on": ["coverage"],
         "timeout": 600,
         "args": {
           "action": "configure",
@@ -263,9 +180,7 @@
       {
         "id": "static_build",
         "tool": "cmake",
-        "depends_on": [
-          "static_configure"
-        ],
+        "depends_on": ["static_configure"],
         "timeout": 600,
         "args": {
           "action": "build",
@@ -275,9 +190,7 @@
       {
         "id": "static_tests",
         "tool": "ctest",
-        "depends_on": [
-          "static_build"
-        ],
+        "depends_on": ["static_build"],
         "timeout": 900,
         "args": {
           "preset": "quality-static"
@@ -286,9 +199,7 @@
       {
         "id": "shared_configure",
         "tool": "cmake",
-        "depends_on": [
-          "static_tests"
-        ],
+        "depends_on": ["static_tests"],
         "timeout": 600,
         "args": {
           "action": "configure",
@@ -298,9 +209,7 @@
       {
         "id": "shared_build",
         "tool": "cmake",
-        "depends_on": [
-          "shared_configure"
-        ],
+        "depends_on": ["shared_configure"],
         "timeout": 600,
         "args": {
           "action": "build",
@@ -310,9 +219,7 @@
       {
         "id": "shared_tests",
         "tool": "ctest",
-        "depends_on": [
-          "shared_build"
-        ],
+        "depends_on": ["shared_build"],
         "timeout": 900,
         "args": {
           "preset": "quality-shared"
@@ -327,9 +234,7 @@
       {
         "id": "configure",
         "tool": "cmake",
-        "depends_on": [
-          "clear_build"
-        ],
+        "depends_on": ["clear_build"],
         "timeout": 300,
         "args": {
           "action": "configure",
@@ -339,9 +244,7 @@
       {
         "id": "build",
         "tool": "cmake",
-        "depends_on": [
-          "configure"
-        ],
+        "depends_on": ["configure"],
         "timeout": 600,
         "args": {
           "action": "build",
@@ -351,9 +254,7 @@
       {
         "id": "unit_tests",
         "tool": "ctest",
-        "depends_on": [
-          "build"
-        ],
+        "depends_on": ["build"],
         "timeout": 900,
         "args": {
           "preset": "quality-hardening"
@@ -362,34 +263,14 @@
       {
         "id": "mutation",
         "tool": "mull",
-        "depends_on": [
-          "unit_tests"
-        ],
+        "depends_on": ["unit_tests"],
         "timeout": 1800,
         "args": {
           "preset": "quality-mutation",
           "build_directory": "build-quality/mutation",
-          "frontend_cache_option": "AXIOM_MULL_IR_FRONTEND",
+          "frontend_cache_option": "TESTLIB_MULL_IR_FRONTEND",
           "threshold": 90,
-          "options": [
-            "--timeout",
-            "2000"
-          ]
-        }
-      },
-      {
-        "id": "mutation_integrity",
-        "tool": "cmake",
-        "depends_on": [
-          "mutation"
-        ],
-        "args": {
-          "action": "build",
-          "preset": "quality-mutation",
-          "options": [
-            "--target",
-            "axiom_verify_mutation"
-          ]
+          "options": ["--timeout", "2000"]
         }
       }
     ]

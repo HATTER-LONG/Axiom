@@ -1,11 +1,7 @@
-#include <axiom/core/core.hpp>
+#include <testlib/core/core.hpp>
 
-#include <string_view>
+namespace testlib::core {
 
-namespace axiom::core {
+int version() { return 1; }
 
-const char* frameworkName() noexcept { return "Axiom"; }
-
-bool isFrameworkName(std::string_view candidate) noexcept { return candidate == frameworkName(); }
-
-} // namespace axiom::core
+} // namespace testlib::core

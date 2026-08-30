@@ -7,12 +7,13 @@ set(prefix "${package_build}/install-relocated")
 set(consumer_build "${package_build}/install-consumer")
 file(REMOVE_RECURSE "${stage}" "${prefix}" "${consumer_build}")
 execute_process(COMMAND "@CMAKE_COMMAND@" --install "${package_build}" --prefix "${stage}" --config
-                        "${AXIOM_INSTALL_CONFIG}" COMMAND_ERROR_IS_FATAL ANY)
+                        "${TESTLIB_INSTALL_CONFIG}" COMMAND_ERROR_IS_FATAL ANY)
 # Relocate the package to catch build-tree and original-prefix paths in exports.
 file(RENAME "${stage}" "${prefix}")
 set(configure_command
     "@CMAKE_COMMAND@" -S "@PROJECT_SOURCE_DIR@/tests/install" -B "${consumer_build}" -G
-    "@CMAKE_GENERATOR@" "-DCMAKE_PREFIX_PATH=${prefix}" "-DAXIOM_EXPECT_SHARED=@BUILD_SHARED_LIBS@")
+    "@CMAKE_GENERATOR@" "-DCMAKE_PREFIX_PATH=${prefix}"
+    "-DTESTLIB_EXPECT_SHARED=@BUILD_SHARED_LIBS@")
 set(CMAKE_MAKE_PROGRAM "@CMAKE_MAKE_PROGRAM@")
 set(CMAKE_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
 set(CMAKE_RC_COMPILER "@CMAKE_RC_COMPILER@")
@@ -45,11 +46,12 @@ if (NOT "@CMAKE_GENERATOR_TOOLSET@" STREQUAL "")
     list(APPEND configure_command -T "@CMAKE_GENERATOR_TOOLSET@")
 endif ()
 if ("@CMAKE_CONFIGURATION_TYPES@" STREQUAL "")
-    list(APPEND configure_command "-DCMAKE_BUILD_TYPE=${AXIOM_INSTALL_CONFIG}")
+    list(APPEND configure_command "-DCMAKE_BUILD_TYPE=${TESTLIB_INSTALL_CONFIG}")
 endif ()
 execute_process(COMMAND ${configure_command} COMMAND_ERROR_IS_FATAL ANY)
 execute_process(COMMAND "@CMAKE_COMMAND@" --build "${consumer_build}" --config
-                        "${AXIOM_INSTALL_CONFIG}" COMMAND_ERROR_IS_FATAL ANY)
+                        "${TESTLIB_INSTALL_CONFIG}" COMMAND_ERROR_IS_FATAL ANY)
 execute_process(
-    COMMAND "@CMAKE_CTEST_COMMAND@" --test-dir "${consumer_build}" -C "${AXIOM_INSTALL_CONFIG}"
-            --output-on-failure --no-tests=error COMMAND_ERROR_IS_FATAL ANY)
+    COMMAND "@CMAKE_CTEST_COMMAND@" --test-dir "${consumer_build}" -C
+            "${TESTLIB_INSTALL_CONFIG}" --output-on-failure --no-tests=error
+            COMMAND_ERROR_IS_FATAL ANY)

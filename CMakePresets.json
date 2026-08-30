@@ -12,7 +12,7 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "AXIOM_WARNINGS_AS_ERRORS": "ON",
+        "TESTLIB_WARNINGS_AS_ERRORS": "ON",
         "BUILD_SHARED_LIBS": "OFF",
         "BUILD_TESTING": "ON"
       }
@@ -24,10 +24,10 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_COMPILER": "clang++",
-        "AXIOM_BUILD_INSTALL_TEST": "OFF",
-        "AXIOM_COVERAGE": "OFF",
-        "AXIOM_MUTATION_TESTING": "OFF",
-        "AXIOM_SANITIZERS": ""
+        "TESTLIB_BUILD_INSTALL_TEST": "OFF",
+        "TESTLIB_COVERAGE": "OFF",
+        "TESTLIB_MUTATION_TESTING": "OFF",
+        "TESTLIB_SANITIZERS": ""
       }
     },
     {
@@ -54,7 +54,7 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/fast",
       "cacheVariables": {
-        "AXIOM_COVERAGE": "ON"
+        "TESTLIB_COVERAGE": "ON"
       }
     },
     {
@@ -63,7 +63,7 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/full",
       "cacheVariables": {
-        "AXIOM_COVERAGE": "ON"
+        "TESTLIB_COVERAGE": "ON"
       }
     },
     {
@@ -72,7 +72,7 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/hardening",
       "cacheVariables": {
-        "AXIOM_SANITIZERS": "Address;Undefined"
+        "TESTLIB_SANITIZERS": "Address;Undefined"
       }
     },
     {
@@ -82,8 +82,8 @@
       "binaryDir": "${sourceDir}/build-quality/mutation",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "AXIOM_BUILD_DEMO": "OFF",
-        "AXIOM_MUTATION_TESTING": "ON"
+        "TESTLIB_BUILD_DEMO": "OFF",
+        "TESTLIB_MUTATION_TESTING": "ON"
       }
     },
     {
@@ -92,7 +92,7 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/static",
       "cacheVariables": {
-        "AXIOM_BUILD_INSTALL_TEST": "ON"
+        "TESTLIB_BUILD_INSTALL_TEST": "ON"
       }
     },
     {
@@ -101,7 +101,7 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/shared",
       "cacheVariables": {
-        "AXIOM_BUILD_INSTALL_TEST": "ON",
+        "TESTLIB_BUILD_INSTALL_TEST": "ON",
         "BUILD_SHARED_LIBS": "ON",
         "CMAKE_BUILD_TYPE": null
       },

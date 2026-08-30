@@ -1,6 +1,6 @@
-PROJECT_NAME           = "Axiom"
+PROJECT_NAME           = "Testlib"
 PROJECT_NUMBER         = "@PROJECT_VERSION@"
-PROJECT_BRIEF          = "Axiom application framework"
+PROJECT_BRIEF          = "Testlib C++ library"
 OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@/docs"
 INPUT                  = "@CMAKE_CURRENT_SOURCE_DIR@/README.md" \
                          "@CMAKE_CURRENT_SOURCE_DIR@/src"
