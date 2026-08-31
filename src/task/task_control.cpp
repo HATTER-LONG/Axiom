@@ -15,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace axiom::task::detail {
@@ -125,6 +126,7 @@ bool TaskControl::start() {
             return false;
         }
         descriptor_.state = TaskState::Running;
+        worker_thread_ = std::this_thread::get_id();
         notification = descriptor_;
     }
     publish(std::move(*notification));
@@ -141,6 +143,9 @@ void TaskControl::reportProgress(const double value, std::string message) {
         std::scoped_lock const lock{mutex_};
         if(descriptor_.state != TaskState::Running) {
             return;
+        }
+        if(std::this_thread::get_id() != worker_thread_) {
+            throw std::logic_error{"Task progress can only be reported on the execution thread"};
         }
         descriptor_.progress = {.value = value, .message = std::move(message)};
         notification = descriptor_;

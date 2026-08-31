@@ -7,9 +7,12 @@
 
 #include <axiom/async/executor.hpp>
 #include <axiom/export.hpp>
+#include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/logging/logger.hpp>
 #include <axiom/task/detail/task_control.hpp>
+#include <axiom/task/task_id.hpp>
+#include <axiom/task/task_types.hpp>
 
 #include <concepts>
 #include <functional>

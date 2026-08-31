@@ -2,6 +2,7 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/logging/log_collector.hpp>
+#include <axiom/logging/log_record.hpp>
 #include <axiom/logging/logger.hpp>
 #include <axiom/logging/logging_service.hpp>
 #include <axiom/task/task_id.hpp>
@@ -22,6 +23,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -69,6 +71,88 @@ private:
     bool arrived_{false};
     bool released_{false};
 };
+
+[[nodiscard]] axiom::Error cancelledError(std::string message) {
+    return {.code = ErrorCode::Cancelled,
+            .message = std::move(message),
+            .path = std::nullopt,
+            .details = std::nullopt};
+}
+
+[[nodiscard]] Result<void> cancelledIfRequested(const TaskContext& context, std::string message) {
+    if(!context.cancellation().requested()) {
+        return Result<void>::success();
+    }
+    return Result<void>::failure(cancelledError(std::move(message)));
+}
+
+template <typename T> [[nodiscard]] const T* peekOptional(const std::optional<T>& value) {
+    if(!value.has_value()) {
+        return nullptr;
+    }
+    return std::addressof(*value);
+}
+
+[[nodiscard]] std::vector<TaskState> statesFor(const std::vector<TaskDescriptor>& observed,
+                                               const axiom::task::TaskId& id) {
+    std::vector<TaskState> states;
+    for(const auto& descriptor : observed) {
+        if(descriptor.id == id) {
+            states.push_back(descriptor.state);
+        }
+    }
+    return states;
+}
+
+[[nodiscard]] std::size_t countCompleted(const std::vector<TaskDescriptor>& observed,
+                                         const axiom::task::TaskId& id) {
+    return static_cast<std::size_t>(std::ranges::count_if(observed, [&](const auto& descriptor) {
+        return descriptor.id == id && descriptor.state == TaskState::Completed;
+    }));
+}
+
+[[nodiscard]] const axiom::logging::LogRecord*
+findRecord(const std::vector<axiom::logging::LogRecord>& records, std::string_view message) {
+    const auto found = std::ranges::find_if(
+        records, [&](const auto& record) { return record.message == message; });
+    if(found == records.end()) {
+        return nullptr;
+    }
+    return &*found;
+}
+
+[[nodiscard]] bool
+queryHandle(TaskRegistry& tasks, const axiom::task::TaskId& id, std::latch& queries_ready);
+
+[[nodiscard]] std::vector<std::thread>
+launchQueryThreads(TaskRegistry& tasks,
+                   const std::vector<axiom::task::TaskHandle<void>>& handles,
+                   std::latch& queries_ready,
+                   std::atomic_bool& queries_ok) {
+    std::vector<std::thread> readers;
+    readers.reserve(handles.size());
+    std::ranges::transform(handles, std::back_inserter(readers),
+                           [&tasks, &queries_ready, &queries_ok](const auto& handle) {
+                               return std::thread{
+                                   [&tasks, &queries_ready, &queries_ok, id = handle.id()] {
+                                       if(!queryHandle(tasks, id, queries_ready)) {
+                                           queries_ok.store(false);
+                                       }
+                                   }};
+                           });
+    return readers;
+}
+
+[[nodiscard]] bool
+queryHandle(TaskRegistry& tasks, const axiom::task::TaskId& id, std::latch& queries_ready) {
+    const auto descriptor = tasks.describe(id);
+    const auto list = tasks.list();
+    const auto cancelled = tasks.cancel(id);
+    const bool ok = static_cast<bool>(descriptor) && descriptor.value().id == id &&
+                    list.size() == 3U && static_cast<bool>(cancelled);
+    queries_ready.count_down();
+    return ok;
+}
 
 struct ResultCopyObserver final {
     TaskRegistry* registry{nullptr};
@@ -154,15 +238,13 @@ TEST(TaskRegistryConcurrency, PublishesDifferentTasksConcurrentlyAndEachTaskInOr
     EXPECT_TRUE(both_running);
     executor.close();
 
-    std::vector<TaskState> first_states;
-    std::vector<TaskState> second_states;
+    std::vector<TaskDescriptor> snapshot;
     {
         std::scoped_lock const lock{observed_mutex};
-        for(const auto& descriptor : observed) {
-            auto& states = descriptor.id == first.value().id() ? first_states : second_states;
-            states.push_back(descriptor.state);
-        }
+        snapshot = observed;
     }
+    const auto first_states = statesFor(snapshot, first.value().id());
+    const auto second_states = statesFor(snapshot, second.value().id());
     EXPECT_EQ(first_states, (std::vector<TaskState>{TaskState::Running, TaskState::Running,
                                                     TaskState::Completed}));
     EXPECT_EQ(second_states, (std::vector<TaskState>{TaskState::Running, TaskState::Running,
@@ -186,12 +268,7 @@ TEST(TaskRegistryConcurrency, CallbackCanQueryCancelAndResetItsSubscription) {
         }
     }));
     const auto submitted = tasks.submit(executor, "reentrant", [](const TaskContext& context) {
-        return context.cancellation().requested()
-                   ? Result<void>::failure({.code = ErrorCode::Cancelled,
-                                            .message = "cancelled by observer",
-                                            .path = std::nullopt,
-                                            .details = std::nullopt})
-                   : Result<void>::success();
+        return cancelledIfRequested(context, "cancelled by observer");
     });
     ASSERT_TRUE(submitted);
     EXPECT_EQ(queried_future.wait_for(k_wait), std::future_status::ready);
@@ -218,57 +295,50 @@ TEST(TaskRegistryConcurrency, RunningCancellationDoesNotOverrideSuccessfulResult
         });
     ASSERT_TRUE(submitted);
     const bool started = gate.waitForArrival();
-    if(started) {
-        EXPECT_TRUE(token);
-        if(token) {
-            EXPECT_FALSE(token->requested());
-            EXPECT_TRUE(tasks.cancel(submitted.value().id()));
-            EXPECT_TRUE(token->requested());
-        }
-    }
-    gate.release();
-    EXPECT_TRUE(started);
-    executor.close();
-
+    ASSERT_TRUE(started);
     if(!token) {
         FAIL() << "Running task must publish its cancellation token";
         return;
     }
+    EXPECT_FALSE(token->requested());
+    EXPECT_TRUE(tasks.cancel(submitted.value().id()));
+    EXPECT_TRUE(token->requested());
+    gate.release();
+    executor.close();
+
     EXPECT_TRUE(token->requested());
     EXPECT_EQ(submitted.value().state(), TaskState::Completed);
     const auto result = submitted.value().result();
-    if(!result) {
-        FAIL() << "Completed task must have a result";
-        return;
+    if(const auto* completed = peekOptional(result)) {
+        EXPECT_EQ(completed->value(), 9);
+    } else {
+        ADD_FAILURE();
     }
-    EXPECT_EQ(result->value(), 9);
     EXPECT_TRUE(tasks.cancel(submitted.value().id()));
     EXPECT_TRUE(token->requested());
 }
 
-TEST(TaskRegistryConcurrency, TerminalRemovalReleasesResultOutsideRegistryLock) {
-    struct ReentrantValue final {
-        TaskRegistry* registry{nullptr};
-        std::atomic_bool* armed{nullptr};
-        std::atomic_uint* destructed{nullptr};
+struct ReentrantValue final {
+    TaskRegistry* registry{nullptr};
+    std::atomic_bool* armed{nullptr};
+    std::atomic_uint* destructed{nullptr};
 
-        ReentrantValue() = default;
-        ReentrantValue(TaskRegistry& owner,
-                       std::atomic_bool& should_observe,
-                       std::atomic_uint& count)
-            : registry(&owner), armed(&should_observe), destructed(&count) {}
-        ReentrantValue(const ReentrantValue&) = default;
-        ReentrantValue(ReentrantValue&&) noexcept = default;
-        ReentrantValue& operator=(const ReentrantValue&) = default;
-        ReentrantValue& operator=(ReentrantValue&&) noexcept = default;
-        ~ReentrantValue() {
-            if(registry != nullptr && armed != nullptr && armed->load() && destructed != nullptr) {
-                static_cast<void>(registry->list());
-                ++*destructed;
-            }
+    ReentrantValue() = default;
+    ReentrantValue(TaskRegistry& owner, std::atomic_bool& should_observe, std::atomic_uint& count)
+        : registry(&owner), armed(&should_observe), destructed(&count) {}
+    ReentrantValue(const ReentrantValue&) = default;
+    ReentrantValue(ReentrantValue&&) noexcept = default;
+    ReentrantValue& operator=(const ReentrantValue&) = default;
+    ReentrantValue& operator=(ReentrantValue&&) noexcept = default;
+    ~ReentrantValue() {
+        if(registry != nullptr && armed != nullptr && armed->load() && destructed != nullptr) {
+            static_cast<void>(registry->list());
+            ++*destructed;
         }
-    };
+    }
+};
 
+TEST(TaskRegistryConcurrency, TerminalRemovalReleasesResultOutsideRegistryLock) {
     Executor executor{1};
     TaskRegistry tasks;
     std::atomic_bool armed{false};
@@ -307,14 +377,10 @@ TEST(TaskRegistryConcurrency, RestoresLogContextBetweenTasksOnTheSameWorker) {
     executor.close();
 
     const auto records = collector->records();
-    const auto first_record = std::find_if(records.begin(), records.end(), [](const auto& record) {
-        return record.message == "first business record";
-    });
-    const auto second_record = std::find_if(records.begin(), records.end(), [](const auto& record) {
-        return record.message == "second business record";
-    });
-    ASSERT_NE(first_record, records.end());
-    ASSERT_NE(second_record, records.end());
+    const auto* const first_record = findRecord(records, "first business record");
+    const auto* const second_record = findRecord(records, "second business record");
+    ASSERT_NE(first_record, nullptr);
+    ASSERT_NE(second_record, nullptr);
     EXPECT_EQ(first_record->fields.at("task_name").asString(), "one");
     EXPECT_EQ(second_record->fields.at("task_name").asString(), "two");
     EXPECT_NE(first_record->fields.at("task_id").asString(),
@@ -334,11 +400,11 @@ TEST(TaskRegistryConcurrency, KeepsTasksSafeWhenTheirLoggingServiceIsDestroyedFi
     ASSERT_TRUE(submitted);
     executor.close();
     const auto result = submitted.value().result();
-    if(!result) {
-        FAIL() << "Completed task must have a result";
-        return;
+    if(const auto* completed = peekOptional(result)) {
+        EXPECT_EQ(completed->value(), 17);
+    } else {
+        ADD_FAILURE();
     }
-    EXPECT_EQ(result->value(), 17);
 }
 
 TEST(TaskRegistryConcurrency, RegistryDestructionStopsFutureNotificationsWithoutWaiting) {
@@ -388,11 +454,7 @@ TEST(TaskRegistryConcurrency, RegistryDestructionStopsFutureNotificationsWithout
     std::size_t second_terminal_notifications = 0U;
     {
         std::scoped_lock const lock{observed_mutex};
-        second_terminal_notifications = static_cast<std::size_t>(
-            std::count_if(observed.begin(), observed.end(), [&](const auto& descriptor) {
-                return descriptor.id == second.value().id() &&
-                       descriptor.state == TaskState::Completed;
-            }));
+        second_terminal_notifications = countCompleted(observed, second.value().id());
     }
     EXPECT_EQ(second_terminal_notifications, 0U);
     static_cast<void>(subscription);
@@ -422,21 +484,8 @@ TEST(TaskRegistryConcurrency, SupportsConcurrentSnapshotQueriesAndCancellation) 
     const auto all_started = std::async(std::launch::async, [&] { started.wait(); });
     const bool running = all_started.wait_for(k_wait) == std::future_status::ready;
     std::latch queries_ready{3};
-    std::vector<std::thread> readers;
-    readers.reserve(handles.size());
-    std::transform(handles.begin(), handles.end(), std::back_inserter(readers),
-                   [&tasks, &queries_ready](const auto& handle) {
-                       return std::thread{[&tasks, &queries_ready, id = handle.id()] {
-                           const auto descriptor = tasks.describe(id);
-                           const auto list = tasks.list();
-                           const auto cancelled = tasks.cancel(id);
-                           EXPECT_TRUE(descriptor);
-                           EXPECT_EQ(descriptor.value().id, id);
-                           EXPECT_EQ(list.size(), 3U);
-                           EXPECT_TRUE(cancelled);
-                           queries_ready.count_down();
-                       }};
-                   });
+    std::atomic_bool queries_ok{true};
+    auto readers = launchQueryThreads(tasks, handles, queries_ready, queries_ok);
     const auto all_queries = std::async(std::launch::async, [&] { queries_ready.wait(); });
     const bool queries_completed = all_queries.wait_for(k_wait) == std::future_status::ready;
     gate.release();
@@ -445,6 +494,7 @@ TEST(TaskRegistryConcurrency, SupportsConcurrentSnapshotQueriesAndCancellation) 
     }
     EXPECT_TRUE(running);
     EXPECT_TRUE(queries_completed);
+    EXPECT_TRUE(queries_ok.load());
     executor.close();
     for(const auto& handle : handles) {
         EXPECT_EQ(handle.state(), TaskState::Completed);

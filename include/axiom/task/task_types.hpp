@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace axiom::task {
 
@@ -21,7 +22,7 @@ class TaskContext;
 namespace detail {
 class TaskControl;
 template <typename T, typename Function>
-void execute(const std::shared_ptr<TaskControl>& control, Function& function) noexcept;
+void execute(const std::shared_ptr<TaskControl>& control, Function& function);
 } // namespace detail
 
 /** @brief Lifecycle state of a submitted task. */
@@ -73,14 +74,18 @@ public:
     [[nodiscard]] const TaskId& id() const noexcept;
     /** @brief Returns the task's thread-safe cancellation observation token. */
     [[nodiscard]] CancellationToken cancellation() const noexcept;
-    /** @throws std::invalid_argument when value is not finite or outside [0, 1]. */
+    /**
+     * @throws std::invalid_argument when value is not finite or outside [0, 1].
+     * @throws std::logic_error when called from a thread other than the task's
+     * execution thread.
+     */
     void reportProgress(double value, std::string message = {});
 
 private:
     friend class detail::TaskControl;
     template <typename T, typename Function>
     friend void detail::execute(const std::shared_ptr<detail::TaskControl>& /*control*/,
-                                Function& /*function*/) noexcept;
+                                Function& /*function*/);
     explicit TaskContext(std::shared_ptr<detail::TaskControl> control) noexcept
         : control_(std::move(control)) {}
     std::shared_ptr<detail::TaskControl> control_;

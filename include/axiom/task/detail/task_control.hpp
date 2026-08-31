@@ -1,18 +1,26 @@
 #pragma once
 
 #include <axiom/events/signal.hpp>
+#include <axiom/export.hpp>
+#include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
 #include <axiom/logging/logger.hpp>
+#include <axiom/task/task_id.hpp>
 #include <axiom/task/task_types.hpp>
 
 #include <atomic>
 #include <deque>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
 
 namespace axiom::task::detail {
 
-class NotificationHub final {
+class AXIOM_API NotificationHub final {
 public:
     explicit NotificationHub(logging::Logger logger);
     using Subscription = events::Signal<const TaskDescriptor&>::Subscription;
@@ -62,6 +70,7 @@ private:
     std::mutex notification_mutex_;
     std::deque<TaskDescriptor> notifications_queue_;
     bool draining_{false};
+    std::thread::id worker_thread_{};
 };
 
 template <typename T>
@@ -75,11 +84,11 @@ template <typename T>
 }
 
 template <typename T, typename Function>
-void execute(const std::shared_ptr<TaskControl>& control, Function& function) noexcept {
-    if(!control->start()) {
-        return;
-    }
+void execute(const std::shared_ptr<TaskControl>& control, Function& function) {
     try {
+        if(!control->start()) {
+            return;
+        }
         [[maybe_unused]] auto scoped_context =
             control->logger().scopedContext({{"task_id", Value{std::string{control->id().str()}}},
                                              {"task_name", Value{control->describe().name}}});

@@ -15,9 +15,10 @@ task -> foundation / async / events / logging
 `foundation` owns the only dynamic boundary model: `Value`, `Error`, `Result`,
 and `TypeDescriptor`. `action` describes, registers, discovers, and synchronously
 invokes C++ callables across that value boundary. Registry and dispatch machinery remain uninstalled implementation details.
-Callable adaptation templates are installed under `axiom/action/detail/` because
-consumer callables must instantiate them. They are not supported extension APIs;
-library code and consumers use the same definitions.
+Callable adaptation templates are installed under `axiom/action/detail/` and
+`axiom/task/detail/` because consumer callables must instantiate them. They are
+not supported extension APIs; library code and consumers use the same
+definitions.
 
 `logging` is structured and independent from Action except that `Runtime` may
 emit diagnostic records. `resource` owns typed host registrations and does not
