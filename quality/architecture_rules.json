@@ -7,29 +7,34 @@
       "forbidden": ["apps/", "tests/"]
     },
     {
+      "id": "task-must-not-depend-on-higher-layers",
+      "from": ["src/task/", "include/axiom/task/"],
+      "forbidden": ["axiom/action/", "axiom/resource/", "apps/", "tests/"]
+    },
+    {
       "id": "foundation-must-remain-independent",
       "from": ["src/foundation/", "include/axiom/foundation/"],
-      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/async/"]
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/async/", "axiom/task/"]
     },
     {
       "id": "logging-must-not-depend-on-higher-layers",
       "from": ["src/logging/", "include/axiom/logging/"],
-      "forbidden": ["axiom/action/", "axiom/resource/", "axiom/events/", "axiom/async/", "apps/", "tests/"]
+      "forbidden": ["axiom/action/", "axiom/resource/", "axiom/events/", "axiom/async/", "axiom/task/", "apps/", "tests/"]
     },
     {
       "id": "resource-must-remain-independent",
       "from": ["src/resource/", "include/axiom/resource/"],
-      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/events/", "axiom/async/", "apps/", "tests/"]
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/events/", "axiom/async/", "axiom/task/", "apps/", "tests/"]
     },
     {
       "id": "events-must-not-depend-on-services",
       "from": ["src/events/", "include/axiom/events/"],
-      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/async/"]
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/async/", "axiom/task/"]
     },
     {
       "id": "async-must-not-depend-on-services",
       "from": ["src/async/", "include/axiom/async/"],
-      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/"]
+      "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/task/"]
     }
   ]
 }

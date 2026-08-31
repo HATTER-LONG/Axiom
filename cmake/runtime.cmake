@@ -12,6 +12,7 @@ function (axiom_deploy_runtime target_name)
             COMMAND "${CMAKE_CXX_COMPILER}" --print-runtime-dir
             OUTPUT_VARIABLE runtime_dir
             OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        file(TO_CMAKE_PATH "${runtime_dir}" runtime_dir)
         execute_process(
             COMMAND "${CMAKE_CXX_COMPILER}" -print-target-triple
             OUTPUT_VARIABLE triple
@@ -36,7 +37,7 @@ function (axiom_deploy_runtime target_name)
         GENERATE
         OUTPUT "${script}"
         CONTENT
-            "set(runtime_files \"${runtime_files}\")\nforeach(runtime IN LISTS runtime_files)\n  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_if_different \"\${runtime}\" \"$<TARGET_FILE_DIR:${target_name}>\" COMMAND_ERROR_IS_FATAL ANY)\nendforeach()\n"
+            "set(runtime_files \"${runtime_files}\")\nlist(REMOVE_ITEM runtime_files \"\")\nforeach(runtime IN LISTS runtime_files)\n  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_if_different \"\${runtime}\" \"$<TARGET_FILE_DIR:${target_name}>\" COMMAND_ERROR_IS_FATAL ANY)\nendforeach()\n"
     )
     add_custom_command(
         TARGET ${target_name}
