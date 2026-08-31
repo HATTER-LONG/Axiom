@@ -70,7 +70,7 @@ private:
     std::mutex notification_mutex_;
     std::deque<TaskDescriptor> notifications_queue_;
     bool draining_{false};
-    std::thread::id worker_thread_{};
+    std::thread::id worker_thread_;
 };
 
 template <typename T>
@@ -92,6 +92,7 @@ void execute(const std::shared_ptr<TaskControl>& control, Function& function) {
         [[maybe_unused]] auto scoped_context =
             control->logger().scopedContext({{"task_id", Value{std::string{control->id().str()}}},
                                              {"task_name", Value{control->describe().name}}});
+        // NOLINTNEXTLINE(misc-const-correctness)
         TaskContext context{control};
         Result<T> result = std::invoke(std::move(function), context);
         TaskState terminal = TaskState::Completed;

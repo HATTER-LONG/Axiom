@@ -168,7 +168,10 @@ public:
 
     ReentrantResultValue(const ReentrantResultValue& other) : observer_(other.observer_) {
         if(observer_->armed.load(std::memory_order_acquire)) {
-            EXPECT_TRUE(observer_->registry->describe(*observer_->id));
+            if(!observer_->id.has_value()) {
+                return;
+            }
+            EXPECT_TRUE(observer_->registry->describe(observer_->id.value()));
             ++observer_->copies;
         }
     }
