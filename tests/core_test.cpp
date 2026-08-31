@@ -163,6 +163,19 @@ TEST(Arguments, IsAnOrderedNamedValueObject) {
     EXPECT_EQ(arguments.begin()->first, "first");
 }
 
+TEST(Error, AppendsCancellationWithoutRenumberingExistingCodes) {
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InvalidArgument), 0);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::MissingArgument), 1);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::UnknownArgument), 2);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::TypeMismatch), 3);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::NotFound), 4);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::AlreadyExists), 5);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InvalidDescriptor), 6);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InvocationFailed), 7);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InternalError), 8);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::Cancelled), 9);
+}
+
 TEST(Error, RetainsCodeMessagePathAndStructuredDetails) {
     const axiom::Error error{
         .code = axiom::ErrorCode::TypeMismatch,

@@ -16,7 +16,9 @@
 #include <axiom/logging/scoped_log_context.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,27 +33,14 @@ namespace axiom::detail {
 namespace {
 
 [[nodiscard]] const char* outcomeStatus(const ErrorCode code) noexcept {
-    switch(code) {
-    case ErrorCode::InvalidArgument:
-        return "invalid_argument";
-    case ErrorCode::MissingArgument:
-        return "missing_argument";
-    case ErrorCode::UnknownArgument:
-        return "unknown_argument";
-    case ErrorCode::TypeMismatch:
-        return "type_mismatch";
-    case ErrorCode::NotFound:
-        return "not_found";
-    case ErrorCode::AlreadyExists:
-        return "already_exists";
-    case ErrorCode::InvalidDescriptor:
-        return "invalid_descriptor";
-    case ErrorCode::InvocationFailed:
-        return "invocation_failed";
-    case ErrorCode::InternalError:
-        return "internal_error";
-    }
-    return "internal_error";
+    // ErrorCode values are append-only; keep their diagnostic names in enum order.
+    constexpr std::array names{"invalid_argument",   "missing_argument",  "unknown_argument",
+                               "type_mismatch",      "not_found",         "already_exists",
+                               "invalid_descriptor", "invocation_failed", "internal_error",
+                               "cancelled"};
+    static_assert(names.size() == static_cast<std::size_t>(ErrorCode::Cancelled) + 1);
+    const auto index = static_cast<std::size_t>(code);
+    return index < names.size() ? names[index] : "internal_error";
 }
 
 [[nodiscard]] logging::LogLevel registrationFailureLevel(const ErrorCode code) noexcept {

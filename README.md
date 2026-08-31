@@ -3,8 +3,10 @@
 A compact C++20 application framework built with CMake. Its current core is an
 installable synchronous capability runtime: typed C++ callables are registered
 as described `Module`/`Action` entries, discovered through metadata, and invoked
-through the dynamic `Value` boundary with structured `Result` errors. It also
-ships a small demo executable, tests, and reproducible quality gates.
+through the dynamic `Value` boundary with structured `Result` errors. Independent
+tracked asynchronous tasks provide progress, cancellation and typed results on
+the same library target. It also ships a small demo executable, tests, and
+reproducible quality gates.
 
 ## Build
 
@@ -13,7 +15,8 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
-The demo prints the framework name. `debug` uses an unoptimized build. Both
+The demo prints the framework name, completes an answer task and cancels a
+long operation at a deterministic batch boundary. `debug` uses an unoptimized build. Both
 presets build tests; run them with `ctest --preset dev` or `ctest --preset debug`.
 Run `build/apps/demo/axiom_demo` (`axiom_demo.exe` on Windows) for the demo.
 
@@ -67,6 +70,63 @@ thread-safe: registration, discovery, and invocation must not run concurrently.
 Axiom library does not provide protocol adapters, JSON serialization, networking, plugins,
 or authorization. Independent `async::Executor` and `async::Scheduler` services
 provide asynchronous work; Action invocation itself remains synchronous.
+
+## Tracked asynchronous tasks
+
+`axiom::task::TaskRegistry` adds identity, progress, cooperative cancellation,
+repeatable result reads and change notifications to work submitted through an
+existing `async::Executor`. It is independent of the synchronous Action runtime.
+A callable takes `task::TaskContext&` and returns `Result<T>`; `T` may be a
+copyable value or `void`. Move-only callables are supported.
+
+```cpp
+axiom::async::Executor executor{1};
+axiom::task::TaskRegistry tasks;
+auto submitted = tasks.submit(executor, "answer", [](axiom::task::TaskContext&) {
+    return axiom::Result<int>::success(42);
+});
+if (submitted) {
+    auto handle = submitted.value();
+    executor.close(); // This example drains work; result() itself never waits.
+    auto result = handle.result();
+    if (result && result->hasValue()) {
+        const int answer = result->value();
+        // Use answer (42).
+    }
+    auto removed = tasks.remove(handle.id());
+    // The handle remains usable after removal.
+}
+```
+
+Keep the RAII subscription returned by `tasks.onChanged(callback)` alive to
+receive Running, progress and terminal descriptor snapshots. Pending tasks are
+queryable but do not emit a creation event. A callback may query or cancel tasks
+and disconnect itself; callbacks for different tasks may run concurrently.
+Observer exceptions are isolated and diagnosed. Disconnection and Registry
+destruction do not wait for callbacks already captured for delivery.
+
+`handle.cancel()` cancels queued work before it starts or requests cooperation
+from running work. Running callables check their context's cancellation token
+and return an error with `ErrorCode::Cancelled` to acknowledge cancellation.
+A successful return still completes successfully after a cancellation request.
+Repeated cancellation and cancellation of terminal tasks have no effect.
+Progress accepts finite values in [0, 1], owns its message and may move backwards;
+successful completion sets its value to 1. Invalid progress throws
+`std::invalid_argument`.
+
+`describe(id)` returns one coherent snapshot; `list()` returns snapshots sorted
+by canonical ID text (`task:<nonzero serial>`). Only terminal tasks can be removed.
+Registries retain terminal tasks until removal or Registry destruction. Handles
+and accepted work survive Registry destruction, which never cancels or waits.
+Callers still own the lifetime of references captured by business callables and
+observers. Use a Registry constructed with a Logger to associate same-service,
+same-thread business logs with `task_id` and `task_name`.
+
+Inside the callable, use `context.reportProgress(0.5, "Batch complete")` and
+`context.cancellation().requested()`. The runnable example in
+`apps/demo/task_demo.cpp` uses promises to pause at a work boundary, observes
+progress, requests cancellation, reads the terminal result and removes both
+tasks by ID. It requires neither polling nor timing-dependent sleeps.
 
 ## Project layout
 

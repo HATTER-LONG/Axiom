@@ -2,7 +2,7 @@
 
 /**
  * @file axiom.hpp
- * @brief Umbrella header for the Axiom public surface (base, action, logging, resource).
+ * @brief Umbrella header for Axiom foundation, action, logging, resource, events, async and task.
  *
  * Prefer including this header from application and test code. Module-internal
  * translation units may include the narrower headers they need.
@@ -39,6 +39,9 @@
 #include <axiom/resource/resource_ref.hpp>
 #include <axiom/resource/resource_registry.hpp>
 #include <axiom/resource/resource_traits.hpp>
+#include <axiom/task/task_id.hpp>
+#include <axiom/task/task_registry.hpp>
+#include <axiom/task/task_types.hpp>
 // IWYU pragma: end_exports
 
 #include <string_view>

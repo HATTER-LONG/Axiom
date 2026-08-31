@@ -39,7 +39,7 @@ struct ContextEntry {
     Value::Object fields;
 };
 
-thread_local std::vector<ContextEntry> contexts;
+thread_local std::vector<std::unique_ptr<ContextEntry>> contexts;
 // Context entries are only ever compared within their owning thread-local stack.
 thread_local std::uint64_t next_context_id{1};
 
@@ -148,19 +148,27 @@ namespace {
 [[nodiscard]] std::uint64_t pushContext(const std::shared_ptr<LoggingState>& state,
                                         Value::Object fields) {
     const auto id = next_context_id++;
-    contexts.push_back({.state = state.get(), .id = id, .fields = std::move(fields)});
+    auto entry = std::make_unique<ContextEntry>();
+    entry->state = state.get();
+    entry->id = id;
+    entry->fields = std::move(fields);
+    contexts.push_back(std::move(entry));
     return id;
 }
 
 void popContext(const LoggingState* const state, const std::uint64_t id) noexcept {
-    // Not strictly LIFO: nested scopes for different services may interleave on one
-    // thread, so locate by (state, id) rather than assuming the top entry matches.
-    for(auto index = contexts.size(); index != 0; --index) {
-        const auto& entry = contexts[index - 1];
-        if(entry.state == state && entry.id == id) {
-            contexts.erase(contexts.begin() + static_cast<std::ptrdiff_t>(index - 1));
-            return;
+    try {
+        // Not strictly LIFO: nested scopes for different services may interleave on one
+        // thread, so locate by (state, id) rather than assuming the top entry matches.
+        for(auto index = contexts.size(); index != 0; --index) {
+            const auto& entry = contexts[index - 1];
+            if(entry->state == state && entry->id == id) {
+                contexts.erase(contexts.begin() + static_cast<std::ptrdiff_t>(index - 1));
+                return;
+            }
         }
+    } catch(...) {
+        return;
     }
 }
 
@@ -168,8 +176,8 @@ void popContext(const LoggingState* const state, const std::uint64_t id) noexcep
     Value::Object fields;
     // Outer-to-inner walk: later scopes override same-named keys from earlier ones.
     for(const auto& context : contexts) {
-        if(context.state == state) {
-            for(const auto& [key, value] : context.fields) {
+        if(context->state == state) {
+            for(const auto& [key, value] : context->fields) {
                 fields.insert_or_assign(key, value);
             }
         }

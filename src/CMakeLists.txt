@@ -12,6 +12,9 @@ set(axiom_sources
     resource/resource_id.cpp
     resource/resource_serial.cpp
     resource/resource_registry.cpp
+    task/task_id.cpp
+    task/task_control.cpp
+    task/task_registry.cpp
     async/src/executor.cpp
     async/src/scheduler.cpp)
 

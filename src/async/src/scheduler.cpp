@@ -47,27 +47,31 @@ struct Scheduler::State final {
 };
 
 bool Scheduler::cancel(const std::shared_ptr<State>& state, const std::uint64_t id) noexcept {
-    if(!state || id == 0) {
-        return false;
-    }
-    std::unique_lock lock{state->mutex};
-    const auto entry = state->entries.find(id);
-    if(entry == state->entries.end()) {
-        return false;
-    }
-    const auto due = state->due_entries.equal_range(entry->second.due);
-    for(auto iterator = due.first; iterator != due.second; ++iterator) {
-        if(iterator->second == id) {
-            state->due_entries.erase(iterator);
-            break;
+    try {
+        if(!state || id == 0) {
+            return false;
         }
+        std::unique_lock lock{state->mutex};
+        const auto entry = state->entries.find(id);
+        if(entry == state->entries.end()) {
+            return false;
+        }
+        const auto due = state->due_entries.equal_range(entry->second.due);
+        for(auto iterator = due.first; iterator != due.second; ++iterator) {
+            if(iterator->second == id) {
+                state->due_entries.erase(iterator);
+                break;
+            }
+        }
+        // Captures may own other handles. Release them after unlocking so their
+        // destructors can safely cancel another registration.
+        auto removed = state->entries.extract(entry);
+        lock.unlock();
+        state->changed.notify_all();
+        return true;
+    } catch(...) {
+        return false;
     }
-    // Captures may own other handles. Release them after unlocking so their
-    // destructors can safely cancel another registration.
-    auto removed = state->entries.extract(entry);
-    lock.unlock();
-    state->changed.notify_all();
-    return true;
 }
 
 bool Scheduler::active(const std::shared_ptr<State>& state, const std::uint64_t id) noexcept {
@@ -167,16 +171,20 @@ Scheduler::Scheduler(Executor& executor) : state_(std::make_shared<State>(execut
 }
 
 Scheduler::~Scheduler() {
-    decltype(state_->entries) removed;
-    {
-        std::scoped_lock const lock{state_->mutex};
-        state_->stopping = true;
-        removed.swap(state_->entries);
-        state_->due_entries.clear();
-    }
-    state_->changed.notify_all();
-    if(state_->worker.joinable()) {
-        state_->worker.join();
+    try {
+        decltype(state_->entries) removed;
+        {
+            std::scoped_lock const lock{state_->mutex};
+            state_->stopping = true;
+            removed.swap(state_->entries);
+            state_->due_entries.clear();
+        }
+        state_->changed.notify_all();
+        if(state_->worker.joinable()) {
+            state_->worker.join();
+        }
+    } catch(...) {
+        return;
     }
 }
 

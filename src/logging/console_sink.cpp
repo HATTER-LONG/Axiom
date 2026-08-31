@@ -6,7 +6,7 @@
 
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/ansicolor_sink.h>
 
 #include <array>
 #include <chrono>
@@ -203,7 +203,8 @@ public:
     Implementation()
         : logger{std::make_shared<spdlog::logger>(
               "axiom.console",
-              std::make_shared<spdlog::sinks::stderr_color_sink_mt>(spdlog::color_mode::always))} {
+              std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>(
+                  spdlog::color_mode::always))} {
         logger->set_pattern("%^%v%$");
         logger->set_level(spdlog::level::trace);
     }

@@ -10,7 +10,8 @@ Checks: "-*,
     -misc-use-anonymous-namespace,
     -modernize-use-trailing-return-type,
     -readability-magic-numbers,
-    -readability-identifier-length"
+    -readability-identifier-length,
+    -bugprone-exception-escape"
 HeaderFileExtensions:         ['', 'h','hh','hpp','hxx']
 ImplementationFileExtensions: ['c','cc','cpp','cxx']
 HeaderFilterRegex:            '.*'
@@ -119,5 +120,9 @@ CheckOptions:
 
   # Human-oriented complexity:
   # penalizes branches, loops and deeply nested control flow.
+  # GoogleTest assertion macros expand into switch/if internals; ignore those
+  # expansions so the check measures user-written control flow.
   - key: readability-function-cognitive-complexity.Threshold
     value: 15
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: true

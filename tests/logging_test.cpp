@@ -336,15 +336,15 @@ TEST(Logger, KeepsScopedContextThreadLocal) {
     LoggingService service;
     const auto sink = std::make_shared<RecordingSink>();
     auto subscription = service.addSink(sink);
-    const auto logger = service.logger("runtime");
+    const auto logger = std::make_shared<axiom::logging::Logger>(service.logger("runtime"));
 
     auto context = service.scopedContext({{"request", Value{"main"}}});
     std::thread worker{[&service, logger] {
         auto worker_context = service.scopedContext({{"request", Value{"worker"}}});
-        logger.write(LogLevel::Info, "worker");
+        logger->write(LogLevel::Info, "worker");
     }};
     worker.join();
-    logger.write(LogLevel::Info, "main");
+    logger->write(LogLevel::Info, "main");
 
     ASSERT_EQ(sink->records.size(), 2U);
     EXPECT_EQ(sink->records.at(0).fields.at("request").asString(), "worker");
@@ -785,9 +785,9 @@ TEST(LoggingService, AllowsSinkDestructorsToLogDuringUnsubscribe) {
     LoggingService service;
     auto collector = std::make_shared<LogCollector>();
     const auto collected = service.addSink(collector);
-    const auto logger = service.logger("destruction");
+    const auto logger = std::make_shared<axiom::logging::Logger>(service.logger("destruction"));
     auto sink = std::shared_ptr<ILogSink>{new CallbackSink{{}}, [logger](ILogSink* value) {
-                                              logger.write(LogLevel::Info, "sink released");
+                                              logger->write(LogLevel::Info, "sink released");
                                               delete value;
                                           }};
     auto subscription = service.addSink(std::move(sink));
