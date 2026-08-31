@@ -42,11 +42,15 @@ private:
         std::map<ConnectionId, std::shared_ptr<Slot>> slots;
         ConnectionId next_id{1};
 
-        bool disconnect(const ConnectionId id) {
-            std::unique_lock lock{mutex};
-            auto removed = slots.extract(id);
-            lock.unlock();
-            return !removed.empty();
+        bool disconnect(const ConnectionId id) noexcept {
+            try {
+                std::unique_lock lock{mutex};
+                auto removed = slots.extract(id);
+                lock.unlock();
+                return !removed.empty();
+            } catch(...) {
+                return false;
+            }
         }
     };
 

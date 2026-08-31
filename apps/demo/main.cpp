@@ -2,4 +2,11 @@
 
 #include <iostream>
 
-int main() { std::cout << axiom::frameworkName() << '\n'; }
+int main() {
+    try {
+        std::cout << axiom::frameworkName() << '\n';
+        return 0;
+    } catch(...) {
+        return 1;
+    }
+}

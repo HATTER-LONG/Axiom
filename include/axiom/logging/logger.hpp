@@ -32,7 +32,7 @@ class LoggingState;
 class AXIOM_API Logger {
 public:
     /** @brief Creates a no-op Logger that ignores all write operations. */
-    Logger() noexcept = default;
+    Logger() = default;
 
     /**
      * @brief Creates a category beneath this Logger's category.

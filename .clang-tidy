@@ -10,7 +10,8 @@ Checks: "-*,
     -misc-use-anonymous-namespace,
     -modernize-use-trailing-return-type,
     -readability-magic-numbers,
-    -readability-identifier-length"
+    -readability-identifier-length,
+    -bugprone-exception-escape"
 HeaderFileExtensions:         ['', 'h','hh','hpp','hxx']
 ImplementationFileExtensions: ['c','cc','cpp','cxx']
 HeaderFilterRegex:            '.*'

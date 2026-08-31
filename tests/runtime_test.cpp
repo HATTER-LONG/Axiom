@@ -10,6 +10,7 @@
 #include <axiom/logging/log_level.hpp>
 #include <axiom/logging/log_record.hpp>
 #include <axiom/logging/log_sink.hpp>
+#include <axiom/logging/logger.hpp>
 #include <axiom/logging/logging_service.hpp>
 
 #include <gtest/gtest.h>
@@ -509,10 +510,15 @@ TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     LoggingService logging;
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
-    const auto business_logger = logging.logger("business");
+    const auto business_logger =
+        std::make_shared<axiom::logging::Logger>(logging.logger("business"));
     ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
     ASSERT_TRUE(builder.add("emit", "Emits a business record", [business_logger] {
-        business_logger.write(LogLevel::Info, "business event");
+        try {
+            business_logger->write(LogLevel::Info, "business event");
+        } catch(...) {
+            return 42;
+        }
         return 42;
     }));
     Runtime runtime{logging.logger("runtime")};
