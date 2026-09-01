@@ -5,6 +5,7 @@
 #include <axiom/foundation/value.hpp>
 
 #include <spdlog/common.h>
+#include <spdlog/details/os.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/ansicolor_sink.h>
 
@@ -17,6 +18,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace axiom::logging {
@@ -185,13 +187,55 @@ void appendValue(std::string& text, const Value& value) {
     return std::format("{}.{:03}Z", date.data(), milliseconds.count());
 }
 
+[[nodiscard]] bool isDisplayedCorrelationField(const std::string_view key,
+                                               const Value& value) noexcept {
+    return value.isString() &&
+           (key == "request_id" || key == "trace_id" || key == "action" || key == "task_id");
+}
+
+void appendCorrelationFields(std::string& text, const Value::Object& fields) {
+    constexpr std::array correlation_fields{
+        std::pair{"request_id", "req"},
+        std::pair{"trace_id", "trace"},
+        std::pair{"action", "action"},
+        std::pair{"task_id", "task"},
+    };
+
+    bool has_fields = false;
+    for(const auto& [key, label] : correlation_fields) {
+        const auto field = fields.find(key);
+        if(field == fields.end() || !field->second.isString()) {
+            continue;
+        }
+        if(!has_fields) {
+            text.append(" [");
+            has_fields = true;
+        } else {
+            text.push_back(' ');
+        }
+        text.append(label).push_back(':');
+        text.append(field->second.asString());
+    }
+    if(has_fields) {
+        text.push_back(']');
+    }
+}
+
 [[nodiscard]] std::string formatRecord(const LogRecord& record) {
-    auto text = std::format("{} [{}] [{}] {} ({}:{} {})", utcTime(record.timestamp),
-                            levelName(record.level), record.category, record.message,
-                            record.source_file, record.source_line, record.source_function);
-    if(!record.fields.empty()) {
+    auto text =
+        std::format("[{}] [{}|{}] [tid:{}] {}", utcTime(record.timestamp), record.category,
+                    levelName(record.level), spdlog::details::os::thread_id(), record.message);
+    appendCorrelationFields(text, record.fields);
+
+    Value::Object details;
+    for(const auto& [key, value] : record.fields) {
+        if(!isDisplayedCorrelationField(key, value)) {
+            details.insert_or_assign(key, value);
+        }
+    }
+    if(!details.empty()) {
         text.append(" ");
-        appendValue(text, Value{record.fields});
+        appendValue(text, Value{std::move(details)});
     }
     return text;
 }

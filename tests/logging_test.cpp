@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include <spdlog/details/os.h>
+
 // cppcheck does not load GoogleTest's generated include paths when it scans sources directly.
 // Preserve analysis of the test bodies by supplying its equivalent function-shaped macro only
 // when the real framework did not provide TEST.
@@ -24,6 +26,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <memory>
 #include <source_location>
@@ -524,10 +527,12 @@ TEST(ConsoleSink, WritesColorizedUtcStructuredRecordsToStandardError) {
     ConsoleSink sink;
     auto logged = record("created", LogLevel::Warning, "runtime.action");
     logged.timestamp += std::chrono::milliseconds{123};
-    logged.source_line = 42;
-    logged.source_function = "invoke";
-    logged.fields = {{"alpha", Value{std::int64_t{1}}},
+    logged.fields = {{"action", Value{"math.add"}},
+                     {"alpha", Value{std::int64_t{1}}},
                      {"nested", Value{Value::Object{{"a", Value{true}}, {"z", Value{"last"}}}}}};
+    logged.fields.insert_or_assign("request_id", Value{"req-1"});
+    logged.fields.insert_or_assign("task_id", Value{"task:42"});
+    logged.fields.insert_or_assign("trace_id", Value{"trace-1"});
 
     testing::internal::CaptureStderr();
     sink.consume(logged);
@@ -535,9 +540,11 @@ TEST(ConsoleSink, WritesColorizedUtcStructuredRecordsToStandardError) {
     const auto output = testing::internal::GetCapturedStderr();
 
     expectOutputContains(output, "\x1B[");
-    expectOutputContains(output, "1970-01-01T00:00:00.123Z [warning] [runtime.action] created");
-    expectOutputContains(output, "(logging_test.cpp:42 invoke)");
+    expectOutputContains(output, "[1970-01-01T00:00:00.123Z] [runtime.action|warning] [tid:");
+    expectOutputContains(output, "created [req:req-1 trace:trace-1 action:math.add task:task:42]");
     expectOutputContains(output, "{alpha=1, nested={a=true, z=\"last\"}}");
+    EXPECT_EQ(output.find("request_id"), std::string::npos);
+    EXPECT_EQ(output.find("task_id"), std::string::npos);
 }
 
 TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
@@ -556,12 +563,12 @@ TEST(ConsoleSink, FormatsAllLevelsAndValueShapes) {
     sink.flush();
     const auto output = testing::internal::GetCapturedStderr();
 
-    expectOutputContains(output, "[trace]");
-    expectOutputContains(output, "[debug]");
-    expectOutputContains(output, "[info]");
-    expectOutputContains(output, "[warning]");
-    expectOutputContains(output, "[error]");
-    expectOutputContains(output, "[critical]");
+    expectOutputContains(output, "[runtime|trace]");
+    expectOutputContains(output, "[runtime|debug]");
+    expectOutputContains(output, "[runtime|info]");
+    expectOutputContains(output, "[runtime|warning]");
+    expectOutputContains(output, "[runtime|error]");
+    expectOutputContains(output, "[runtime|critical]");
     expectOutputContains(output, R"([null, false, 2.500000, "quote\\\""])");
 }
 
@@ -825,19 +832,17 @@ TEST(LoggingService, RepeatedUnsubscribeDoesNotRemoveOtherSubscriptions) {
     EXPECT_FALSE(service.logger("subscriptions").enabled(LogLevel::Info));
 }
 
-TEST(ConsoleSink, PreservesMessageAndLocationForLongRecordsAtNonEpochTimes) {
+TEST(ConsoleSink, PreservesMessageAndCategoryForLongRecordsAtNonEpochTimes) {
     ConsoleSink sink;
     auto logged = record(std::string(80, 'm'), LogLevel::Info, "console.boundary");
     logged.timestamp += std::chrono::seconds{86400 + 3661};
-    logged.source_line = 73;
-    logged.source_function = "long_record";
     testing::internal::CaptureStderr();
     sink.consume(logged);
     sink.flush();
     const auto output = testing::internal::GetCapturedStderr();
     expectOutputContains(output, "1970-01-02T01:01:01.000Z");
+    expectOutputContains(output, "[console.boundary|info] [tid:");
     expectOutputContains(output, std::string(80, 'm'));
-    expectOutputContains(output, "logging_test.cpp:73 long_record");
 }
 
 TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
@@ -856,8 +861,8 @@ TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
     if(output.ends_with("\r\n")) {
         output.erase(output.size() - 2, 1);
     }
-    EXPECT_EQ(output,
-              "1970-01-01T00:00:00.000Z [info] [runtime] message (logging_test.cpp:1 record)\n");
+    EXPECT_EQ(output, std::format("[1970-01-01T00:00:00.000Z] [runtime|info] [tid:{}] message\n",
+                                  spdlog::details::os::thread_id()));
 }
 
 TEST(LoggingService, AllowsSinkDestructorsToLogDuringUnsubscribe) {
