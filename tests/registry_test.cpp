@@ -66,6 +66,7 @@ ActionDescriptor action(const std::string_view id) {
         .return_type = integerType(),
         .version = std::nullopt,
         .tags = {},
+        .metadata = {},
     };
 }
 
@@ -83,7 +84,8 @@ TEST(Registry, RegistersAndFindsOwnedModuleAndActionDescriptions) {
     int destruction_count = 0;
     Registry registry;
 
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
     ASSERT_TRUE(registry.registerAction(action("math.add"), implementation(destruction_count)));
 
     const auto module = registry.findModule("math");
@@ -104,7 +106,8 @@ TEST(Registry, DeepCopiesNestedDescriptorsIntoRecursivelyReadOnlyStorage) {
 
     int destruction_count = 0;
     Registry registry;
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
     auto mutable_leaf = std::make_shared<TypeDescriptor>(integerType());
     auto descriptor = action("math.describe");
     descriptor.return_type = {.kind = TypeDescriptor::Kind::Array,
@@ -128,7 +131,11 @@ TEST(Registry, DestroysRegisteredActionImplementationWithRegistry) {
 
     {
         Registry registry;
-        ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+        ASSERT_TRUE(registry.registerModule({.namespace_name = "math",
+                                             .description = {},
+                                             .version = {},
+                                             .tags = {},
+                                             .metadata = {}}));
         ASSERT_TRUE(registry.registerAction(action("math.add"), implementation(destruction_count)));
         EXPECT_EQ(destruction_count, 0);
     }
@@ -140,13 +147,17 @@ TEST(Registry, RejectsInvalidAndConflictingRegistrationsWithoutChangingState) {
     int destruction_count = 0;
     Registry registry;
 
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
     ASSERT_TRUE(registry.registerAction(action("math.add"), implementation(destruction_count)));
 
-    const auto invalid_module =
-        registry.registerModule({.namespace_name = "math-tools", .metadata = {}});
-    const auto duplicate_module =
-        registry.registerModule({.namespace_name = "math", .metadata = {}});
+    const auto invalid_module = registry.registerModule({.namespace_name = "math-tools",
+                                                         .description = {},
+                                                         .version = {},
+                                                         .tags = {},
+                                                         .metadata = {}});
+    const auto duplicate_module = registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}});
     auto invalid_action = action("math.invalid");
     invalid_action.return_type = {.kind = TypeDescriptor::Kind::Array,
                                   .description = {},
@@ -174,7 +185,8 @@ TEST(Registry, RejectsInvalidAndConflictingRegistrationsWithoutChangingState) {
 TEST(Registry, RejectsUnknownDescriptorKindWithoutChangingState) {
     int destruction_count = 0;
     Registry registry;
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
     auto invalid = action("math.invalid_kind");
     invalid.return_type.kind = static_cast<TypeDescriptor::Kind>(255);
 
@@ -194,8 +206,12 @@ TEST(Registry, AtomicallyRegistersPreparedModuleAndActionsAfterOwnershipTransfer
     pending_actions.emplace_back(pendingAction("math.add", destruction_count));
     pending_actions.emplace_back(pendingAction("math.subtract", destruction_count));
 
-    const auto result = registry.registerModuleWithActions(
-        {.namespace_name = "math", .metadata = {{"title", "Math"}}}, pending_actions);
+    const auto result = registry.registerModuleWithActions({.namespace_name = "math",
+                                                            .description = {},
+                                                            .version = {},
+                                                            .tags = {},
+                                                            .metadata = {{"title", "Math"}}},
+                                                           pending_actions);
 
     ASSERT_TRUE(result);
     EXPECT_EQ(registry.discoverModules().size(), 1U);
@@ -216,7 +232,8 @@ TEST(Registry, PreservesRegistryAndPendingActionsWhenPreparedModuleRegistrationF
     pending_actions.emplace_back(pendingAction("math.add", destruction_count));
 
     const auto result = registry.registerModuleWithActions(
-        {.namespace_name = "math", .metadata = {}}, pending_actions);
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}},
+        pending_actions);
 
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, axiom::ErrorCode::AlreadyExists);
@@ -232,7 +249,8 @@ TEST(Registry, PreservesRegistryAndPendingActionsWhenPreparedModuleRegistrationF
 
 TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
     int destruction_count = 0;
-    const axiom::ModuleDescriptor module{.namespace_name = "math", .metadata = {}};
+    const axiom::ModuleDescriptor module{
+        .namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}};
 
     Registry missing_descriptor_registry;
     std::vector<PendingAction> missing_descriptor;
@@ -287,7 +305,8 @@ TEST(Registry, RejectsEachInvalidPreparedActionBeforeChangingOwnershipOrState) {
 
 TEST(Registry, RejectsNullDirectActionImplementationWithoutChangingRegisteredModule) {
     Registry registry;
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
 
     const auto result = registry.registerAction(action("math.add"), nullptr);
 
@@ -311,9 +330,15 @@ TEST(Registry, DiscoversDescriptionsInStableCanonicalOrder) {
     int destruction_count = 0;
     Registry registry;
 
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "zeta", .metadata = {}}));
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "alpha", .metadata = {}}));
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "middle", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "zeta", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "alpha", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule({.namespace_name = "middle",
+                                         .description = {},
+                                         .version = {},
+                                         .tags = {},
+                                         .metadata = {}}));
     ASSERT_TRUE(registry.registerAction(action("zeta.last"), implementation(destruction_count)));
     ASSERT_TRUE(registry.registerAction(action("alpha.first"), implementation(destruction_count)));
     ASSERT_TRUE(registry.registerAction(action("middle.next"), implementation(destruction_count)));
@@ -329,4 +354,65 @@ TEST(Registry, DiscoversDescriptionsInStableCanonicalOrder) {
     EXPECT_EQ(actions[0].get().id.str(), "alpha.first");
     EXPECT_EQ(actions[1].get().id.str(), "middle.next");
     EXPECT_EQ(actions[2].get().id.str(), "zeta.last");
+}
+
+TEST(Registry, DiscoversCopiedModuleAndActionDiscoveryFieldsIndependently) {
+    int destruction_count = 0;
+    Registry registry;
+    axiom::ModuleDescriptor module{
+        .namespace_name = "math",
+        .description = "Arithmetic",
+        .version = "2.0",
+        .tags = {"math", "core"},
+        .metadata = {{"z", "last"}, {"a", "first"}},
+    };
+    auto registered = action("math.add");
+    registered.version = "1.1";
+    registered.tags = {"add", "pure"};
+    registered.metadata = {{"z", "last"}, {"a", "first"}};
+
+    ASSERT_TRUE(registry.registerModule(module));
+    ASSERT_TRUE(registry.registerAction(registered, implementation(destruction_count)));
+    module.description = "mutated";
+    module.metadata["a"] = "changed";
+    registered.tags.clear();
+    registered.metadata["a"] = "changed";
+
+    const auto discovered_module = registry.findModule("math");
+    const auto discovered_action = registry.findAction(actionId("math.add"));
+    ASSERT_TRUE(discovered_module);
+    ASSERT_TRUE(discovered_action);
+    EXPECT_EQ(discovered_module.value().get().description, "Arithmetic");
+    EXPECT_EQ(discovered_module.value().get().version, "2.0");
+    ASSERT_EQ(discovered_module.value().get().tags.size(), 2U);
+    EXPECT_EQ(discovered_module.value().get().tags[0], "math");
+    EXPECT_EQ(discovered_module.value().get().tags[1], "core");
+    auto module_metadata = discovered_module.value().get().metadata.begin();
+    EXPECT_EQ(module_metadata->first, "a");
+    EXPECT_EQ(module_metadata->second, "first");
+    EXPECT_EQ(discovered_action.value().get().version, "1.1");
+    ASSERT_EQ(discovered_action.value().get().tags.size(), 2U);
+    EXPECT_EQ(discovered_action.value().get().tags[0], "add");
+    auto action_metadata = discovered_action.value().get().metadata.begin();
+    EXPECT_EQ(action_metadata->first, "a");
+    EXPECT_EQ(action_metadata->second, "first");
+}
+
+TEST(Registry, RejectsInvalidModuleAndActionDiscoveryFieldsWithoutChangingState) {
+    int destruction_count = 0;
+    Registry registry;
+    const auto empty_module_tag = registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {""}, .metadata = {}});
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
+    auto duplicate_tags = action("math.add");
+    duplicate_tags.tags = {"math", "math"};
+    const auto invalid_action =
+        registry.registerAction(duplicate_tags, implementation(destruction_count));
+
+    EXPECT_EQ(empty_module_tag.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(invalid_action.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(registry.discoverModules().size(), 1U);
+    EXPECT_TRUE(registry.discoverActions().empty());
+    EXPECT_EQ(destruction_count, 1);
 }

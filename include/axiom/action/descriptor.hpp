@@ -11,6 +11,8 @@
 #include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/foundation/value.hpp>
 
+#include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -34,7 +36,13 @@ struct ParameterDescriptor {
     ~ParameterDescriptor() noexcept = default;
 };
 
-/** @brief Documents one callable Axiom capability. */
+/**
+ * @brief Documents one callable Axiom capability.
+ *
+ * Local name and owning Module are taken from @c id; this type does not store a
+ * second, possibly divergent name or module string. Optional metadata defaults
+ * empty so existing aggregate initialization keeps prior behavior.
+ */
 struct ActionDescriptor {
     /** @brief Canonical Action identifier. */
     ActionId id;
@@ -46,8 +54,20 @@ struct ActionDescriptor {
     TypeDescriptor return_type{};
     /** @brief Optional compatible Action version. */
     std::optional<std::string> version;
-    /** @brief Searchable labels associated with this Action. */
+    /**
+     * @brief Searchable labels in registration presentation order.
+     *
+     * Matching is case-sensitive and exact. Empty or duplicate tags are rejected
+     * at validation; they are not silently dropped.
+     */
     std::vector<std::string> tags;
+    /**
+     * @brief Adapter-owned extra string facts keyed in deterministic lexical order.
+     *
+     * Keys must be non-empty. Empty values are allowed and mean the host supplied
+     * an explicit empty string.
+     */
+    std::map<std::string, std::string, std::less<>> metadata;
 
     /** @brief Destroys the descriptor without propagating an exception. */
     ~ActionDescriptor() noexcept = default;
@@ -57,8 +77,8 @@ struct ActionDescriptor {
  * @brief Validates an Action description before it is registered.
  *
  * @param descriptor Description to inspect without modifying registration state.
- * @return Success when all parameter names, nested descriptors, version, and defaults
- *         are coherent; otherwise an InvalidDescriptor error.
+ * @return Success when all parameter names, nested descriptors, version, tags,
+ *         metadata, and defaults are coherent; otherwise an InvalidDescriptor error.
  */
 [[nodiscard]] AXIOM_API Result<void> validate(const ActionDescriptor& descriptor);
 

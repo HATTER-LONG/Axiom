@@ -36,8 +36,10 @@ using axiom::async::Executor;
 using axiom::task::CancellationToken;
 using axiom::task::TaskContext;
 using axiom::task::TaskDescriptor;
+using axiom::task::TaskOrigin;
 using axiom::task::TaskRegistry;
 using axiom::task::TaskState;
+using axiom::task::TaskSubmission;
 
 constexpr auto k_wait = std::chrono::seconds{2};
 
@@ -367,14 +369,26 @@ TEST(TaskRegistryConcurrency, RestoresLogContextBetweenTasksOnTheSameWorker) {
     const auto sink = logging.addSink(collector);
     Executor executor{1};
     TaskRegistry tasks{logging.logger("root")};
-    const auto first = tasks.submit(executor, "one", [&](TaskContext&) {
-        AXIOM_LOG_INFO(logging.logger("business"), "first business record");
-        return Result<void>::success();
-    });
-    const auto second = tasks.submit(executor, "two", [&](TaskContext&) {
-        AXIOM_LOG_INFO(logging.logger("business"), "second business record");
-        return Result<void>::success();
-    });
+    TaskOrigin first_origin{.request_id = "req-a",
+                            .trace_id = {},
+                            .caller = {},
+                            .action_id = "alpha.one",
+                            .metadata = {}};
+    TaskOrigin second_origin{.request_id = "req-b",
+                             .trace_id = {},
+                             .caller = {},
+                             .action_id = "beta.two",
+                             .metadata = {}};
+    const auto first = tasks.submit(
+        executor, TaskSubmission{.name = "one", .origin = first_origin}, [&](TaskContext&) {
+            AXIOM_LOG_INFO(logging.logger("business"), "first business record");
+            return Result<void>::success();
+        });
+    const auto second = tasks.submit(
+        executor, TaskSubmission{.name = "two", .origin = second_origin}, [&](TaskContext&) {
+            AXIOM_LOG_INFO(logging.logger("business"), "second business record");
+            return Result<void>::success();
+        });
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     executor.close();
@@ -386,6 +400,10 @@ TEST(TaskRegistryConcurrency, RestoresLogContextBetweenTasksOnTheSameWorker) {
     ASSERT_NE(second_record, nullptr);
     EXPECT_EQ(first_record->fields.at("task_name").asString(), "one");
     EXPECT_EQ(second_record->fields.at("task_name").asString(), "two");
+    EXPECT_EQ(first_record->fields.at("request_id").asString(), "req-a");
+    EXPECT_EQ(second_record->fields.at("request_id").asString(), "req-b");
+    EXPECT_EQ(first_record->fields.at("action").asString(), "alpha.one");
+    EXPECT_EQ(second_record->fields.at("action").asString(), "beta.two");
     EXPECT_NE(first_record->fields.at("task_id").asString(),
               second_record->fields.at("task_id").asString());
     static_cast<void>(sink);

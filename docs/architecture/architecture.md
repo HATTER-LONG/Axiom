@@ -23,8 +23,13 @@ definitions.
 
 `introspection` is a top-level, read-only, non-owning, uncached aggregation layer
 over Action, Resource, and Task discovery. Every query returns independently owned
-values. `RuntimeSnapshot` samples module/action, then resource, then task in a
-fixed order; it is not a global atomic snapshot across those sources. The three
+values. Module and Action descriptors carry owned discovery fields (`description`,
+optional `version`, `tags`, ordered string `metadata`) in addition to canonical
+identity; Resource descriptors remain `id` and `type` only. Task descriptors may
+include an optional weak `origin`. Callers filter discovery with `ActionQuery`,
+`ResourceQuery`, and `TaskQuery` on public descriptor fields; `RuntimeSnapshot`
+samples module/action, then resource, then task in a
+fixed order and does not accept a Query. It is not a global atomic snapshot across those sources. The three
 sources must outlive an `IntrospectionService`, and source destruction must not
 overlap a Service query.
 
@@ -40,6 +45,14 @@ object still requires caller synchronization. Runtime resolves an Action before
 executing it and never holds a registration or discovery lock around user code.
 Calls to one Action may overlap and share its one stored callable instance, so the
 callable and every mutable capture must provide their own synchronization.
+
+Typed Actions that need request, trace, caller, or metadata register through
+`ModuleBuilder::addContextual()`. Runtime injects an `ActionInvocation` view with
+the authoritative `ActionId` and the call's `InvocationContext`. That view is valid
+only on the synchronous invoke stack and is not listed in
+`ActionDescriptor::parameters`. Ordinary `ModuleBuilder::add()` continues to infer
+only Value-convertible parameters and does not treat a special first parameter type
+as context.
 
 Runtime publishes immutable registry States to make discovery and invocation
 lock-free after snapshot acquisition. The current implementation copies the maps
@@ -79,9 +92,15 @@ Signal's propagation contract. Registry destruction closes subscription entry;
 already acquired notification snapshots may finish without a join.
 
 Task execution installs scoped `task_id` and `task_name` fields on its execution
-thread for the associated LoggingService. The scope restores previous context,
-does not propagate to user-created threads, and follows normal logging field
-precedence. Value and Resource handles are ordinary typed results: returning a
+thread for the associated LoggingService, plus non-empty origin correlation
+fields (`request_id`, `trace_id`, `caller`, `action`, and `module` when
+`action_id` is canonical `module.action` text). Caller origin metadata is
+filtered then overwritten using the same reserved-key rule as Action Runtime.
+The scope restores previous context, does not propagate to user-created threads,
+and follows normal logging field precedence. `LogQuery` matches those same reserved
+fields by exact string equality when `request_id`, `trace_id`, `action_id`, or
+`task_id` is set. Origin is submission-time data only
+and is not inherited by retries or derived Tasks. Value and Resource handles are ordinary typed results: returning a
 Resource handle does not extend its host registration lifetime.
 
 The library is static by default and supports shared builds. Public symbols use

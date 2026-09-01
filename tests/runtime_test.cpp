@@ -39,6 +39,7 @@
 namespace {
 
 using axiom::ActionId;
+using axiom::ActionInvocation;
 using axiom::Arguments;
 using axiom::ErrorCode;
 using axiom::InvocationContext;
@@ -92,6 +93,21 @@ Result<void> checkedVoid(const bool allowed) {
 void throwStandard() { throw std::runtime_error{"unexpected"}; }
 void throwUnknown() { throw 7; }
 void plainVoid() {}
+
+Result<int> contextualChecked(const ActionInvocation& invocation, const int value) {
+    static_cast<void>(invocation);
+    return checked(value);
+}
+
+void contextualThrowStandard(const ActionInvocation& invocation) {
+    static_cast<void>(invocation);
+    throwStandard();
+}
+
+void contextualThrowUnknown(const ActionInvocation& invocation) {
+    static_cast<void>(invocation);
+    throwUnknown();
+}
 using RvalueOnly = int (*)(std::string&&);
 
 template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
@@ -133,6 +149,14 @@ concept PubliclyAddable =
     requires(ModuleBuilder& builder, Callable&& callable, Documentation&&... documentation) {
         builder.add("probe", "Compile-time registration probe", std::forward<Callable>(callable),
                     std::forward<Documentation>(documentation)...);
+    };
+
+template <typename Callable, typename... Documentation>
+concept PubliclyAddableContextual =
+    requires(ModuleBuilder& builder, Callable&& callable, Documentation&&... documentation) {
+        builder.addContextual("probe", "Compile-time contextual registration probe",
+                              std::forward<Callable>(callable),
+                              std::forward<Documentation>(documentation)...);
     };
 
 using ParameterDoc = axiom::ParameterDocumentation;
@@ -201,6 +225,22 @@ static_assert(!PubliclyAddable<PolicyEntriesCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyHashMapCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyVectorCallable, ParameterDoc>);
 
+using ContextualFunction = int (*)(const ActionInvocation&, int);
+using CopyableContextualLambda = decltype([](const ActionInvocation& invocation, const int value) {
+    static_cast<void>(invocation);
+    return value;
+});
+
+static_assert(!PubliclyAddable<ContextualFunction, ParameterDoc>);
+static_assert(!PubliclyAddable<CopyableContextualLambda, ParameterDoc>);
+static_assert(PubliclyAddableContextual<ContextualFunction, ParameterDoc>);
+static_assert(PubliclyAddableContextual<CopyableContextualLambda, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<decltype(add)&, ParameterDoc, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<RvalueOnly, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<OverloadedCallable, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<NonCopyableCallable, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<std::function<int(int)>, ParameterDoc>);
+
 ActionId id(const std::string_view text) {
     const auto parsed = ActionId::parse(text);
     EXPECT_TRUE(parsed);
@@ -208,8 +248,11 @@ ActionId id(const std::string_view text) {
 }
 
 ModuleBuilder mathBuilder() {
-    return ModuleBuilder{
-        axiom::ModuleDescriptor{.namespace_name = "math", .metadata = {{"title", "Math"}}}};
+    return ModuleBuilder{axiom::ModuleDescriptor{.namespace_name = "math",
+                                                 .description = {},
+                                                 .version = {},
+                                                 .tags = {},
+                                                 .metadata = {{"title", "Math"}}}};
 }
 
 void addArithmeticActions(ModuleBuilder& math) {
@@ -389,7 +432,11 @@ TEST(Runtime, InvokesTypedFunctionsAndDiscoversStableDescriptors) {
 }
 
 TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
-    ModuleBuilder initial{axiom::ModuleDescriptor{.namespace_name = "lifetime", .metadata = {}}};
+    ModuleBuilder initial{axiom::ModuleDescriptor{.namespace_name = "lifetime",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     ASSERT_TRUE(initial.add(
         "nested", "Describes nested values",
         [](const std::vector<std::vector<int>>& values) { return static_cast<int>(values.size()); },
@@ -424,7 +471,11 @@ TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
     bool registration_succeeded = false;
     std::thread registrar([&] {
         registration_start.arrive_and_wait();
-        ModuleBuilder later{axiom::ModuleDescriptor{.namespace_name = "later", .metadata = {}}};
+        ModuleBuilder later{axiom::ModuleDescriptor{.namespace_name = "later",
+                                                    .description = {},
+                                                    .version = {},
+                                                    .tags = {},
+                                                    .metadata = {}}};
         const auto added = later.add("action", "Later action", [] { return 1; });
         if(added) {
             registration_succeeded = static_cast<bool>(runtime.registerModule(std::move(later)));
@@ -527,10 +578,14 @@ TEST(Runtime, NormalizesStandardAndUnknownCallableExceptions) {
 TEST(Runtime, RejectsDuplicateAndInvalidModuleRegistrationsWithoutChangingRuntime) {
     Runtime runtime;
     configureRuntime(runtime);
-    ModuleBuilder duplicate{axiom::ModuleDescriptor{.namespace_name = "math", .metadata = {}}};
+    ModuleBuilder duplicate{axiom::ModuleDescriptor{
+        .namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     EXPECT_TRUE(duplicate.add("second", "Second action", [] { return 2; }));
-    ModuleBuilder invalid{
-        axiom::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
+    ModuleBuilder invalid{axiom::ModuleDescriptor{.namespace_name = "invalid-module",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
 
     const auto duplicate_result = runtime.registerModule(std::move(duplicate));
     const auto invalid_result = runtime.registerModule(std::move(invalid));
@@ -602,10 +657,21 @@ TEST(Runtime, RecordsExpectedRegistrationFailuresAsWarnings) {
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
-    ModuleBuilder invalid{
-        axiom::ModuleDescriptor{.namespace_name = "invalid-module", .metadata = {}}};
-    ModuleBuilder first{axiom::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
-    ModuleBuilder duplicate{axiom::ModuleDescriptor{.namespace_name = "duplicate", .metadata = {}}};
+    ModuleBuilder invalid{axiom::ModuleDescriptor{.namespace_name = "invalid-module",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
+    ModuleBuilder first{axiom::ModuleDescriptor{.namespace_name = "duplicate",
+                                                .description = {},
+                                                .version = {},
+                                                .tags = {},
+                                                .metadata = {}}};
+    ModuleBuilder duplicate{axiom::ModuleDescriptor{.namespace_name = "duplicate",
+                                                    .description = {},
+                                                    .version = {},
+                                                    .tags = {},
+                                                    .metadata = {}}};
     ASSERT_TRUE(first.add("first", "First action", [] { return 1; }));
     ASSERT_TRUE(duplicate.add("second", "Second action", [] { return 2; }));
 
@@ -629,7 +695,11 @@ TEST(Runtime, LogsAnEmptyBuilderRegistrationFailureWithoutAModuleField) {
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
-    ModuleBuilder source{axiom::ModuleDescriptor{.namespace_name = "temporary", .metadata = {}}};
+    ModuleBuilder source{axiom::ModuleDescriptor{.namespace_name = "temporary",
+                                                 .description = {},
+                                                 .version = {},
+                                                 .tags = {},
+                                                 .metadata = {}}};
     ModuleBuilder empty{transferOwnership(source)};
 
     const auto result = runtime.registerModule(std::move(source));
@@ -651,7 +721,8 @@ TEST(Runtime, PropagatesInvocationContextAndOverridesRuntimeFields) {
     auto subscription = logging.addSink(sink);
     const auto business_logger =
         std::make_shared<axiom::logging::Logger>(logging.logger("business"));
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "context", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     ASSERT_TRUE(builder.add("emit", "Emits a business record", [business_logger] {
         try {
             business_logger->write(LogLevel::Info, "business event");
@@ -698,8 +769,11 @@ TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
     const auto sink = std::make_shared<RuntimeRecordingSink>();
     auto subscription = logging.addSink(sink);
     Runtime runtime{logging.logger("runtime")};
-    ModuleBuilder builder{
-        axiom::ModuleDescriptor{.namespace_name = "context_fields", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context_fields",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
 
@@ -726,13 +800,52 @@ TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
     EXPECT_EQ(empty_start.fields.at("action").asString(), "context_fields.run");
 }
 
+TEST(Runtime, InvocationMetadataCannotPlantReservedCorrelationKeys) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context_reserved",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext context{.request_id = {},
+                                    .trace_id = {},
+                                    .caller = {},
+                                    .metadata = {{"request_id", "spoofed-request"},
+                                                 {"trace_id", "spoofed-trace"},
+                                                 {"caller", "spoofed-caller"},
+                                                 {"task_id", "spoofed-task"},
+                                                 {"task_name", "spoofed-name"},
+                                                 {"keep", "yes"}}};
+    ASSERT_TRUE(runtime.invoke(id("context_reserved.run"), {}, context));
+    const auto& start = recordAt(*sink, 1U);
+    EXPECT_FALSE(start.fields.contains("request_id"));
+    EXPECT_FALSE(start.fields.contains("trace_id"));
+    EXPECT_FALSE(start.fields.contains("caller"));
+    EXPECT_FALSE(start.fields.contains("task_id"));
+    EXPECT_FALSE(start.fields.contains("task_name"));
+    EXPECT_EQ(start.fields.at("keep").asString(), "yes");
+    EXPECT_EQ(start.fields.at("module").asString(), "context_reserved");
+    EXPECT_EQ(start.fields.at("action").asString(), "context_reserved.run");
+    static_cast<void>(subscription);
+}
+
 TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
     LoggingService logging;
     const auto good_sink = std::make_shared<RuntimeRecordingSink>();
     auto bad_subscription = logging.addSink(std::make_shared<RuntimeThrowingSink>());
     auto good_subscription = logging.addSink(good_sink);
     int invocations = 0;
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "resilient", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "resilient",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
         ++invocations;
         return 7;
@@ -750,7 +863,8 @@ TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
 
 TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
     int invocations = 0;
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "silent", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "silent", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Counts executions", [&invocations] {
         ++invocations;
         return 11;
@@ -766,7 +880,8 @@ TEST(Runtime, PreservesDefaultNoLoggerInvocationBehavior) {
 }
 
 TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "lambda", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "lambda", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     int offset = 5;
 
     EXPECT_TRUE(builder.add(
@@ -783,7 +898,8 @@ TEST(Runtime, InvokesCopyableLambdaRegisteredFromItsInferredSignature) {
 }
 
 TEST(Runtime, DescribesAndConvertsHomogeneousStringKeyMaps) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "maps", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "maps", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     ASSERT_TRUE(builder.add("sum", "Sums values by name", &sumMap, param("values", "Values")));
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
@@ -804,7 +920,11 @@ TEST(Runtime, DescribesAndConvertsHomogeneousStringKeyMaps) {
 }
 
 TEST(Runtime, ConvertsCompatibleIntegerDefaultsForInferredNumberParameters) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     ASSERT_TRUE(builder.add(
         "scale", "Scales an inferred number", [](const double factor) { return factor * 1.5; },
         param("factor", "Optional factor", Value{std::int64_t{2}})));
@@ -822,7 +942,11 @@ TEST(Runtime, ConvertsCompatibleIntegerDefaultsForInferredNumberParameters) {
 }
 
 TEST(ModuleBuilder, RejectsDefaultsThatCannotConvertToInferredCppTypes) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "defaults",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     const Value narrow_default{std::int64_t{128}};
     const Value nested_default{Value::Array{Value{Value::Array{Value{std::int64_t{128}}}}}};
 
@@ -849,7 +973,11 @@ TEST(ModuleBuilder, RejectsDefaultsThatCannotConvertToInferredCppTypes) {
 }
 
 TEST(ModuleBuilder, RejectsRegistrationAfterRuntimeConsumedTheBuilder) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "consumed", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "consumed",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
     ASSERT_TRUE(builder.add("first", "Valid action", [] { return 1; }));
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
@@ -861,7 +989,8 @@ TEST(ModuleBuilder, RejectsRegistrationAfterRuntimeConsumedTheBuilder) {
 }
 
 TEST(ModuleBuilder, RejectsUseAfterMoveAndRegistrationOfEmptyBuilders) {
-    ModuleBuilder source{axiom::ModuleDescriptor{.namespace_name = "moved", .metadata = {}}};
+    ModuleBuilder source{axiom::ModuleDescriptor{
+        .namespace_name = "moved", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     ModuleBuilder destination{std::move(source)};
 
     const auto moved_from = addLateAction(source);
@@ -875,7 +1004,8 @@ TEST(ModuleBuilder, RejectsUseAfterMoveAndRegistrationOfEmptyBuilders) {
 }
 
 TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutation) {
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "builder", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "builder", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
 
     const auto invalid_name =
         builder.add("not-valid", "Invalid local identifier", [] { return 1; });
@@ -901,8 +1031,11 @@ TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutat
 TEST(Runtime, CoordinatesConcurrentRegistrationDiscoveryAndInvocation) {
     Runtime runtime;
     auto invocation_count = std::make_shared<std::atomic<int>>(0);
-    ModuleBuilder base{
-        axiom::ModuleDescriptor{.namespace_name = "concurrent_base", .metadata = {}}};
+    ModuleBuilder base{axiom::ModuleDescriptor{.namespace_name = "concurrent_base",
+                                               .description = {},
+                                               .version = {},
+                                               .tags = {},
+                                               .metadata = {}}};
     ASSERT_TRUE(base.add("run", "Counts concurrent invocations", [invocation_count] {
         invocation_count->fetch_add(1, std::memory_order_relaxed);
         return 7;
@@ -915,8 +1048,11 @@ TEST(Runtime, CoordinatesConcurrentRegistrationDiscoveryAndInvocation) {
     builders.reserve(concurrent_registration_count);
     for(std::size_t index = 0; index < concurrent_registration_count; ++index) {
         const auto module_name = "concurrent_" + std::to_string(index);
-        ModuleBuilder builder{
-            axiom::ModuleDescriptor{.namespace_name = module_name, .metadata = {}}};
+        ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = module_name,
+                                                      .description = {},
+                                                      .version = {},
+                                                      .tags = {},
+                                                      .metadata = {}}};
         ASSERT_TRUE(builder.add("value", "Returns its module index",
                                 [index] { return static_cast<int>(index); }));
         builders.emplace_back(std::move(builder));
@@ -955,7 +1091,8 @@ TEST(Runtime, AllowsOverlappingCallsToOneActionWhenCallableSynchronizesState) {
     } state;
 
     Runtime runtime;
-    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "overlap", .metadata = {}}};
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "overlap", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     ASSERT_TRUE(builder.add("run", "Waits with synchronized shared state", [&state] {
         std::unique_lock lock{state.mutex};
         ++state.active;
@@ -982,4 +1119,204 @@ TEST(Runtime, AllowsOverlappingCallsToOneActionWhenCallableSynchronizesState) {
     second.join();
 
     EXPECT_EQ(state.peak, 2);
+}
+
+TEST(Runtime, ContextualActionReceivesInvokeIdentityAndAuthoritativeActionId) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "index", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual(
+        "rebuild", "Exposes invocation identity",
+        [](const ActionInvocation& invocation, const std::string& target) {
+            EXPECT_EQ(invocation.actionId().str(), "index.rebuild");
+            EXPECT_EQ(invocation.actionId().module(), "index");
+            EXPECT_EQ(invocation.actionId().action(), "rebuild");
+            EXPECT_EQ(invocation.context().request_id, "request-7");
+            EXPECT_EQ(invocation.context().trace_id, "trace-9");
+            EXPECT_EQ(invocation.context().caller, "client");
+            EXPECT_EQ(invocation.context().metadata.at("tenant"), "north");
+            return target;
+        },
+        param("target", "Target index")));
+
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto descriptor = runtime.findAction(id("index.rebuild"));
+    ASSERT_TRUE(descriptor);
+    ASSERT_EQ(descriptor.value().get().parameters.size(), 1U);
+    EXPECT_EQ(descriptor.value().get().parameters.front().name, "target");
+    EXPECT_EQ(descriptor.value().get().parameters.front().type.kind,
+              axiom::TypeDescriptor::Kind::String);
+
+    const InvocationContext context{.request_id = "request-7",
+                                    .trace_id = "trace-9",
+                                    .caller = "client",
+                                    .metadata = {{"tenant", "north"}}};
+    const auto result =
+        runtime.invoke(id("index.rebuild"), Arguments{{"target", Value{"primary"}}}, context);
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value().asString(), "primary");
+}
+
+TEST(Runtime, ConcurrentContextualInvocationsKeepSeparateContexts) {
+    struct SharedState {
+        std::mutex mutex;
+        std::condition_variable changed;
+        int active{0};
+        int peak{0};
+        bool release{false};
+        std::map<std::string, InvocationContext> seen;
+        std::map<std::string, std::string> action_ids;
+    } state;
+
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "index", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual(
+        "probe", "Captures overlapping invocation identity",
+        [&state](const ActionInvocation& invocation, const std::string& key) {
+            std::unique_lock lock{state.mutex};
+            ++state.active;
+            state.peak = std::max(state.peak, state.active);
+            state.seen.insert_or_assign(key, invocation.context());
+            state.action_ids.insert_or_assign(key, std::string{invocation.actionId().str()});
+            state.changed.notify_all();
+            state.changed.wait(lock, [&state] { return state.release; });
+            --state.active;
+            return 1;
+        },
+        param("key", "Call key")));
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext first{.request_id = "req-a",
+                                  .trace_id = "tr-a",
+                                  .caller = "caller-a",
+                                  .metadata = {{"tenant", "north"}}};
+    const InvocationContext second{.request_id = "req-b",
+                                   .trace_id = "tr-b",
+                                   .caller = "caller-b",
+                                   .metadata = {{"tenant", "south"}}};
+
+    std::thread left{[&runtime, &first] {
+        EXPECT_TRUE(runtime.invoke(id("index.probe"), Arguments{{"key", Value{"left"}}}, first));
+    }};
+    std::thread right{[&runtime, &second] {
+        EXPECT_TRUE(runtime.invoke(id("index.probe"), Arguments{{"key", Value{"right"}}}, second));
+    }};
+
+    {
+        std::unique_lock lock{state.mutex};
+        EXPECT_TRUE(state.changed.wait_for(lock, std::chrono::seconds{2},
+                                           [&state] { return state.active == 2; }));
+        state.release = true;
+    }
+    state.changed.notify_all();
+    left.join();
+    right.join();
+
+    EXPECT_EQ(state.peak, 2);
+    ASSERT_EQ(state.seen.size(), 2U);
+    EXPECT_EQ(state.seen.at("left").request_id, "req-a");
+    EXPECT_EQ(state.seen.at("left").trace_id, "tr-a");
+    EXPECT_EQ(state.seen.at("left").caller, "caller-a");
+    EXPECT_EQ(state.seen.at("left").metadata.at("tenant"), "north");
+    EXPECT_EQ(state.seen.at("right").request_id, "req-b");
+    EXPECT_EQ(state.seen.at("right").trace_id, "tr-b");
+    EXPECT_EQ(state.seen.at("right").caller, "caller-b");
+    EXPECT_EQ(state.seen.at("right").metadata.at("tenant"), "south");
+    EXPECT_EQ(state.action_ids.at("left"), "index.probe");
+    EXPECT_EQ(state.action_ids.at("right"), "index.probe");
+}
+
+TEST(Runtime, ContextualActionsPreserveCurrentFailureAndSilentLoggerBehavior) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context_errors",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual("checked", "Returns a business error", &contextualChecked,
+                                      param("value", "Candidate value")));
+    ASSERT_TRUE(
+        builder.addContextual("standard", "Throws a standard exception", &contextualThrowStandard));
+    ASSERT_TRUE(
+        builder.addContextual("unknown", "Throws an unknown exception", &contextualThrowUnknown));
+    int invocations = 0;
+    ASSERT_TRUE(builder.addContextual("silent", "Counts executions without a logger",
+                                      [&invocations](const ActionInvocation& invocation) {
+                                          static_cast<void>(invocation);
+                                          ++invocations;
+                                          return 11;
+                                      }));
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto missing = runtime.invoke(id("context_errors.checked"), {}, {});
+    const auto mismatch =
+        runtime.invoke(id("context_errors.checked"), Arguments{{"value", Value{"one"}}}, {});
+    const auto business =
+        runtime.invoke(id("context_errors.checked"), Arguments{{"value", Value{-1}}}, {});
+    const auto standard = runtime.invoke(id("context_errors.standard"), {}, {});
+    const auto unknown = runtime.invoke(id("context_errors.unknown"), {}, {});
+    const auto silent = runtime.invoke(id("context_errors.silent"), {}, {});
+
+    ASSERT_FALSE(missing);
+    EXPECT_EQ(missing.error().code, ErrorCode::MissingArgument);
+    ASSERT_FALSE(mismatch);
+    EXPECT_EQ(mismatch.error().code, ErrorCode::TypeMismatch);
+    ASSERT_FALSE(business);
+    EXPECT_EQ(business.error().code, ErrorCode::InvalidArgument);
+    ASSERT_FALSE(standard);
+    EXPECT_EQ(standard.error().code, ErrorCode::InvocationFailed);
+    ASSERT_FALSE(unknown);
+    EXPECT_EQ(unknown.error().code, ErrorCode::InternalError);
+    ASSERT_TRUE(silent);
+    EXPECT_EQ(silent.value().asInteger(), 11);
+    EXPECT_EQ(invocations, 1);
+}
+
+TEST(Runtime, ContextualActionLogsKeepAuthoritativeModuleActionFields) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    const auto business_logger =
+        std::make_shared<axiom::logging::Logger>(logging.logger("business"));
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "context", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual("emit", "Emits a business record from a contextual Action",
+                                      [business_logger](const ActionInvocation& invocation) {
+                                          EXPECT_EQ(invocation.actionId().str(), "context.emit");
+                                          try {
+                                              business_logger->write(LogLevel::Info,
+                                                                     "business event");
+                                          } catch(...) {
+                                              return 42;
+                                          }
+                                          return 42;
+                                      }));
+    Runtime runtime{logging.logger("runtime")};
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext context{.request_id = "request-7",
+                                    .trace_id = "trace-9",
+                                    .caller = "client",
+                                    .metadata = {{"tenant", "north"},
+                                                 {"module", "metadata-module"},
+                                                 {"action", "metadata-action"},
+                                                 {"status", "metadata-status"},
+                                                 {"duration_ms", "metadata-duration"}}};
+    const auto result = runtime.invoke(id("context.emit"), {}, context);
+
+    ASSERT_TRUE(result);
+    ASSERT_EQ(sink->records.size(), 4U);
+    const auto& business_record = recordAt(*sink, 2U);
+    EXPECT_EQ(business_record.category, "business");
+    EXPECT_EQ(business_record.fields.at("request_id").asString(), "request-7");
+    EXPECT_EQ(business_record.fields.at("trace_id").asString(), "trace-9");
+    EXPECT_EQ(business_record.fields.at("caller").asString(), "client");
+    EXPECT_EQ(business_record.fields.at("tenant").asString(), "north");
+    EXPECT_EQ(business_record.fields.at("module").asString(), "context");
+    EXPECT_EQ(business_record.fields.at("action").asString(), "context.emit");
+    EXPECT_FALSE(business_record.fields.contains("status"));
+    EXPECT_FALSE(business_record.fields.contains("duration_ms"));
 }

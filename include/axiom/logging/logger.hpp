@@ -118,7 +118,8 @@ private:
  * @brief Emits a formatted log record with explicit event fields when enabled.
  *
  * Evaluates @p logger and @p level once, then calls Logger::writeFormatted only when
- * Logger::enabled returns true for that level.
+ * Logger::enabled returns true for that level. Expansion locals end with `_` so they
+ * do not collide with identifiers in the caller's scope.
  *
  * @param logger Logger expression used for the emit (may have side effects once).
  * @param level LogLevel severity for the event.

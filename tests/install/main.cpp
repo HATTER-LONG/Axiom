@@ -29,7 +29,11 @@ namespace {
 }
 
 [[nodiscard]] bool invokeInstalledAction() {
-    axiom::ModuleBuilder builder{{.namespace_name = "install", .metadata = {}}};
+    axiom::ModuleBuilder builder{{.namespace_name = "install",
+                                  .description = {},
+                                  .version = {},
+                                  .tags = {},
+                                  .metadata = {}}};
     if(!builder.add("answer", "Answer", [] { return 42; })) {
         return false;
     }
@@ -169,14 +173,31 @@ hasInstalledIntrospectionSnapshot(const axiom::introspection::RuntimeSnapshot& s
 supportsInstalledIntrospectionQueries(const axiom::introspection::IntrospectionService& service,
                                       const axiom::introspection::RuntimeSnapshot& snapshot,
                                       const axiom::resource::ResourceId& resource_id) {
-    return service.actions("inspect").size() == 1U && service.resources("installed") &&
+    axiom::logging::LogCollector collector;
+    const auto logs = collector.query({.minimum_level = axiom::logging::LogLevel::Trace,
+                                       .category_prefixes = {},
+                                       .request_id = "install-request",
+                                       .trace_id = {},
+                                       .action_id = {},
+                                       .task_id = {},
+                                       .limit = 0});
+    return service.actions("inspect").size() == 1U &&
+           service.actions(axiom::introspection::ActionQuery{.module = "inspect", .tags = {}})
+                   .size() == 1U &&
+           service.resources("installed") &&
+           service.resources(axiom::introspection::ResourceQuery{.type = "installed"}) &&
+           service.tasks(axiom::introspection::TaskQuery{}).empty() && logs.empty() &&
            service.describeAction(snapshot.actions.front().id) &&
            service.describeResource(resource_id);
 }
 
 [[nodiscard]] bool useInstalledIntrospection() {
     axiom::Runtime runtime;
-    axiom::ModuleBuilder builder{{.namespace_name = "inspect", .metadata = {}}};
+    axiom::ModuleBuilder builder{{.namespace_name = "inspect",
+                                  .description = {},
+                                  .version = {},
+                                  .tags = {},
+                                  .metadata = {}}};
     if(!builder.add("answer", "Answer", [] { return 42; }) ||
        !runtime.registerModule(std::move(builder))) {
         return false;

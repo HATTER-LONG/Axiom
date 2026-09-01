@@ -11,6 +11,7 @@
 #include <axiom/action/runtime.hpp>
 #include <axiom/export.hpp>
 #include <axiom/foundation/result.hpp>
+#include <axiom/introspection/introspection_query.hpp>
 #include <axiom/introspection/runtime_snapshot.hpp>
 #include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
@@ -88,6 +89,18 @@ public:
      */
     [[nodiscard]] std::vector<ActionDescriptor> actions(std::string_view module_namespace) const;
     /**
+     * @brief Returns Actions matching every engaged condition in @p query.
+     * @param query Module and tag filters combined with AND; empty conditions do not
+     *        filter. Tag matching is all-of. Duplicate query tags do not change
+     *        which Actions match. An unknown module yields an empty vector.
+     * @return Matching Actions in the same order as actions().
+     * @throws std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run concurrently with source operations; source lifetime rules apply.
+     *       Filtering copies one discoverActions snapshot; this service does not
+     *       index or cache registry state.
+     */
+    [[nodiscard]] std::vector<ActionDescriptor> actions(const ActionQuery& query) const;
+    /**
      * @brief Returns an owning copy of one Action description.
      * @param id Parsed canonical Action identifier.
      * @return Deep-copied description, or the
@@ -123,6 +136,19 @@ public:
     [[nodiscard]] Result<std::vector<resource::ResourceDescriptor>>
     resources(std::string_view type) const;
     /**
+     * @brief Returns Resources matching every engaged condition in @p query.
+     * @param query Type filter; an omitted type does not filter. Illegal type
+     *        text returns InvalidArgument using the same validation as
+     *        resources(std::string_view).
+     * @return Matching Resources in the same order as resources(), or InvalidArgument.
+     * @throws std::bad_alloc If result allocation, validation, or descriptor copying
+     *         fails.
+     * @note May run concurrently with source operations; source lifetime rules apply.
+     *       Filtering copies one ResourceRegistry::list() result.
+     */
+    [[nodiscard]] Result<std::vector<resource::ResourceDescriptor>>
+    resources(const ResourceQuery& query) const;
+    /**
      * @brief Returns an owning copy of one Resource description.
      * @param id Resource identity to query.
      * @return Description, or the source's NotFound
@@ -146,6 +172,18 @@ public:
      */
     [[nodiscard]] std::vector<task::TaskDescriptor> tasks() const;
     /**
+     * @brief Returns Tasks matching every engaged condition in @p query.
+     * @param query State and origin filters combined with AND. Origin conditions
+     *        require a TaskOrigin whose corresponding field matches exactly;
+     *        unknown association yields an empty vector.
+     * @return Matching Tasks in the same order as tasks().
+     * @throws std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run concurrently with source operations; source lifetime rules apply.
+     *       Filtering copies one TaskRegistry::list() result and does not call
+     *       describe() per Task.
+     */
+    [[nodiscard]] std::vector<task::TaskDescriptor> tasks(const TaskQuery& query) const;
+    /**
      * @brief Returns an owning copy of one Task description.
      * @param id Task identity to query.
      * @return Description, or the source's NotFound error
@@ -161,6 +199,8 @@ public:
      * @brief Collects modules/actions, then resources, then tasks in that fixed order.
      *
      * @return An independently owned sequential observation; it is not globally atomic.
+     *         The snapshot always contains every discoverable object and does not
+     *         accept a Query.
      *
      * @throws std::bad_alloc If collection or any descriptor copy fails.
      * @note May run

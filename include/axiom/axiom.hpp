@@ -23,6 +23,7 @@
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/foundation/value.hpp>
+#include <axiom/introspection/introspection_query.hpp>
 #include <axiom/introspection/introspection_service.hpp>
 #include <axiom/introspection/runtime_snapshot.hpp>
 #include <axiom/logging/callback_sink.hpp>

@@ -11,6 +11,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +37,22 @@ struct Progress final {
     [[nodiscard]] bool operator==(const Progress&) const = default;
 };
 
+/**
+ * @brief Weak association from a Task to the request that created it.
+ *
+ * Empty strings mean that dimension is unknown. @c action_id is canonical Action
+ * text, not an ActionId, so Task does not depend on Action types. Completely
+ * unknown origin is represented as @c std::nullopt on TaskDescriptor, not an
+ * origin whose fields are all empty.
+ */
+struct TaskOrigin final {
+    std::string request_id;
+    std::string trace_id;
+    std::string caller;
+    std::string action_id;
+    std::map<std::string, std::string, std::less<>> metadata;
+};
+
 /** @brief A consistent value snapshot of one task's observable metadata. */
 struct TaskDescriptor final {
     TaskId id;
@@ -42,6 +60,19 @@ struct TaskDescriptor final {
     TaskState state{TaskState::Pending};
     Progress progress;
     std::optional<Error> error;
+    /** @brief Optional immutable origin copied at submission; omitted when unknown. */
+    std::optional<TaskOrigin> origin;
+};
+
+/**
+ * @brief Submission-time name and optional origin for a new Task.
+ *
+ * Origin is copied when the Registry accepts the Task. Later submits, retries,
+ * and derived Tasks do not inherit it unless the caller passes it again.
+ */
+struct TaskSubmission final {
+    std::string name;
+    std::optional<TaskOrigin> origin;
 };
 
 /** @brief Copyable, thread-safe observation of a task's cooperative cancellation request. */

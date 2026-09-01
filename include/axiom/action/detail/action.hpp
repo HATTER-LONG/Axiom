@@ -4,6 +4,7 @@
  * @brief Internal callable boundary; not a supported extension API.
  */
 
+#include <axiom/action/action_id.hpp>
 #include <axiom/action/invocation_context.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
@@ -33,6 +34,12 @@ public:
      */
     [[nodiscard]] virtual Result<Value> invoke(const Arguments& arguments,
                                                const InvocationContext& context) = 0;
+
+    /**
+     * @brief Receives the canonical ActionId after the builder accepts this registration.
+     * @param id Identifier copied from the validated ActionDescriptor.
+     */
+    virtual void bindActionId(const ActionId& id) { static_cast<void>(id); }
 };
 
 } // namespace axiom::detail

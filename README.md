@@ -85,7 +85,14 @@ provide asynchronous work; Action invocation itself remains synchronous.
 `axiom::introspection::IntrospectionService` is a read-only, non-owning aggregation
 layer over an existing `Runtime`, `resource::ResourceRegistry` and
 `task::TaskRegistry`. It provides owning copies of Module, Action, Resource and
-Task descriptors, plus filtered queries and a combined `RuntimeSnapshot`.
+Task descriptors, plus `ActionQuery` / `ResourceQuery` / `TaskQuery` filters and a
+combined `RuntimeSnapshot`. Existing `actions(module)` and `resources(type)`
+overloads delegate to those Query values. Snapshot always contains every
+discoverable object and does not accept a Query.
+
+`logging::LogQuery` can additionally filter retained records by exact `request_id`,
+`trace_id`, `action_id` (the reserved log field `action`), and `task_id`. Non-empty
+conditions are AND-ed; `limit` still applies after filtering.
 
 The service is uncached and does not own registry state. Its three sources must
 outlive it, and source destruction must not overlap a query. A combined snapshot
@@ -141,7 +148,11 @@ Registries retain terminal tasks until removal or Registry destruction. Handles
 and accepted work survive Registry destruction, which never cancels or waits.
 Callers still own the lifetime of references captured by business callables and
 observers. Use a Registry constructed with a Logger to associate same-service,
-same-thread business logs with `task_id` and `task_name`.
+same-thread business logs with `task_id` and `task_name`. Submit with
+`task::TaskSubmission` to copy an optional immutable `TaskOrigin`; non-empty
+origin fields are also bound as `request_id`, `trace_id`, `caller`, `action`,
+and a `module` component only when `action_id` is canonical `module.action`
+text. Name-only `submit` remains available and records unknown origin.
 
 Inside the callable, use `context.reportProgress(0.5, "Batch complete")` and
 `context.cancellation().requested()`. The runnable example in

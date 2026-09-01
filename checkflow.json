@@ -84,13 +84,8 @@
         "tool": "format"
       },
       {
-        "id": "clear_build",
-        "command": "cmake -E rm -rf build-quality/full build-quality/static build-quality/shared build-quality/embedding"
-      },
-      {
         "id": "configure",
         "tool": "cmake",
-        "depends_on": ["clear_build"],
         "timeout": 300,
         "args": {
           "action": "configure",

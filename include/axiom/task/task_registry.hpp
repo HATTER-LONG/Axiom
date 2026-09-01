@@ -84,14 +84,28 @@ public:
      *
      * @tparam F Callable type.
      * @param executor Executor that accepts the work.
-     * @param
-     * name Owned diagnostic task name.
+     * @param name Owned diagnostic task name.
      * @param function Task implementation.
-     * @return A
-     * copied handle or an Executor rejection error.
+     * @return A copied handle or an Executor rejection error.
+     * @note Delegates to the submission-value overload with unknown origin.
      */
     template <typename F>
     [[nodiscard]] auto submit(async::Executor& executor, std::string name, F&& function) -> Result<
+        TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>>;
+
+    /**
+     * @brief Accepts a Task with a submission-time name and optional origin.
+     *
+     * @tparam F Callable type.
+     * @param executor Executor that accepts the work.
+     * @param submission Owned name and optional origin copied at accept time.
+     * @param function Task implementation.
+     * @return A copied handle or an Executor rejection error.
+     * @note Origin is immutable for this Task. Retries and derived Tasks do not inherit it.
+     */
+    template <typename F>
+    [[nodiscard]] auto
+    submit(async::Executor& executor, TaskSubmission submission, F&& function) -> Result<
         TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>>;
 
     /** @brief Returns one consistent descriptor, or NotFound. */
@@ -109,7 +123,7 @@ private:
     struct Impl;
     [[nodiscard]] Result<std::shared_ptr<detail::TaskControl>>
     submitControl(async::Executor& executor,
-                  std::string name,
+                  TaskSubmission submission,
                   std::function<void(const std::shared_ptr<detail::TaskControl>&)> function,
                   std::function<std::shared_ptr<const void>()> cancelled_result);
     std::shared_ptr<Impl> impl_;
@@ -118,13 +132,21 @@ private:
 template <typename F>
 auto TaskRegistry::submit(async::Executor& executor, std::string name, F&& function) -> Result<
     TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>> {
+    return submit(executor, TaskSubmission{.name = std::move(name), .origin = std::nullopt},
+                  std::forward<F>(function));
+}
+
+template <typename F>
+auto TaskRegistry::submit(async::Executor& executor, TaskSubmission submission, F&& function)
+    -> Result<
+        TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>> {
     using Returned = std::invoke_result_t<std::decay_t<F>, TaskContext&>;
     using T = detail::TaskResultValueT<Returned>;
     static_assert(std::copy_constructible<T> || std::same_as<T, void>,
                   "Task result values must be copy constructible");
     auto owned = std::make_shared<std::decay_t<F>>(std::forward<F>(function));
     auto submitted = submitControl(
-        executor, std::move(name),
+        executor, std::move(submission),
         [owned](const auto& control) mutable { detail::execute<T>(control, *owned); },
         [] {
             return std::make_shared<const Result<T>>(

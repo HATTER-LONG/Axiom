@@ -5,6 +5,7 @@
  * @note These detail declarations are not supported public extension points.
  */
 
+#include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
 #include <axiom/action/detail/action.hpp>
 #include <axiom/action/detail/value_converter.hpp>
@@ -122,6 +123,52 @@ template <typename Callable> consteval bool isAdaptableCallable() {
     }
 }
 
+template <typename Tuple> struct TailArguments;
+
+template <typename Head, typename... Tail> struct TailArguments<std::tuple<Head, Tail...>> {
+    using Type = std::tuple<Tail...>;
+};
+
+template <bool InjectInvocation, typename Tuple> struct ParameterArgumentTypes {
+    using Type = Tuple;
+};
+
+template <typename Tuple> struct ParameterArgumentTypes<true, Tuple> {
+    using Type = TailArguments<Tuple>::Type;
+};
+
+template <typename StoredCallable, typename Arguments, typename Return>
+consteval bool isContextualRestAdaptable() {
+    using Rest = TailArguments<Arguments>::Type;
+    return areArgumentTypesConvertible<Rest>(std::make_index_sequence<std::tuple_size_v<Rest>>{}) &&
+           is_adapted_return<Return> &&
+           []<std::size_t... Index>(std::index_sequence<Index...> index_sequence) {
+               static_cast<void>(index_sequence);
+               return std::invocable<StoredCallable&, const ActionInvocation&,
+                                     std::remove_cvref_t<std::tuple_element_t<Index, Rest>>&...>;
+           }(std::make_index_sequence<std::tuple_size_v<Rest>>{});
+}
+
+template <typename Callable> consteval bool isAdaptableContextualCallable() {
+    using StoredCallable = std::decay_t<Callable>;
+    if constexpr(!HasFunctionTraits<StoredCallable> || !std::copy_constructible<StoredCallable> ||
+                 IsTypeErasedCallable<StoredCallable>::value) {
+        return false;
+    } else {
+        using Traits = FunctionTraits<StoredCallable>;
+        using Arguments = Traits::ArgumentTypes;
+        constexpr auto count = std::tuple_size_v<Arguments>;
+        if constexpr(count != 0U) {
+            if constexpr(std::is_same_v<std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
+                                        ActionInvocation>) {
+                using Return = Traits::ReturnType;
+                return isContextualRestAdaptable<StoredCallable, Arguments, Return>();
+            }
+        }
+        return false;
+    }
+}
+
 /**
  * @brief Constrains callables that can be stored and invoked by TypedActionAdapter.
  *
@@ -132,6 +179,17 @@ template <typename Callable> consteval bool isAdaptableCallable() {
  */
 template <typename Callable>
 concept AdaptableCallable = isAdaptableCallable<std::decay_t<Callable>>();
+
+/**
+ * @brief Constrains callables registered through ModuleBuilder::addContextual().
+ *
+ * The first parameter must accept `const ActionInvocation&`. Remaining parameters
+ * follow the same Value conversion and invocation rules as ordinary `add()`.
+ *
+ * @tparam Callable Candidate callable type before storage decay.
+ */
+template <typename Callable>
+concept AdaptableContextualCallable = isAdaptableContextualCallable<std::decay_t<Callable>>();
 
 template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor();
 
@@ -162,11 +220,11 @@ template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor() {
                 .fields = {},
                 .value_type = {}};
     } else if constexpr(value_converter_detail::IsVector<Type>::value) {
-        return TypeDescriptor::array(
-            typeDescriptorFor<typename value_converter_detail::IsVector<Type>::ElementType>());
+        using Element = value_converter_detail::IsVector<Type>::ElementType;
+        return TypeDescriptor::array(typeDescriptorFor<Element>());
     } else if constexpr(value_converter_detail::IsStringMap<Type>::value) {
-        return TypeDescriptor::objectValues(
-            typeDescriptorFor<typename value_converter_detail::IsStringMap<Type>::ElementType>());
+        using Element = value_converter_detail::IsStringMap<Type>::ElementType;
+        return TypeDescriptor::objectValues(typeDescriptorFor<Element>());
     }
 
     static_assert(ValueConvertible<Type>);
@@ -200,6 +258,10 @@ template <typename Return> [[nodiscard]] TypeDescriptor returnTypeDescriptor() {
 /**
  * @brief Adapts one stored callable instance to the dynamic Action boundary.
  *
+ * @tparam Callable Stored callable type.
+ * @tparam InjectInvocation When true, the first C++ parameter is an injected
+ *         ActionInvocation and is omitted from ActionDescriptor::parameters.
+ *
  * @note This
  * adapter intentionally shares `callable_` across invocations. The Runtime may
  *       invoke it
@@ -207,25 +269,34 @@ template <typename Return> [[nodiscard]] TypeDescriptor returnTypeDescriptor() {
  *       state must
  * therefore be synchronized by the callable's owner.
  */
-template <typename Callable> class TypedActionAdapter final : public IAction {
+template <typename Callable, bool InjectInvocation = false>
+class TypedActionAdapter final : public IAction {
 public:
     using Traits = FunctionTraits<std::remove_cvref_t<Callable>>;
     using Return = Traits::ReturnType;
     using SourceArguments = Traits::ArgumentTypes;
+    using ParameterArguments = ParameterArgumentTypes<InjectInvocation, SourceArguments>::Type;
 
     TypedActionAdapter(Callable callable, std::vector<ParameterDescriptor> parameters)
         : callable_(std::move(callable)), parameters_(std::move(parameters)) {}
 
+    void bindActionId(const ActionId& id) override { action_id_.emplace(id); }
+
     [[nodiscard]] Result<Value> invoke(const Arguments& arguments,
                                        const InvocationContext& context) override {
-        static_cast<void>(context);
-        using ConvertedArguments = StoredTuple<SourceArguments>::Type;
+        using ConvertedArguments = StoredTuple<ParameterArguments>::Type;
         ConvertedArguments converted;
         const auto conversion = convertArguments(converted, arguments);
         if(!conversion) {
             return Result<Value>::failure(conversion.error());
         }
-        return invokeCallable(converted);
+        if constexpr(InjectInvocation) {
+            const ActionInvocation invocation{*action_id_, context};
+            return invokeWithValues(converted, invocation);
+        } else {
+            static_cast<void>(context);
+            return invokeWithValues(converted);
+        }
     }
 
 private:
@@ -238,7 +309,7 @@ private:
     template <std::size_t Index = 0, typename Tuple>
     [[nodiscard]] Result<void> convertArguments(Tuple& converted,
                                                 const Arguments& arguments) const {
-        if constexpr(Index == std::tuple_size_v<SourceArguments>) {
+        if constexpr(Index == std::tuple_size_v<ParameterArguments>) {
             return Result<void>::success();
         } else {
             const auto supplied = arguments.find(parameters_[Index].name);
@@ -266,13 +337,21 @@ private:
         }
     }
 
-    template <typename Tuple> [[nodiscard]] Result<Value> invokeCallable(Tuple& converted) {
+    template <typename Tuple, typename... Injected>
+    [[nodiscard]] Result<Value> invokeWithValues(Tuple& converted, Injected&&... injected) {
         if constexpr(std::is_void_v<Return>) {
-            std::apply([this](auto&... values) { std::invoke(callable_, values...); }, converted);
+            std::apply(
+                [this, &injected...](auto&... values) {
+                    std::invoke(callable_, std::forward<Injected>(injected)..., values...);
+                },
+                converted);
             return Result<Value>::success(Value{});
         } else {
             auto result = std::apply(
-                [this](auto&... values) { return std::invoke(callable_, values...); }, converted);
+                [this, &injected...](auto&... values) {
+                    return std::invoke(callable_, std::forward<Injected>(injected)..., values...);
+                },
+                converted);
             return convertReturn(std::move(result));
         }
     }
@@ -297,6 +376,7 @@ private:
 
     Callable callable_;
     std::vector<ParameterDescriptor> parameters_;
+    std::optional<ActionId> action_id_;
 };
 
 } // namespace axiom::detail

@@ -3,14 +3,21 @@
 #include <axiom/action/module.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
+#include <axiom/resource/resource_id.hpp>
+#include <axiom/task/task_id.hpp>
+#include <axiom/task/task_types.hpp>
 
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -168,12 +175,22 @@ TEST(ActionDescriptor, PreservesParameterOrderWhenDescriptionIsValid) {
         .return_type = integerType(),
         .version = "1.0",
         .tags = {"math", "basic"},
+        .metadata = {{"owner", "core"}, {"stability", "stable"}},
     };
 
     EXPECT_TRUE(axiom::validate(descriptor));
     ASSERT_EQ(descriptor.parameters.size(), 2U);
     EXPECT_EQ(descriptor.parameters[0].name, "left");
     EXPECT_EQ(descriptor.parameters[1].name, "right");
+    ASSERT_EQ(descriptor.tags.size(), 2U);
+    EXPECT_EQ(descriptor.tags[0], "math");
+    EXPECT_EQ(descriptor.tags[1], "basic");
+    auto metadata = descriptor.metadata.begin();
+    ASSERT_NE(metadata, descriptor.metadata.end());
+    EXPECT_EQ(metadata->first, "owner");
+    ++metadata;
+    ASSERT_NE(metadata, descriptor.metadata.end());
+    EXPECT_EQ(metadata->first, "stability");
 }
 
 TEST(ActionDescriptor, RejectsInvalidOrDuplicateParameterNames) {
@@ -185,7 +202,8 @@ TEST(ActionDescriptor, RejectsInvalidOrDuplicateParameterNames) {
                                                                .default_value = {}}},
                                                .return_type = integerType(),
                                                .version = {},
-                                               .tags = {}};
+                                               .tags = {},
+                                               .metadata = {}};
     const axiom::ActionDescriptor duplicate_name{
         .id = actionId("math.add"),
         .description = {},
@@ -194,7 +212,8 @@ TEST(ActionDescriptor, RejectsInvalidOrDuplicateParameterNames) {
              {.name = "value", .description = {}, .type = integerType(), .default_value = {}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_EQ(axiom::validate(invalid_name).error().code, axiom::ErrorCode::InvalidDescriptor);
     EXPECT_EQ(axiom::validate(duplicate_name).error().code, axiom::ErrorCode::InvalidDescriptor);
@@ -212,7 +231,8 @@ TEST(ActionDescriptor, AcceptsParameterNamesAtEveryIdentifierBoundary) {
              {.name = "_", .description = {}, .type = integerType(), .default_value = {}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_TRUE(axiom::validate(descriptor));
 }
@@ -228,7 +248,8 @@ TEST(ActionDescriptor, RejectsInconsistentDefaultValues) {
                         .default_value = axiom::Value{std::int64_t{1}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor wrong_type_default{
         .id = actionId("math.add"),
         .description = {},
@@ -239,7 +260,8 @@ TEST(ActionDescriptor, RejectsInconsistentDefaultValues) {
                         .default_value = axiom::Value{"one"}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_EQ(axiom::validate(required_default).error().code, axiom::ErrorCode::InvalidDescriptor);
     EXPECT_EQ(axiom::validate(wrong_type_default).error().code,
@@ -265,7 +287,8 @@ TEST(ActionDescriptor, AcceptsCompatibleOptionalDefaultIncludingNestedValues) {
                             {"names", axiom::Value{axiom::Value::Array{axiom::Value{"Ada"}}}}}}}},
         .return_type = type,
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_TRUE(axiom::validate(descriptor));
 }
@@ -289,7 +312,8 @@ TEST(ActionDescriptor, AcceptsIntegerDefaultsForNumberParameters) {
                         .fields = {},
                         .value_type = {}},
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_TRUE(axiom::validate(descriptor));
 }
@@ -309,7 +333,8 @@ TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
                         .default_value = axiom::Value{nullptr}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor bad_array{
         .id = actionId("math.array_default"),
         .description = {},
@@ -320,7 +345,8 @@ TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
                         .default_value = axiom::Value{axiom::Value::Array{axiom::Value{"wrong"}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor missing_fixed_member{
         .id = actionId("math.object_default"),
         .description = {},
@@ -331,7 +357,8 @@ TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
                         .default_value = axiom::Value{axiom::Value::Object{}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor bad_value_member{
         .id = actionId("math.values_default"),
         .description = {},
@@ -343,7 +370,8 @@ TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
                             axiom::Value{axiom::Value::Object{{"key", axiom::Value{"wrong"}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(null_scalar));
     EXPECT_FALSE(axiom::validate(bad_array));
@@ -354,15 +382,178 @@ TEST(ActionDescriptor, RejectsNullAndMalformedContainerDefaults) {
 TEST(ModuleDescriptor, ValidatesNamespaceAndMetadataBeforeRegistration) {
     const axiom::ModuleDescriptor valid{
         .namespace_name = "math_2",
-        .metadata = {{"display_name", "Mathematics"}, {"version", "1.0"}},
+        .description = "Arithmetic helpers",
+        .version = "1.0",
+        .tags = {"math", "core"},
+        .metadata = {{"display_name", "Mathematics"}, {"owner", "platform"}},
     };
     const axiom::ModuleDescriptor invalid{
         .namespace_name = "math-tools",
+        .description = {},
+        .version = {},
+        .tags = {},
         .metadata = {{"display name", "Mathematics"}},
     };
 
     EXPECT_TRUE(axiom::validate(valid));
     EXPECT_EQ(axiom::validate(invalid).error().code, axiom::ErrorCode::InvalidDescriptor);
+    auto metadata = valid.metadata.begin();
+    ASSERT_NE(metadata, valid.metadata.end());
+    EXPECT_EQ(metadata->first, "display_name");
+    ++metadata;
+    ASSERT_NE(metadata, valid.metadata.end());
+    EXPECT_EQ(metadata->first, "owner");
+}
+
+TEST(ModuleDescriptor, RejectsEmptyVersionEmptyOrDuplicateTagsAndEmptyMetadataKeys) {
+    const axiom::ModuleDescriptor empty_version{
+        .namespace_name = "math",
+        .description = {},
+        .version = "",
+        .tags = {},
+        .metadata = {},
+    };
+    const axiom::ModuleDescriptor empty_tag{
+        .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {""},
+        .metadata = {},
+    };
+    const axiom::ModuleDescriptor duplicate_tags{
+        .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {"math", "math"},
+        .metadata = {},
+    };
+    const axiom::ModuleDescriptor empty_metadata_key{
+        .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {},
+        .metadata = {{"", "value"}},
+    };
+    const axiom::ModuleDescriptor empty_metadata_value{
+        .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {},
+        .metadata = {{"note", ""}},
+    };
+
+    EXPECT_EQ(axiom::validate(empty_version).error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(axiom::validate(empty_tag).error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(axiom::validate(duplicate_tags).error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(axiom::validate(empty_metadata_key).error().code,
+              axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_TRUE(axiom::validate(empty_metadata_value));
+}
+
+TEST(ActionDescriptor, RejectsEmptyOrDuplicateTagsAndEmptyMetadataKeys) {
+    const axiom::ActionDescriptor empty_tag{.id = actionId("math.add"),
+                                            .description = {},
+                                            .parameters = {},
+                                            .return_type = integerType(),
+                                            .version = {},
+                                            .tags = {""},
+                                            .metadata = {}};
+    const axiom::ActionDescriptor duplicate_tags{.id = actionId("math.add"),
+                                                 .description = {},
+                                                 .parameters = {},
+                                                 .return_type = integerType(),
+                                                 .version = {},
+                                                 .tags = {"math", "math"},
+                                                 .metadata = {}};
+    const axiom::ActionDescriptor empty_metadata_key{.id = actionId("math.add"),
+                                                     .description = {},
+                                                     .parameters = {},
+                                                     .return_type = integerType(),
+                                                     .version = {},
+                                                     .tags = {},
+                                                     .metadata = {{"", "value"}}};
+    const axiom::ActionDescriptor empty_metadata_value{.id = actionId("math.add"),
+                                                       .description = {},
+                                                       .parameters = {},
+                                                       .return_type = integerType(),
+                                                       .version = {},
+                                                       .tags = {},
+                                                       .metadata = {{"note", ""}}};
+    const axiom::ActionDescriptor case_sensitive_tags{.id = actionId("math.add"),
+                                                      .description = {},
+                                                      .parameters = {},
+                                                      .return_type = integerType(),
+                                                      .version = {},
+                                                      .tags = {"Math", "math"},
+                                                      .metadata = {}};
+
+    EXPECT_EQ(axiom::validate(empty_tag).error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(axiom::validate(duplicate_tags).error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(axiom::validate(empty_metadata_key).error().code,
+              axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_TRUE(axiom::validate(empty_metadata_value));
+    EXPECT_TRUE(axiom::validate(case_sensitive_tags));
+}
+
+TEST(TaskOrigin, CopiesUnknownPartialAndCompleteOriginIndependently) {
+    const axiom::task::TaskId id = [] {
+        auto parsed = axiom::task::TaskId::parse("task:1");
+        EXPECT_TRUE(parsed);
+        return std::move(parsed.value());
+    }();
+    const axiom::task::TaskDescriptor unknown{
+        .id = id,
+        .name = "work",
+        .state = axiom::task::TaskState::Pending,
+        .progress = {},
+        .error = std::nullopt,
+        .origin = std::nullopt,
+    };
+    const axiom::task::TaskOrigin partial{
+        .request_id = "req-1",
+        .trace_id = {},
+        .caller = {},
+        .action_id = "index.rebuild",
+        .metadata = {{"stage", "prepare"}},
+    };
+    axiom::task::TaskDescriptor complete{
+        .id = id,
+        .name = "work",
+        .state = axiom::task::TaskState::Pending,
+        .progress = {},
+        .error = std::nullopt,
+        .origin = axiom::task::TaskOrigin{.request_id = "req-2",
+                                          .trace_id = "trace-2",
+                                          .caller = "agent",
+                                          .action_id = "index.rebuild",
+                                          .metadata = {{"z", "last"}, {"a", "first"}}},
+    };
+
+    EXPECT_FALSE(unknown.origin.has_value());
+    auto partial_copy = partial;
+    partial_copy.metadata["stage"] = "mutated";
+    EXPECT_EQ(partial.metadata.at("stage"), "prepare");
+    auto complete_copy = complete;
+    ASSERT_TRUE(complete_copy.origin.has_value());
+    complete_copy.origin->metadata["a"] = "changed";
+    complete_copy.origin->request_id = "other";
+    ASSERT_TRUE(complete.origin.has_value());
+    EXPECT_EQ(complete.origin->request_id, "req-2");
+    EXPECT_EQ(complete.origin->metadata.at("a"), "first");
+    auto metadata = complete.origin->metadata.begin();
+    ASSERT_NE(metadata, complete.origin->metadata.end());
+    EXPECT_EQ(metadata->first, "a");
+    ++metadata;
+    ASSERT_NE(metadata, complete.origin->metadata.end());
+    EXPECT_EQ(metadata->first, "z");
+}
+
+TEST(ResourceDescriptor, ExposesOnlyIdentityAndType) {
+    const auto id = axiom::resource::ResourceId::parse("widget:1");
+    ASSERT_TRUE(id);
+    const axiom::resource::ResourceDescriptor descriptor{.id = id.value(), .type = "widget"};
+    EXPECT_EQ(descriptor.id.str(), "widget:1");
+    EXPECT_EQ(descriptor.type, "widget");
 }
 
 TEST(TypeDescriptor, ValidatesEveryScalarShape) {
@@ -494,7 +685,8 @@ TEST(ActionDescriptor, RejectsEmptyVersionAndAcceptsNullableDefaults) {
                                                 .parameters = {},
                                                 .return_type = integerType(),
                                                 .version = "",
-                                                .tags = {}};
+                                                .tags = {},
+                                                .metadata = {}};
     const axiom::ActionDescriptor nullable_default{
         .id = actionId("math.add"),
         .description = {},
@@ -510,7 +702,8 @@ TEST(ActionDescriptor, RejectsEmptyVersionAndAcceptsNullableDefaults) {
                         .default_value = axiom::Value{nullptr}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(empty_version));
     EXPECT_TRUE(axiom::validate(nullable_default));
@@ -527,7 +720,8 @@ TEST(ActionDescriptor, RejectsDefaultsWithIncompatibleContainerShapes) {
                         .default_value = axiom::Value{axiom::Value::Object{}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor object_default{
         .id = actionId("shape.object"),
         .description = {},
@@ -539,7 +733,8 @@ TEST(ActionDescriptor, RejectsDefaultsWithIncompatibleContainerShapes) {
                         .default_value = axiom::Value{axiom::Value::Array{}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(array_default));
     EXPECT_FALSE(axiom::validate(object_default));
@@ -558,7 +753,8 @@ TEST(ActionDescriptor, RejectsDefaultsThatDoNotMatchObjectMembers) {
                         .default_value = axiom::Value{axiom::Value::Object{}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor extra_member{
         .id = actionId("shape.extra"),
         .description = {},
@@ -571,7 +767,8 @@ TEST(ActionDescriptor, RejectsDefaultsThatDoNotMatchObjectMembers) {
                             {"other", axiom::Value{std::int64_t{2}}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(missing_member));
     EXPECT_FALSE(axiom::validate(extra_member));
@@ -588,7 +785,8 @@ TEST(ActionDescriptor, RejectsNullDefaultForNonNullableScalar) {
                         .default_value = axiom::Value{nullptr}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(descriptor));
 }
@@ -608,7 +806,8 @@ TEST(ActionDescriptor, ValidatesDefaultsForEveryScalarCategory) {
                         .default_value = axiom::Value{true}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor null_default{
         .id = actionId("shape.null_value"),
         .description = {},
@@ -623,7 +822,8 @@ TEST(ActionDescriptor, ValidatesDefaultsForEveryScalarCategory) {
                         .default_value = axiom::Value{nullptr}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor non_null_for_null_type{
         .id = actionId("shape.not_null"),
         .description = {},
@@ -638,7 +838,8 @@ TEST(ActionDescriptor, ValidatesDefaultsForEveryScalarCategory) {
                         .default_value = axiom::Value{std::int64_t{1}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor number_default{
         .id = actionId("shape.number"),
         .description = {},
@@ -653,7 +854,8 @@ TEST(ActionDescriptor, ValidatesDefaultsForEveryScalarCategory) {
                         .default_value = axiom::Value{1.5}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_TRUE(axiom::validate(boolean_default));
     EXPECT_TRUE(axiom::validate(null_default));
@@ -674,7 +876,8 @@ TEST(ActionDescriptor, ValidatesHomogeneousObjectDefaultsAndInvalidParameterType
                             {"first", axiom::Value{std::int64_t{1}}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor invalid_member{
         .id = actionId("shape.invalid_value"),
         .description = {},
@@ -686,7 +889,8 @@ TEST(ActionDescriptor, ValidatesHomogeneousObjectDefaultsAndInvalidParameterType
                             axiom::Value{axiom::Value::Object{{"first", axiom::Value{"one"}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const axiom::ActionDescriptor invalid_parameter_type{
         .id = actionId("shape.invalid_type"),
         .description = {},
@@ -700,7 +904,8 @@ TEST(ActionDescriptor, ValidatesHomogeneousObjectDefaultsAndInvalidParameterType
                         .default_value = {}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_TRUE(axiom::validate(valid_default));
     EXPECT_FALSE(axiom::validate(invalid_member));
@@ -723,7 +928,8 @@ TEST(ActionDescriptor, RejectsSameSizeObjectDefaultWithMissingNamedMember) {
                             {"other", axiom::Value{std::int64_t{2}}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
 
     EXPECT_FALSE(axiom::validate(descriptor));
 }
@@ -782,7 +988,8 @@ TEST(ActionDescriptor, RejectsEmptyParameterName) {
         .parameters = {{.name = "", .description = {}, .type = integerType(), .default_value = {}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const auto result = axiom::validate(descriptor);
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, axiom::ErrorCode::InvalidDescriptor);
@@ -802,7 +1009,8 @@ TEST(ActionDescriptor, AcceptsNullDefaultsForNullableContainers) {
                             .default_value = axiom::Value{nullptr}}},
             .return_type = integerType(),
             .version = {},
-            .tags = {}};
+            .tags = {},
+            .metadata = {}};
         EXPECT_TRUE(axiom::validate(descriptor));
     }
 }
@@ -821,7 +1029,8 @@ TEST(ActionDescriptor, RequiresNamedFieldsEvenWhenTheirValuesMayBeNull) {
                             axiom::Value{axiom::Value::Object{{"other", axiom::Value{nullptr}}}}}},
         .return_type = integerType(),
         .version = {},
-        .tags = {}};
+        .tags = {},
+        .metadata = {}};
     const auto result = axiom::validate(descriptor);
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, axiom::ErrorCode::InvalidDescriptor);

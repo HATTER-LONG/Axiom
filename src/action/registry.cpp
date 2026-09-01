@@ -134,6 +134,7 @@ template <typename RegisteredActions>
         .return_type = copyTypeDescriptor(source.return_type),
         .version = source.version,
         .tags = source.tags,
+        .metadata = source.metadata,
     };
 }
 
