@@ -4,6 +4,7 @@
 #include <axiom/logging/log_collector.hpp>
 #include <axiom/logging/log_filter.hpp>
 #include <axiom/logging/log_level.hpp>
+#include <axiom/logging/log_query.hpp>
 #include <axiom/logging/log_record.hpp>
 #include <axiom/logging/log_sink.hpp>
 #include <axiom/logging/logger.hpp>
@@ -44,6 +45,16 @@ using axiom::logging::LogFilter;
 using axiom::logging::LoggingService;
 using axiom::logging::LogLevel;
 using axiom::logging::LogRecord;
+
+[[nodiscard]] axiom::logging::LogQuery logQuery() {
+    return {.minimum_level = LogLevel::Trace,
+            .category_prefixes = {},
+            .request_id = {},
+            .trace_id = {},
+            .action_id = {},
+            .task_id = {},
+            .limit = 0};
+}
 
 template <typename T> [[nodiscard]] T transferOwnership(T& source) { return std::move(source); }
 
@@ -631,8 +642,11 @@ TEST(LogCollector, QueriesLatestMatchesInCollectionOrder) {
     collector.consume(record("second", LogLevel::Error, "runtime.action.child"));
     collector.consume(record("third", LogLevel::Critical, "runtime.action"));
 
-    const auto matching = collector.records(
-        {.minimum_level = LogLevel::Warning, .category_prefixes = {"runtime.action"}, .limit = 2});
+    auto matching_query = logQuery();
+    matching_query.minimum_level = LogLevel::Warning;
+    matching_query.category_prefixes = {"runtime.action"};
+    matching_query.limit = 2;
+    const auto matching = collector.records(matching_query);
 
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "second");
@@ -645,7 +659,10 @@ TEST(LogCollector, FiltersWholeCategorySegmentsAndKeepsAnOversizedLimit) {
     collector.consume(record("child", LogLevel::Info, "runtime.action.child"));
     collector.consume(record("similar", LogLevel::Info, "runtime.actions"));
 
-    const auto matching = collector.records({.category_prefixes = {"runtime.action"}, .limit = 4});
+    auto matching_query = logQuery();
+    matching_query.category_prefixes = {"runtime.action"};
+    matching_query.limit = 4;
+    const auto matching = collector.records(matching_query);
 
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "exact");
@@ -657,7 +674,9 @@ TEST(LogCollector, PreservesEveryMatchWhenTheLimitEqualsTheMatchCount) {
     collector.consume(record("first", LogLevel::Info, "runtime"));
     collector.consume(record("second", LogLevel::Info, "runtime"));
 
-    const auto matching = collector.records({.category_prefixes = {}, .limit = 2});
+    auto matching_query = logQuery();
+    matching_query.limit = 2;
+    const auto matching = collector.records(matching_query);
 
     ASSERT_EQ(matching.size(), 2U);
     EXPECT_EQ(matching.at(0).message, "first");
@@ -707,10 +726,70 @@ TEST(LogCollector, EmptyCategoryPrefixMatchesEveryCategory) {
     LogCollector collector;
     collector.consume(record("empty", LogLevel::Info, ""));
     collector.consume(record("child", LogLevel::Info, "runtime.action"));
-    const auto all = collector.query({.category_prefixes = {""}});
+    auto empty_prefix = logQuery();
+    empty_prefix.category_prefixes = {""};
+    const auto all = collector.query(empty_prefix);
     ASSERT_EQ(all.size(), 2U);
     EXPECT_EQ(all[0].message, "empty");
     EXPECT_EQ(all[1].message, "child");
+}
+
+TEST(LogCollector, FiltersCorrelationFieldsWithExactAndSemantics) {
+    LogCollector collector;
+    auto first = record("first");
+    first.fields = {{"request_id", Value{"req-1"}},
+                    {"trace_id", Value{"trace-1"}},
+                    {"action", Value{"index.rebuild"}},
+                    {"task_id", Value{"task:1"}}};
+    auto second = record("second");
+    second.fields = {{"request_id", Value{"req-1"}},
+                     {"trace_id", Value{"trace-2"}},
+                     {"action", Value{"index.rebuild"}},
+                     {"task_id", Value{"task:2"}}};
+    auto missing = record("missing");
+    missing.fields = {{"trace_id", Value{"trace-1"}}};
+    auto wrong_type = record("typed");
+    wrong_type.fields = {{"request_id", Value{std::int64_t{1}}}};
+    collector.consume(first);
+    collector.consume(second);
+    collector.consume(missing);
+    collector.consume(wrong_type);
+
+    auto by_request_query = logQuery();
+    by_request_query.request_id = "req-1";
+    const auto by_request = collector.query(by_request_query);
+    ASSERT_EQ(by_request.size(), 2U);
+    EXPECT_EQ(by_request[0].message, "first");
+    EXPECT_EQ(by_request[1].message, "second");
+    auto by_task_query = logQuery();
+    by_task_query.request_id = "req-1";
+    by_task_query.task_id = "task:2";
+    const auto by_task = collector.query(by_task_query);
+    ASSERT_EQ(by_task.size(), 1U);
+    EXPECT_EQ(by_task[0].message, "second");
+    auto by_action_query = logQuery();
+    by_action_query.action_id = "index.rebuild";
+    const auto by_action = collector.query(by_action_query);
+    ASSERT_EQ(by_action.size(), 2U);
+    auto combined_query = logQuery();
+    combined_query.request_id = "req-1";
+    combined_query.trace_id = "trace-1";
+    combined_query.action_id = "index.rebuild";
+    combined_query.task_id = "task:1";
+    EXPECT_EQ(collector.query(combined_query).size(), 1U);
+    auto missing_query = logQuery();
+    missing_query.request_id = "missing";
+    EXPECT_TRUE(collector.query(missing_query).empty());
+    auto mismatch_query = logQuery();
+    mismatch_query.action_id = "index.rebuild";
+    mismatch_query.task_id = "task:9";
+    EXPECT_TRUE(collector.query(mismatch_query).empty());
+    auto newest_query = logQuery();
+    newest_query.request_id = "req-1";
+    newest_query.limit = 1;
+    const auto newest = collector.query(newest_query);
+    ASSERT_EQ(newest.size(), 1U);
+    EXPECT_EQ(newest.front().message, "second");
 }
 
 TEST(Logger, RemovesAnOuterContextWithoutRemovingTheLiveInnerContext) {

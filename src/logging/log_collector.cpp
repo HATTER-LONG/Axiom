@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,12 +23,28 @@ namespace {
            (category.starts_with(prefix) && category[prefix.size()] == '.');
 }
 
-[[nodiscard]] bool matches(const LogRecord& record, const LogQuery& log_query) noexcept {
+[[nodiscard]] bool matchesExactField(const LogRecord& record,
+                                     const std::string_view key,
+                                     const std::optional<std::string>& expected) {
+    if(!expected.has_value()) {
+        return true;
+    }
+    const auto found = record.fields.find(key);
+    return found != record.fields.end() && found->second.isString() &&
+           found->second.asString() == *expected;
+}
+
+[[nodiscard]] bool matches(const LogRecord& record, const LogQuery& log_query) {
     return isAtLeast(record.level, log_query.minimum_level) &&
            (log_query.category_prefixes.empty() ||
-            std::ranges::any_of(log_query.category_prefixes, [&record](const std::string& prefix) {
-                return matchesPrefix(record.category, prefix);
-            }));
+            std::ranges::any_of(log_query.category_prefixes,
+                                [&record](const std::string& prefix) {
+                                    return matchesPrefix(record.category, prefix);
+                                })) &&
+           matchesExactField(record, "request_id", log_query.request_id) &&
+           matchesExactField(record, "trace_id", log_query.trace_id) &&
+           matchesExactField(record, "action", log_query.action_id) &&
+           matchesExactField(record, "task_id", log_query.task_id);
 }
 
 } // namespace

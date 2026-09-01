@@ -104,9 +104,9 @@ public:
      * @note Origin is immutable for this Task. Retries and derived Tasks do not inherit it.
      */
     template <typename F>
-    [[nodiscard]] auto submit(async::Executor& executor, TaskSubmission submission, F&& function)
-        -> Result<
-            TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>>;
+    [[nodiscard]] auto
+    submit(async::Executor& executor, TaskSubmission submission, F&& function) -> Result<
+        TaskHandle<detail::TaskResultValueT<std::invoke_result_t<std::decay_t<F>, TaskContext&>>>>;
 
     /** @brief Returns one consistent descriptor, or NotFound. */
     [[nodiscard]] Result<TaskDescriptor> describe(const TaskId& id) const;

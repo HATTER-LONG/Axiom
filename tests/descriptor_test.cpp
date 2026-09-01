@@ -4,6 +4,7 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/resource/resource_descriptor.hpp>
+#include <axiom/resource/resource_id.hpp>
 #include <axiom/task/task_id.hpp>
 #include <axiom/task/task_types.hpp>
 
@@ -388,6 +389,9 @@ TEST(ModuleDescriptor, ValidatesNamespaceAndMetadataBeforeRegistration) {
     };
     const axiom::ModuleDescriptor invalid{
         .namespace_name = "math-tools",
+        .description = {},
+        .version = {},
+        .tags = {},
         .metadata = {{"display name", "Mathematics"}},
     };
 
@@ -404,25 +408,37 @@ TEST(ModuleDescriptor, ValidatesNamespaceAndMetadataBeforeRegistration) {
 TEST(ModuleDescriptor, RejectsEmptyVersionEmptyOrDuplicateTagsAndEmptyMetadataKeys) {
     const axiom::ModuleDescriptor empty_version{
         .namespace_name = "math",
+        .description = {},
         .version = "",
+        .tags = {},
         .metadata = {},
     };
     const axiom::ModuleDescriptor empty_tag{
         .namespace_name = "math",
+        .description = {},
+        .version = {},
         .tags = {""},
         .metadata = {},
     };
     const axiom::ModuleDescriptor duplicate_tags{
         .namespace_name = "math",
+        .description = {},
+        .version = {},
         .tags = {"math", "math"},
         .metadata = {},
     };
     const axiom::ModuleDescriptor empty_metadata_key{
         .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {},
         .metadata = {{"", "value"}},
     };
     const axiom::ModuleDescriptor empty_metadata_value{
         .namespace_name = "math",
+        .description = {},
+        .version = {},
+        .tags = {},
         .metadata = {{"note", ""}},
     };
 

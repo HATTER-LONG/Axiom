@@ -3,6 +3,8 @@
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
 #include <axiom/logging/log_collector.hpp>
+#include <axiom/logging/log_level.hpp>
+#include <axiom/logging/log_query.hpp>
 #include <axiom/logging/log_record.hpp>
 #include <axiom/logging/logger.hpp>
 #include <axiom/logging/logging_service.hpp>
@@ -15,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <functional>
@@ -106,7 +109,8 @@ template <typename T> [[nodiscard]] const T* peekOptional(const std::optional<T>
             .metadata = {{"tenant", "alpha"}, {"status", "from_caller"}, {"task_name", "spoofed"}}};
 }
 
-[[nodiscard]] bool originMatches(const std::optional<TaskOrigin>& seen, const TaskOrigin& expected) {
+[[nodiscard]] bool originMatches(const std::optional<TaskOrigin>& seen,
+                                 const TaskOrigin& expected) {
     return seen.has_value() && seen->request_id == expected.request_id &&
            seen->trace_id == expected.trace_id && seen->caller == expected.caller &&
            seen->action_id == expected.action_id && seen->metadata == expected.metadata;
@@ -114,12 +118,9 @@ template <typename T> [[nodiscard]] const T* peekOptional(const std::optional<T>
 
 [[nodiscard]] const axiom::logging::LogRecord*
 findLog(const std::vector<axiom::logging::LogRecord>& records, std::string_view message) {
-    for(const auto& record : records) {
-        if(record.message == message) {
-            return &record;
-        }
-    }
-    return nullptr;
+    const auto found = std::ranges::find_if(
+        records, [&message](const auto& record) { return record.message == message; });
+    return found == records.end() ? nullptr : &*found;
 }
 
 [[nodiscard]] bool isRunningThenCompleted(const std::vector<TaskState>& observed) {
@@ -605,8 +606,15 @@ TEST(TaskRegistry, NameSubmitLeavesOriginUnknown) {
     EXPECT_FALSE(described.value().origin.has_value());
     release.set_value();
     executor.close();
-    EXPECT_FALSE(submitted.value().result()->hasError());
-    EXPECT_FALSE(tasks.describe(submitted.value().id()).value().origin.has_value());
+    const auto finished = submitted.value().result();
+    ASSERT_TRUE(finished.has_value());
+    if(!finished.has_value()) {
+        return;
+    }
+    EXPECT_FALSE(finished->hasError());
+    const auto after = tasks.describe(submitted.value().id());
+    ASSERT_TRUE(after);
+    EXPECT_FALSE(after.value().origin.has_value());
 }
 
 TEST(TaskRegistry, EmptyOriginSubmissionIsStoredAsUnknown) {
@@ -638,12 +646,12 @@ TEST(TaskRegistry, OriginMetadataCannotPlantReservedCorrelationKeys) {
                                    {"task_id", "spoofed-task"},
                                    {"task_name", "spoofed-name"},
                                    {"keep", "yes"}}};
-    const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "partial", .origin = origin},
-        [&logging](const TaskContext&) {
-            AXIOM_LOG_INFO(logging.logger("business"), "partial origin");
-            return Result<void>::success();
-        });
+    const auto submitted =
+        tasks.submit(executor, TaskSubmission{.name = "partial", .origin = origin},
+                     [&logging](const TaskContext&) {
+                         AXIOM_LOG_INFO(logging.logger("business"), "partial origin");
+                         return Result<void>::success();
+                     });
     ASSERT_TRUE(submitted);
     executor.close();
     const auto records = collector->records();
@@ -655,7 +663,15 @@ TEST(TaskRegistry, OriginMetadataCannotPlantReservedCorrelationKeys) {
     EXPECT_EQ(business->fields.at("keep").asString(), "yes");
     EXPECT_EQ(business->fields.at("task_id").asString(), submitted.value().id().str());
     EXPECT_EQ(business->fields.at("task_name").asString(), "partial");
-    EXPECT_TRUE(collector->query({.request_id = "spoofed-request"}).empty());
+    EXPECT_TRUE(collector
+                    ->query({.minimum_level = axiom::logging::LogLevel::Trace,
+                             .category_prefixes = {},
+                             .request_id = "spoofed-request",
+                             .trace_id = {},
+                             .action_id = {},
+                             .task_id = {},
+                             .limit = 0})
+                    .empty());
     static_cast<void>(sink);
 }
 
@@ -690,8 +706,7 @@ TEST(TaskRegistry, OriginIsImmutableFromPendingThroughTerminalNotifications) {
     std::promise<void> running;
     std::promise<void> release;
     const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "rebuild", .origin = origin},
-        [&](TaskContext& context) {
+        executor, TaskSubmission{.name = "rebuild", .origin = origin}, [&](TaskContext& context) {
             running.set_value();
             context.reportProgress(0.5, "half");
             release.get_future().wait();
@@ -722,15 +737,15 @@ TEST(TaskRegistry, OriginCopiesAreIndependentAcrossDescribeListAndHandle) {
     Executor executor{1};
     TaskRegistry tasks;
     auto origin = sampleOrigin();
-    const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "owned", .origin = origin},
-        [](const TaskContext&) { return Result<void>::success(); });
+    const auto submitted = tasks.submit(executor, TaskSubmission{.name = "owned", .origin = origin},
+                                        [](const TaskContext&) { return Result<void>::success(); });
     ASSERT_TRUE(submitted);
     executor.close();
 
     auto described = tasks.describe(submitted.value().id());
     ASSERT_TRUE(described);
     ASSERT_TRUE(described.value().origin);
+    // NOLINTBEGIN(bugprone-unchecked-optional-access): ASSERT_TRUE already checked origin.
     described.value().origin->request_id = "mutated";
     described.value().origin->metadata["tenant"] = "mutated";
     const auto listed = tasks.list();
@@ -738,8 +753,10 @@ TEST(TaskRegistry, OriginCopiesAreIndependentAcrossDescribeListAndHandle) {
     EXPECT_TRUE(originMatches(listed.front().origin, origin));
     auto listed_copy = listed.front();
     listed_copy.origin->caller = "mutated";
+    // NOLINTEND(bugprone-unchecked-optional-access)
     EXPECT_TRUE(originMatches(tasks.describe(submitted.value().id()).value().origin, origin));
-    EXPECT_EQ(submitted.value().id().str(), tasks.describe(submitted.value().id()).value().id.str());
+    EXPECT_EQ(submitted.value().id().str(),
+              tasks.describe(submitted.value().id()).value().id.str());
 }
 
 TEST(TaskRegistry, NestedSubmitDoesNotInheritOrigin) {
@@ -763,9 +780,9 @@ TEST(TaskRegistry, NestedSubmitDoesNotInheritOrigin) {
                                     .caller = {},
                                     .action_id = {},
                                     .metadata = {}};
-            const auto explicit_child = tasks.submit(
-                executor, TaskSubmission{.name = "retry", .origin = retry_origin},
-                [](const TaskContext&) { return Result<void>::success(); });
+            const auto explicit_child =
+                tasks.submit(executor, TaskSubmission{.name = "retry", .origin = retry_origin},
+                             [](const TaskContext&) { return Result<void>::success(); });
             EXPECT_TRUE(explicit_child);
             if(explicit_child) {
                 explicit_id = explicit_child.value().id();
@@ -780,8 +797,11 @@ TEST(TaskRegistry, NestedSubmitDoesNotInheritOrigin) {
     ASSERT_TRUE(explicit_id);
     EXPECT_TRUE(originMatches(tasks.describe(parent.value().id()).value().origin, parent_origin));
     EXPECT_FALSE(tasks.describe(*child_id).value().origin.has_value());
-    ASSERT_TRUE(tasks.describe(*explicit_id).value().origin);
-    EXPECT_EQ(tasks.describe(*explicit_id).value().origin->request_id, "retry");
+    const auto explicit_described = tasks.describe(*explicit_id);
+    ASSERT_TRUE(explicit_described);
+    ASSERT_TRUE(explicit_described.value().origin.has_value());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access): ASSERT_TRUE checked origin.
+    EXPECT_EQ(explicit_described.value().origin->request_id, "retry");
 }
 
 TEST(TaskRegistry, OriginFieldsBindTaskAndBusinessLogs) {
@@ -791,11 +811,12 @@ TEST(TaskRegistry, OriginFieldsBindTaskAndBusinessLogs) {
     Executor executor{1};
     TaskRegistry tasks{logging.logger("root")};
     const auto origin = sampleOrigin();
-    const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "rebuild", .origin = origin}, [&logging](const TaskContext&) {
-            AXIOM_LOG_INFO(logging.logger("business"), "business work");
-            return Result<void>::success();
-        });
+    const auto submitted =
+        tasks.submit(executor, TaskSubmission{.name = "rebuild", .origin = origin},
+                     [&logging](const TaskContext&) {
+                         AXIOM_LOG_INFO(logging.logger("business"), "business work");
+                         return Result<void>::success();
+                     });
     ASSERT_TRUE(submitted);
     executor.close();
     const auto records = collector->records();
@@ -818,76 +839,102 @@ TEST(TaskRegistry, OriginFieldsBindTaskAndBusinessLogs) {
     static_cast<void>(sink);
 }
 
+TEST(TaskRegistry, LogQuerySelectsSharedRequestAndSingleTask) {
+    axiom::logging::LoggingService logging;
+    auto collector = std::make_shared<axiom::logging::LogCollector>();
+    auto sink = logging.addSink(collector);
+    Executor executor{2};
+    TaskRegistry tasks{logging.logger("root")};
+    const auto first =
+        tasks.submit(executor, TaskSubmission{.name = "one", .origin = sampleOrigin()},
+                     [&logging](const TaskContext&) {
+                         AXIOM_LOG_INFO(logging.logger("business"), "one work");
+                         return Result<void>::success();
+                     });
+    auto second_origin = sampleOrigin();
+    second_origin.action_id = "index.other";
+    const auto second =
+        tasks.submit(executor, TaskSubmission{.name = "two", .origin = second_origin},
+                     [&logging](const TaskContext&) {
+                         AXIOM_LOG_INFO(logging.logger("business"), "two work");
+                         return Result<void>::success();
+                     });
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    executor.close();
+    auto shared_query = axiom::logging::LogQuery{.minimum_level = axiom::logging::LogLevel::Trace,
+                                                 .category_prefixes = {},
+                                                 .request_id = "req-7",
+                                                 .trace_id = {},
+                                                 .action_id = {},
+                                                 .task_id = {},
+                                                 .limit = 0};
+    const auto shared = collector->query(shared_query);
+    ASSERT_GE(shared.size(), 2U);
+    auto first_query = shared_query;
+    first_query.task_id = std::string{first.value().id().str()};
+    const auto first_only = collector->query(first_query);
+    ASSERT_FALSE(first_only.empty());
+    for(const auto& record : first_only) {
+        EXPECT_EQ(record.fields.at("task_id").asString(), first.value().id().str());
+        EXPECT_EQ(record.fields.at("request_id").asString(), "req-7");
+    }
+    static_cast<void>(sink);
+}
+
+struct LoggedTaskWork {
+    std::string name;
+    TaskOrigin origin;
+    std::string message;
+};
+
+[[nodiscard]] Result<TaskHandle<void>> submitLoggedWork(TaskRegistry& tasks,
+                                                        Executor& executor,
+                                                        axiom::logging::LoggingService& logging,
+                                                        LoggedTaskWork work) {
+    return tasks.submit(
+        executor, TaskSubmission{.name = std::move(work.name), .origin = std::move(work.origin)},
+        [&logging, message = std::move(work.message)](const TaskContext&) {
+            AXIOM_LOG_INFO(logging.logger("business"), "{}", message);
+            return Result<void>::success();
+        });
+}
+
+[[nodiscard]] TaskOrigin unnamedActionOrigin(std::string action_id) {
+    return {.request_id = {},
+            .trace_id = {},
+            .caller = {},
+            .action_id = std::move(action_id),
+            .metadata = {}};
+}
+
 TEST(TaskRegistry, NonCanonicalActionIdDoesNotGuessModule) {
     axiom::logging::LoggingService logging;
     auto collector = std::make_shared<axiom::logging::LogCollector>();
     auto sink = logging.addSink(collector);
     Executor executor{1};
     TaskRegistry tasks{logging.logger("root")};
-    TaskOrigin origin{.request_id = {},
-                      .trace_id = {},
-                      .caller = {},
-                      .action_id = "Not.Canonical",
-                      .metadata = {}};
-    const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "odd", .origin = origin}, [&logging](const TaskContext&) {
-            AXIOM_LOG_INFO(logging.logger("business"), "odd work");
-            return Result<void>::success();
-        });
-    ASSERT_TRUE(submitted);
-    const auto submit_logged = [&](std::string name, TaskOrigin next_origin, std::string message) {
-        return tasks.submit(executor, TaskSubmission{.name = std::move(name), .origin = std::move(next_origin)},
-                            [&logging, message](const TaskContext&) {
-                                AXIOM_LOG_INFO(logging.logger("business"), "{}", message);
-                                return Result<void>::success();
-                            });
-    };
-    ASSERT_TRUE(submit_logged("reserved",
-                              {.request_id = "req",
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = "mod_1.act_2",
-                               .metadata = {{"module", "spoofed"},
-                                            {"action", "spoofed"},
-                                            {"duration_ms", "9"},
-                                            {"status", "spoofed"},
-                                            {"keep", "yes"}}},
-                              "reserved work"));
-    ASSERT_TRUE(submit_logged("no-dot",
-                              {.request_id = {},
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = "plainaction",
-                               .metadata = {}},
-                              "no-dot work"));
-    ASSERT_TRUE(submit_logged("multi",
-                              {.request_id = {},
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = "a.b.c",
-                               .metadata = {}},
-                              "multi work"));
-    ASSERT_TRUE(submit_logged("leading",
-                              {.request_id = {},
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = ".action",
-                               .metadata = {}},
-                              "leading work"));
-    ASSERT_TRUE(submit_logged("trailing",
-                              {.request_id = {},
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = "module.",
-                               .metadata = {}},
-                              "trailing work"));
-    ASSERT_TRUE(submit_logged("bad-local",
-                              {.request_id = {},
-                               .trace_id = {},
-                               .caller = {},
-                               .action_id = "index.Notvalid",
-                               .metadata = {}},
-                              "bad-local work"));
+    ASSERT_TRUE(submitLoggedWork(
+        tasks, executor, logging,
+        {.name = "odd", .origin = unnamedActionOrigin("Not.Canonical"), .message = "odd work"}));
+    ASSERT_TRUE(submitLoggedWork(tasks, executor, logging,
+                                 {.name = "no-dot",
+                                  .origin = unnamedActionOrigin("plainaction"),
+                                  .message = "no-dot work"}));
+    ASSERT_TRUE(submitLoggedWork(
+        tasks, executor, logging,
+        {.name = "multi", .origin = unnamedActionOrigin("a.b.c"), .message = "multi work"}));
+    ASSERT_TRUE(submitLoggedWork(
+        tasks, executor, logging,
+        {.name = "leading", .origin = unnamedActionOrigin(".action"), .message = "leading work"}));
+    ASSERT_TRUE(submitLoggedWork(tasks, executor, logging,
+                                 {.name = "trailing",
+                                  .origin = unnamedActionOrigin("module."),
+                                  .message = "trailing work"}));
+    ASSERT_TRUE(submitLoggedWork(tasks, executor, logging,
+                                 {.name = "bad-local",
+                                  .origin = unnamedActionOrigin("index.Notvalid"),
+                                  .message = "bad-local work"}));
     executor.close();
     const auto more = collector->records();
     const auto* business = findLog(more, "odd work");
@@ -895,6 +942,39 @@ TEST(TaskRegistry, NonCanonicalActionIdDoesNotGuessModule) {
     EXPECT_EQ(business->fields.at("action").asString(), "Not.Canonical");
     EXPECT_FALSE(business->fields.contains("module"));
     EXPECT_FALSE(business->fields.contains("request_id"));
+    for(const auto* record :
+        {findLog(more, "no-dot work"), findLog(more, "multi work"), findLog(more, "leading work"),
+         findLog(more, "trailing work"), findLog(more, "bad-local work")}) {
+        ASSERT_NE(record, nullptr);
+        EXPECT_TRUE(record->fields.contains("action"));
+        EXPECT_FALSE(record->fields.contains("module"));
+    }
+    static_cast<void>(sink);
+}
+
+TEST(TaskRegistry, ReservedOriginMetadataCannotOverrideRuntimeLogFields) {
+    axiom::logging::LoggingService logging;
+    auto collector = std::make_shared<axiom::logging::LogCollector>();
+    auto sink = logging.addSink(collector);
+    Executor executor{1};
+    TaskRegistry tasks{logging.logger("root")};
+    ASSERT_TRUE(tasks.submit(executor,
+                             TaskSubmission{.name = "reserved",
+                                            .origin = TaskOrigin{.request_id = "req",
+                                                                 .trace_id = {},
+                                                                 .caller = {},
+                                                                 .action_id = "mod_1.act_2",
+                                                                 .metadata = {{"module", "spoofed"},
+                                                                              {"action", "spoofed"},
+                                                                              {"duration_ms", "9"},
+                                                                              {"status", "spoofed"},
+                                                                              {"keep", "yes"}}}},
+                             [&logging](const TaskContext&) {
+                                 AXIOM_LOG_INFO(logging.logger("business"), "reserved work");
+                                 return Result<void>::success();
+                             }));
+    executor.close();
+    const auto more = collector->records();
     const auto* reserved = findLog(more, "reserved work");
     ASSERT_NE(reserved, nullptr);
     EXPECT_EQ(reserved->fields.at("action").asString(), "mod_1.act_2");
@@ -902,13 +982,6 @@ TEST(TaskRegistry, NonCanonicalActionIdDoesNotGuessModule) {
     EXPECT_EQ(reserved->fields.at("keep").asString(), "yes");
     EXPECT_FALSE(reserved->fields.contains("status"));
     EXPECT_FALSE(reserved->fields.contains("duration_ms"));
-    for(const auto* record : {findLog(more, "no-dot work"), findLog(more, "multi work"),
-                              findLog(more, "leading work"), findLog(more, "trailing work"),
-                              findLog(more, "bad-local work")}) {
-        ASSERT_NE(record, nullptr);
-        EXPECT_TRUE(record->fields.contains("action"));
-        EXPECT_FALSE(record->fields.contains("module"));
-    }
     static_cast<void>(sink);
 }
 
@@ -918,11 +991,8 @@ TEST(TaskRegistry, SharedRequestIdAppearsOnEachTaskLog) {
     auto sink = logging.addSink(collector);
     Executor executor{1};
     TaskRegistry tasks{logging.logger("root")};
-    TaskOrigin shared{.request_id = "shared",
-                      .trace_id = {},
-                      .caller = {},
-                      .action_id = {},
-                      .metadata = {}};
+    TaskOrigin shared{
+        .request_id = "shared", .trace_id = {}, .caller = {}, .action_id = {}, .metadata = {}};
     const auto first = tasks.submit(executor, TaskSubmission{.name = "one", .origin = shared},
                                     [&logging](const TaskContext&) {
                                         AXIOM_LOG_INFO(logging.logger("business"), "first");
@@ -963,12 +1033,11 @@ TEST(TaskRegistry, TaskLogsOverrideCreatingThreadLeftoverIdentity) {
     });
     ASSERT_TRUE(blocker);
     running.get_future().wait();
-    auto leftover = logging.logger("root").scopedContext(
-        {{"task_id", Value{"leftover-id"}},
-         {"task_name", Value{"leftover-name"}},
-         {"status", Value{"leftover-status"}}});
-    const auto pending = tasks.submit(
-        executor, "fresh", [](const TaskContext&) { return Result<void>::success(); });
+    auto leftover = logging.logger("root").scopedContext({{"task_id", Value{"leftover-id"}},
+                                                          {"task_name", Value{"leftover-name"}},
+                                                          {"status", Value{"leftover-status"}}});
+    const auto pending =
+        tasks.submit(executor, "fresh", [](const TaskContext&) { return Result<void>::success(); });
     ASSERT_TRUE(pending);
     EXPECT_TRUE(tasks.cancel(pending.value().id()));
     leftover = {};
@@ -983,6 +1052,7 @@ TEST(TaskRegistry, TaskLogsOverrideCreatingThreadLeftoverIdentity) {
     static_cast<void>(sink);
 }
 
+// NOLINTNEXTLINE(readability-function-size): AXIOM_LOG expansion inflates lambda nesting.
 TEST(TaskRegistry, LogContextDoesNotPropagateToTaskCreatedThreads) {
     axiom::logging::LoggingService logging;
     auto collector = std::make_shared<axiom::logging::LogCollector>();
@@ -991,16 +1061,16 @@ TEST(TaskRegistry, LogContextDoesNotPropagateToTaskCreatedThreads) {
     TaskRegistry tasks{logging.logger("root")};
     const auto origin = sampleOrigin();
     std::promise<void> child_done;
-    const auto submitted = tasks.submit(
-        executor, TaskSubmission{.name = "spawn", .origin = origin},
-        [&logging, &child_done](const TaskContext&) {
-            std::thread child{[&logging, &child_done] {
-                AXIOM_LOG_INFO(logging.logger("spawned"), "child work");
-                child_done.set_value();
-            }};
-            child.join();
-            return Result<void>::success();
-        });
+    const auto submitted =
+        tasks.submit(executor, TaskSubmission{.name = "spawn", .origin = origin},
+                     [&logging, &child_done](const TaskContext&) {
+                         std::thread child{[&logging, &child_done] {
+                             AXIOM_LOG_INFO(logging.logger("spawned"), "child work");
+                             child_done.set_value();
+                         }};
+                         child.join();
+                         return Result<void>::success();
+                     });
     ASSERT_TRUE(submitted);
     child_done.get_future().wait();
     executor.close();
@@ -1097,10 +1167,17 @@ struct NestedControlResult final {
     auto sink = logging.addSink(collector);
     auto hub = std::make_shared<axiom::task::detail::NotificationHub>(logging.logger("notify"));
     auto control = std::make_shared<axiom::task::detail::TaskControl>(
-        TaskId::parse("task:100000").value(), "nested", hub, logging.logger("task"), [] {
-            return std::make_shared<const Result<int>>(
-                Result<int>::failure(cancelledError("cancelled")));
-        });
+        axiom::task::detail::TaskControl::Construction{
+            .id = TaskId::parse("task:100000").value(),
+            .name = "nested",
+            .notifications = hub,
+            .logger = logging.logger("task"),
+            .cancelled_result =
+                [] {
+                    return std::make_shared<const Result<int>>(
+                        Result<int>::failure(cancelledError("cancelled")));
+                },
+            .origin = std::nullopt});
     auto subscription = hub->connect([&](const auto& descriptor) {
         if(descriptor.state == TaskState::Running && descriptor.progress.value == 0.0) {
             control->reportProgress(0.5, "nested");

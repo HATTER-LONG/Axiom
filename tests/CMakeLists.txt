@@ -35,7 +35,7 @@ if (AXIOM_SANITIZERS)
     list(APPEND discovery_options DISCOVERY_MODE PRE_TEST)
 endif ()
 if (AXIOM_COVERAGE)
-    list(APPEND discovery_options PROPERTIES ENVIRONMENT "LLVM_PROFILE_FILE=axiom-%p-%m.profraw")
+    list(APPEND discovery_options PROPERTIES ENVIRONMENT "LLVM_PROFILE_FILE=axiom-%4m.profraw")
 endif ()
 gtest_discover_tests(axiom_test ${discovery_options})
 

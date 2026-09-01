@@ -6,14 +6,11 @@
 #include <axiom/action/module.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
-#include <axiom/foundation/type_descriptor.hpp>
 
 #include <algorithm>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,27 +31,24 @@ ModuleBuilder::~ModuleBuilder() noexcept = default;
 ModuleBuilder::ModuleBuilder(ModuleBuilder&&) noexcept = default;
 ModuleBuilder& ModuleBuilder::operator=(ModuleBuilder&&) noexcept = default;
 
-Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
-                                              std::string description,
-                                              std::unique_ptr<detail::IAction> implementation,
-                                              std::vector<ParameterDescriptor> parameters,
-                                              const TypeDescriptor& return_type) {
+Result<void> ModuleBuilder::addPreparedAction(PreparedAction prepared) {
     if(!state_) {
         return Result<void>::failure(builderError(
             ErrorCode::InvalidArgument, "ModuleBuilder is empty or has already been registered"));
     }
-    const std::string full_id = state_->descriptor.namespace_name + "." + std::string{action_name};
+    const std::string full_id =
+        state_->descriptor.namespace_name + "." + std::string{prepared.action_name};
     auto id = ActionId::parse(full_id);
     if(!id) {
         return Result<void>::failure(id.error());
     }
     auto descriptor = std::make_unique<ActionDescriptor>(ActionDescriptor{
         .id = std::move(id.value()),
-        .description = std::move(description),
-        .parameters = std::move(parameters),
-        .return_type = return_type,
+        .description = std::move(prepared.description),
+        .parameters = std::move(prepared.parameters),
+        .return_type = prepared.return_type,
         .version = std::nullopt,
-        .tags = {},
+        .tags = std::move(prepared.tags),
         .metadata = {},
     });
     auto validation = validate(*descriptor);
@@ -69,8 +63,8 @@ Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
             builderError(ErrorCode::AlreadyExists,
                          "Action is already pending: " + std::string{descriptor->id.str()}));
     }
-    implementation->bindActionId(descriptor->id);
-    state_->actions.emplace_back(std::move(descriptor), std::move(implementation));
+    prepared.implementation->bindActionId(descriptor->id);
+    state_->actions.emplace_back(std::move(descriptor), std::move(prepared.implementation));
     return Result<void>::success();
 }
 

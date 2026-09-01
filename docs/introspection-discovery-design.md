@@ -86,11 +86,11 @@ introspection -> action / resource / task
 ### 3.1 MVP 包含
 
 - 列出 Module 和 Action；
-- 按 Module 过滤 Action；
+- 按 Module 过滤 Action，以及按 `ActionQuery`/`ResourceQuery`/`TaskQuery` 组合筛选；
 - 按 ID 描述 Action；
 - 列出 Resource，按逻辑类型过滤 Resource，按 ID 描述 Resource；
-- 列出 Task，按 ID 描述 Task；
-- 生成包含以上四类值的 `RuntimeSnapshot`；
+- 列出 Task，按 ID 描述 Task，并按 state/origin 筛选；
+- 生成包含以上四类值的 `RuntimeSnapshot`（不接受 Query）；
 - 确定性排序、明确的 NotFound 错误和并发读取契约。
 
 ### 3.2 MVP 不包含
@@ -98,6 +98,7 @@ introspection -> action / resource / task
 - 注册 Module/Action、创建或解析 Resource、提交/取消/移除 Task；
 - JSON、Python、MCP、Qt、HTTP 或其他序列化/绑定接口；
 - 查询语言、全文搜索、权限、缓存、历史状态或远程 Discovery；
+  （强类型 Query 值除外：仅公开字段上的精确 AND/all-of 匹配）
 - 日志聚合、Task 类型化结果、Resource 内容读取；
 - 事件订阅或将 snapshot 与 events 自动拼接；
 - 跨 Action、Resource、Task 的全局事务或线性一致性。
@@ -107,7 +108,7 @@ introspection -> action / resource / task
 新增头文件建议为：
 
 ```text
-include/axiom/introspection/resource_descriptor.hpp
+include/axiom/introspection/introspection_query.hpp
 include/axiom/introspection/runtime_snapshot.hpp
 include/axiom/introspection/introspection_service.hpp
 ```
@@ -170,15 +171,19 @@ public:
     [[nodiscard]] std::vector<ActionDescriptor> actions() const;
     [[nodiscard]] std::vector<ActionDescriptor>
     actions(std::string_view module_namespace) const;
+    [[nodiscard]] std::vector<ActionDescriptor> actions(const ActionQuery& query) const;
     [[nodiscard]] Result<ActionDescriptor> describeAction(const ActionId& id) const;
 
     [[nodiscard]] std::vector<resource::ResourceDescriptor> resources() const;
     [[nodiscard]] Result<std::vector<resource::ResourceDescriptor>>
     resources(std::string_view type) const;
+    [[nodiscard]] Result<std::vector<resource::ResourceDescriptor>>
+    resources(const ResourceQuery& query) const;
     [[nodiscard]] Result<resource::ResourceDescriptor>
     describeResource(const resource::ResourceId& id) const;
 
     [[nodiscard]] std::vector<task::TaskDescriptor> tasks() const;
+    [[nodiscard]] std::vector<task::TaskDescriptor> tasks(const TaskQuery& query) const;
     [[nodiscard]] Result<task::TaskDescriptor>
     describeTask(const task::TaskId& id) const;
 
@@ -195,8 +200,11 @@ public:
 - 三个来源全部必需。MVP 不增加 nullable source、动态 attach/detach 或“部分 snapshot”
   配置面；需要部分能力的调用者可直接使用现有子系统查询。
 - `actions(module)` 只按 `ActionId::module()` 精确匹配规范 namespace，不做模糊搜索。
+  该重载委托给 `ActionQuery`。
 - `resources(type)` 只按规范逻辑类型精确匹配；实现复用 Resource 的规范名校验并返回
-  `Result`，不私自容忍非法输入。
+  `Result`，不私自容忍非法输入。该重载委托给 `ResourceQuery`。
+- `ActionQuery::tags` 为 all-of；空 tags 不筛选。`TaskQuery` origin 条件要求 Task 具有
+  origin 且字段精确相等。无匹配返回空集合。
 - `describe*()` 保留来源的 `ErrorCode::NotFound`，不建立 Introspection 专用错误枚举。
 - 返回顺序稳定：Module 按 namespace，Action 按完整 ID，Resource 按完整 ID，Task 按 ID。
 - 分配或复制失败沿用项目惯例抛出 `std::bad_alloc`，不伪装为查询业务错误。

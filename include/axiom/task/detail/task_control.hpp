@@ -37,18 +37,21 @@ private:
     std::atomic_bool closed_{false};
 };
 
-[[nodiscard]] AXIOM_API Value::Object taskLogFields(const TaskId& id,
-                                                   std::string_view name,
-                                                   const std::optional<TaskOrigin>& origin);
+[[nodiscard]] AXIOM_API Value::Object
+taskLogFields(const TaskId& id, std::string_view name, const std::optional<TaskOrigin>& origin);
 
 class AXIOM_API TaskControl final : public std::enable_shared_from_this<TaskControl> {
 public:
-    TaskControl(TaskId id,
-                std::string name,
-                std::weak_ptr<NotificationHub> notifications,
-                logging::Logger&& logger,
-                std::function<std::shared_ptr<const void>()> cancelled_result,
-                std::optional<TaskOrigin> origin = std::nullopt);
+    struct Construction {
+        TaskId id;
+        std::string name;
+        std::weak_ptr<NotificationHub> notifications;
+        logging::Logger logger;
+        std::function<std::shared_ptr<const void>()> cancelled_result;
+        std::optional<TaskOrigin> origin;
+    };
+
+    explicit TaskControl(Construction construction);
 
     [[nodiscard]] TaskDescriptor describe() const;
     [[nodiscard]] const TaskId& id() const noexcept { return descriptor_.id; }

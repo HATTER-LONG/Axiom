@@ -46,11 +46,11 @@ struct Progress final {
  * origin whose fields are all empty.
  */
 struct TaskOrigin final {
-    std::string request_id{};
-    std::string trace_id{};
-    std::string caller{};
-    std::string action_id{};
-    std::map<std::string, std::string, std::less<>> metadata{};
+    std::string request_id;
+    std::string trace_id;
+    std::string caller;
+    std::string action_id;
+    std::map<std::string, std::string, std::less<>> metadata;
 };
 
 /** @brief A consistent value snapshot of one task's observable metadata. */
@@ -61,7 +61,7 @@ struct TaskDescriptor final {
     Progress progress;
     std::optional<Error> error;
     /** @brief Optional immutable origin copied at submission; omitted when unknown. */
-    std::optional<TaskOrigin> origin{};
+    std::optional<TaskOrigin> origin;
 };
 
 /**
@@ -72,7 +72,7 @@ struct TaskDescriptor final {
  */
 struct TaskSubmission final {
     std::string name;
-    std::optional<TaskOrigin> origin{};
+    std::optional<TaskOrigin> origin;
 };
 
 /** @brief Copyable, thread-safe observation of a task's cooperative cancellation request. */

@@ -7,6 +7,7 @@
 #include <axiom/action/runtime.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
+#include <axiom/introspection/introspection_query.hpp>
 #include <axiom/introspection/runtime_snapshot.hpp>
 #include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
@@ -18,7 +19,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -74,6 +74,32 @@ namespace {
             .details = std::nullopt};
 }
 
+[[nodiscard]] bool matchesAction(const ActionDescriptor& action, const ActionQuery& query) {
+    if(query.module.has_value() && action.id.module() != *query.module) {
+        return false;
+    }
+    return std::ranges::all_of(query.tags, [&action](const std::string& tag) {
+        return std::ranges::find(action.tags, tag) != action.tags.end();
+    });
+}
+
+[[nodiscard]] bool matchesOriginField(const std::optional<task::TaskOrigin>& origin,
+                                      const std::optional<std::string>& expected,
+                                      const std::string task::TaskOrigin::* field) {
+    if(!expected.has_value()) {
+        return true;
+    }
+    return origin.has_value() && origin.value().*field == *expected;
+}
+
+[[nodiscard]] bool matchesTask(const task::TaskDescriptor& task, const TaskQuery& query) {
+    if(query.state.has_value() && task.state != *query.state) {
+        return false;
+    }
+    return matchesOriginField(task.origin, query.origin_action_id, &task::TaskOrigin::action_id) &&
+           matchesOriginField(task.origin, query.origin_request_id, &task::TaskOrigin::request_id);
+}
+
 } // namespace
 
 IntrospectionService::IntrospectionService(const Runtime& actions,
@@ -91,20 +117,21 @@ std::vector<ModuleDescriptor> IntrospectionService::modules() const {
 }
 
 std::vector<ActionDescriptor> IntrospectionService::actions() const {
-    const auto source = actions_->discoverActions();
-    std::vector<ActionDescriptor> result;
-    result.reserve(source.size());
-    std::ranges::transform(source, std::back_inserter(result),
-                           [](const auto& action) { return copyAction(action.get()); });
-    return result;
+    return actions(ActionQuery{});
 }
 
 std::vector<ActionDescriptor>
 IntrospectionService::actions(const std::string_view module_namespace) const {
+    return actions(ActionQuery{.module = std::string{module_namespace}, .tags = {}});
+}
+
+std::vector<ActionDescriptor> IntrospectionService::actions(const ActionQuery& query) const {
+    const auto source = actions_->discoverActions();
     std::vector<ActionDescriptor> result;
-    for(auto& action : actions()) {
-        if(action.id.module() == module_namespace) {
-            result.push_back(std::move(action));
+    result.reserve(source.size());
+    for(const auto& action : source) {
+        if(matchesAction(action.get(), query)) {
+            result.push_back(copyAction(action.get()));
         }
     }
     return result;
@@ -119,17 +146,25 @@ Result<ActionDescriptor> IntrospectionService::describeAction(const ActionId& id
 }
 
 std::vector<resource::ResourceDescriptor> IntrospectionService::resources() const {
-    return resources_->list();
+    return resources(ResourceQuery{}).value();
 }
 
 Result<std::vector<resource::ResourceDescriptor>>
 IntrospectionService::resources(const std::string_view type) const {
-    if(!resource::detail::isCanonicalTypeName(type)) {
+    return resources(ResourceQuery{.type = std::string{type}});
+}
+
+Result<std::vector<resource::ResourceDescriptor>>
+IntrospectionService::resources(const ResourceQuery& query) const {
+    if(query.type.has_value() && !resource::detail::isCanonicalTypeName(*query.type)) {
         return Result<std::vector<resource::ResourceDescriptor>>::failure(
-            invalidResourceType(type));
+            invalidResourceType(*query.type));
     }
-    auto result = resources();
-    std::erase_if(result, [type](const auto& resource) { return resource.type != type; });
+    auto result = resources_->list();
+    if(query.type.has_value()) {
+        std::erase_if(result,
+                      [&query](const auto& resource) { return resource.type != *query.type; });
+    }
     return Result<std::vector<resource::ResourceDescriptor>>::success(std::move(result));
 }
 
@@ -138,11 +173,17 @@ IntrospectionService::describeResource(const resource::ResourceId& id) const {
     return resources_->describe(id);
 }
 
-std::vector<task::TaskDescriptor> IntrospectionService::tasks() const {
+std::vector<task::TaskDescriptor> IntrospectionService::tasks() const { return tasks(TaskQuery{}); }
+
+std::vector<task::TaskDescriptor> IntrospectionService::tasks(const TaskQuery& query) const {
     auto source = tasks_->list();
     std::vector<task::TaskDescriptor> result;
     result.reserve(source.size());
-    std::ranges::transform(source, std::back_inserter(result), copyTask);
+    for(const auto& task : source) {
+        if(matchesTask(task, query)) {
+            result.push_back(copyTask(task));
+        }
+    }
     return result;
 }
 

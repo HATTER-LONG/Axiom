@@ -1,4 +1,5 @@
 # https://clang.llvm.org/extra/clang-tidy/checks/list.html
+
 Checks: "-*,
     clang-diagnostic-*,
     misc-*,
@@ -12,66 +13,46 @@ Checks: "-*,
     -readability-magic-numbers,
     -readability-identifier-length,
     -bugprone-exception-escape"
-HeaderFileExtensions:         ['', 'h','hh','hpp','hxx']
-ImplementationFileExtensions: ['c','cc','cpp','cxx']
-HeaderFilterRegex:            '.*'
+
+HeaderFileExtensions: ['', 'h', 'hh', 'hpp', 'hxx']
+ImplementationFileExtensions: ['c', 'cc', 'cpp', 'cxx']
+HeaderFilterRegex: '.*'
+
 CheckOptions:
+
   # =========================
   # Types
   # =========================
-  - key: readability-identifier-naming.ClassCase
-    value: CamelCase
 
-  - key: readability-identifier-naming.StructCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.UnionCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.EnumCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.EnumConstantCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.TypeAliasCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.TypedefCase
-    value: CamelCase
-
-  - key: readability-identifier-naming.TemplateParameterCase
-    value: CamelCase
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.UnionCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  readability-identifier-naming.TypedefCase: CamelCase
+  readability-identifier-naming.TemplateParameterCase: CamelCase
 
   # =========================
   # Namespace
   # =========================
 
-  - key: readability-identifier-naming.NamespaceCase
-    value: lower_case
+  readability-identifier-naming.NamespaceCase: lower_case
 
   # =========================
   # Functions / Methods
   # =========================
 
-  - key: readability-identifier-naming.FunctionCase
-    value: camelBack
-
-  - key: readability-identifier-naming.MethodCase
-    value: camelBack
+  readability-identifier-naming.FunctionCase: camelBack
+  readability-identifier-naming.MethodCase: camelBack
 
   # =========================
   # Variables
   # =========================
 
-  - key: readability-identifier-naming.VariableCase
-    value: lower_case
-
-  - key: readability-identifier-naming.LocalVariableCase
-    value: lower_case
-
-  - key: readability-identifier-naming.ParameterCase
-    value: lower_case
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.LocalVariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
 
   # =========================
   # Class members
@@ -79,50 +60,65 @@ CheckOptions:
   # class:
   #   int count_;
   #
-  # struct:
+  # struct/public data:
   #   int count;
   # =========================
 
-# Private/protected implementation state
-  - key: readability-identifier-naming.PrivateMemberCase
-    value: lower_case
-  - key: readability-identifier-naming.PrivateMemberSuffix
-    value: _
+  # Private/protected implementation state.
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberSuffix: _
 
-  - key: readability-identifier-naming.ProtectedMemberCase
-    value: lower_case
-  - key: readability-identifier-naming.ProtectedMemberSuffix
-    value: _
+  readability-identifier-naming.ProtectedMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberSuffix: _
 
-    # Public data members
-  - key: readability-identifier-naming.PublicMemberCase
-    value: lower_case
+  # Public data members.
+  readability-identifier-naming.PublicMemberCase: lower_case
 
   # =========================
   # Constants
   # =========================
 
-  - key: readability-identifier-naming.StaticConstantCase
-    value: UPPER_CASE
+  readability-identifier-naming.StaticConstantCase: UPPER_CASE
+  readability-identifier-naming.LocalConstantCase: lower_case
 
-  - key: readability-identifier-naming.LocalConstantCase
-    value: lower_case
+  # =========================
+  # Macro-generated identifiers
+  # =========================
+
+  # AXIOM_LOG evaluates logger/level once.
+  # Trailing '_' is macro call-site hygiene rather than the naming convention
+  # used by handwritten local variables.
+  readability-identifier-naming.LocalVariableIgnoredRegexp: '^axiom_log_logger_$'
+  readability-identifier-naming.LocalConstantIgnoredRegexp: '^axiom_log_level_$'
+
+  # Allow framework/project macros when cppcoreguidelines-macro-usage is enabled.
+  # NOTE: cppcoreguidelines-* is not currently enabled by Checks above, so this
+  # option is currently dormant but safe to keep for future use.
+  cppcoreguidelines-macro-usage.AllowedRegexp: '^(AXIOM_|QT_|Q_|GTEST_|EXPECT_|ASSERT_).*'
 
   # =========================
   # Function complexity / size
   # =========================
 
-  # Keep nesting shallow.
-  # Lizard owns function NLOC, parameter count, and cyclomatic complexity.
-  # clang-tidy complements those metrics with nesting and cognitive complexity.
-  - key: readability-function-size.NestingThreshold
-    value: 4
+  # Lizard owns:
+  #   - function NLOC
+  #   - parameter count
+  #   - cyclomatic complexity
+  #
+  # clang-tidy complements those metrics with:
+  #   - nesting depth
+  #   - cognitive complexity
+
+  # Keep handwritten control flow shallow.
+  readability-function-size.NestingThreshold: '4'
+
+  # Ignore control flow introduced by macro expansion, such as AXIOM_LOG,
+  # GoogleTest assertions, and similar framework macros.
+  readability-function-size.IgnoreMacros: 'true'
 
   # Human-oriented complexity:
-  # penalizes branches, loops and deeply nested control flow.
-  # GoogleTest assertion macros expand into switch/if internals; ignore those
-  # expansions so the check measures user-written control flow.
-  - key: readability-function-cognitive-complexity.Threshold
-    value: 15
-  - key: readability-function-cognitive-complexity.IgnoreMacros
-    value: true
+  # penalizes branches, loops, and deeply nested control flow.
+  readability-function-cognitive-complexity.Threshold: '15'
+
+  # Ignore complexity introduced by macro expansion.
+  readability-function-cognitive-complexity.IgnoreMacros: 'true'

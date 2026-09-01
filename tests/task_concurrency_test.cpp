@@ -379,18 +379,16 @@ TEST(TaskRegistryConcurrency, RestoresLogContextBetweenTasksOnTheSameWorker) {
                              .caller = {},
                              .action_id = "beta.two",
                              .metadata = {}};
-    const auto first =
-        tasks.submit(executor, TaskSubmission{.name = "one", .origin = first_origin},
-                     [&](TaskContext&) {
-                         AXIOM_LOG_INFO(logging.logger("business"), "first business record");
-                         return Result<void>::success();
-                     });
-    const auto second =
-        tasks.submit(executor, TaskSubmission{.name = "two", .origin = second_origin},
-                     [&](TaskContext&) {
-                         AXIOM_LOG_INFO(logging.logger("business"), "second business record");
-                         return Result<void>::success();
-                     });
+    const auto first = tasks.submit(
+        executor, TaskSubmission{.name = "one", .origin = first_origin}, [&](TaskContext&) {
+            AXIOM_LOG_INFO(logging.logger("business"), "first business record");
+            return Result<void>::success();
+        });
+    const auto second = tasks.submit(
+        executor, TaskSubmission{.name = "two", .origin = second_origin}, [&](TaskContext&) {
+            AXIOM_LOG_INFO(logging.logger("business"), "second business record");
+            return Result<void>::success();
+        });
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     executor.close();

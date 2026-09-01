@@ -92,8 +92,12 @@ Result<std::shared_ptr<detail::TaskControl>> TaskRegistry::submitControl(
         task_logger = {};
     }
     auto control = std::make_shared<detail::TaskControl>(
-        std::move(id.value()), std::move(submission.name), impl_->notifications,
-        std::move(task_logger), std::move(cancelled_result), std::move(submission.origin));
+        detail::TaskControl::Construction{.id = std::move(id.value()),
+                                          .name = std::move(submission.name),
+                                          .notifications = impl_->notifications,
+                                          .logger = std::move(task_logger),
+                                          .cancelled_result = std::move(cancelled_result),
+                                          .origin = std::move(submission.origin)});
     const auto control_id = control->describe().id;
     {
         std::scoped_lock const lock{impl_->mutex};

@@ -5,6 +5,7 @@
  * @note These detail declarations are not supported public extension points.
  */
 
+#include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
 #include <axiom/action/detail/action.hpp>
 #include <axiom/action/detail/value_converter.hpp>
@@ -133,8 +134,20 @@ template <bool InjectInvocation, typename Tuple> struct ParameterArgumentTypes {
 };
 
 template <typename Tuple> struct ParameterArgumentTypes<true, Tuple> {
-    using Type = typename TailArguments<Tuple>::Type;
+    using Type = TailArguments<Tuple>::Type;
 };
+
+template <typename StoredCallable, typename Arguments, typename Return>
+consteval bool isContextualRestAdaptable() {
+    using Rest = TailArguments<Arguments>::Type;
+    return areArgumentTypesConvertible<Rest>(std::make_index_sequence<std::tuple_size_v<Rest>>{}) &&
+           is_adapted_return<Return> &&
+           []<std::size_t... Index>(std::index_sequence<Index...> index_sequence) {
+               static_cast<void>(index_sequence);
+               return std::invocable<StoredCallable&, const ActionInvocation&,
+                                     std::remove_cvref_t<std::tuple_element_t<Index, Rest>>&...>;
+           }(std::make_index_sequence<std::tuple_size_v<Rest>>{});
+}
 
 template <typename Callable> consteval bool isAdaptableContextualCallable() {
     using StoredCallable = std::decay_t<Callable>;
@@ -144,25 +157,15 @@ template <typename Callable> consteval bool isAdaptableContextualCallable() {
     } else {
         using Traits = FunctionTraits<StoredCallable>;
         using Arguments = Traits::ArgumentTypes;
-        using Return = Traits::ReturnType;
         constexpr auto count = std::tuple_size_v<Arguments>;
-        if constexpr(count == 0U) {
-            return false;
-        } else if constexpr(!std::is_same_v<std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
-                                            ActionInvocation>) {
-            return false;
-        } else {
-            using Rest = typename TailArguments<Arguments>::Type;
-            return areArgumentTypesConvertible<Rest>(
-                       std::make_index_sequence<std::tuple_size_v<Rest>>{}) &&
-                   is_adapted_return<Return> &&
-                   []<std::size_t... Index>(std::index_sequence<Index...> index_sequence) {
-                       static_cast<void>(index_sequence);
-                       return std::invocable<
-                           StoredCallable&, const ActionInvocation&,
-                           std::remove_cvref_t<std::tuple_element_t<Index, Rest>>&...>;
-                   }(std::make_index_sequence<std::tuple_size_v<Rest>>{});
+        if constexpr(count != 0U) {
+            if constexpr(std::is_same_v<std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
+                                        ActionInvocation>) {
+                using Return = Traits::ReturnType;
+                return isContextualRestAdaptable<StoredCallable, Arguments, Return>();
+            }
         }
+        return false;
     }
 }
 
@@ -217,11 +220,11 @@ template <typename T> [[nodiscard]] TypeDescriptor typeDescriptorFor() {
                 .fields = {},
                 .value_type = {}};
     } else if constexpr(value_converter_detail::IsVector<Type>::value) {
-        return TypeDescriptor::array(
-            typeDescriptorFor<typename value_converter_detail::IsVector<Type>::ElementType>());
+        using Element = value_converter_detail::IsVector<Type>::ElementType;
+        return TypeDescriptor::array(typeDescriptorFor<Element>());
     } else if constexpr(value_converter_detail::IsStringMap<Type>::value) {
-        return TypeDescriptor::objectValues(
-            typeDescriptorFor<typename value_converter_detail::IsStringMap<Type>::ElementType>());
+        using Element = value_converter_detail::IsStringMap<Type>::ElementType;
+        return TypeDescriptor::objectValues(typeDescriptorFor<Element>());
     }
 
     static_assert(ValueConvertible<Type>);
@@ -272,8 +275,7 @@ public:
     using Traits = FunctionTraits<std::remove_cvref_t<Callable>>;
     using Return = Traits::ReturnType;
     using SourceArguments = Traits::ArgumentTypes;
-    using ParameterArguments =
-        typename ParameterArgumentTypes<InjectInvocation, SourceArguments>::Type;
+    using ParameterArguments = ParameterArgumentTypes<InjectInvocation, SourceArguments>::Type;
 
     TypedActionAdapter(Callable callable, std::vector<ParameterDescriptor> parameters)
         : callable_(std::move(callable)), parameters_(std::move(parameters)) {}

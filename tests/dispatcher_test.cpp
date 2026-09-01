@@ -122,7 +122,8 @@ ActionDescriptor action(const std::string_view id,
 }
 
 void registerMath(Registry& registry) {
-    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    ASSERT_TRUE(registry.registerModule(
+        {.namespace_name = "math", .description = {}, .version = {}, .tags = {}, .metadata = {}}));
 }
 
 void expectUnknownArgument(const Result<Value>& result) {

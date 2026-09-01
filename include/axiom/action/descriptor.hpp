@@ -53,21 +53,21 @@ struct ActionDescriptor {
     /** @brief Shape produced by a successful invocation. */
     TypeDescriptor return_type{};
     /** @brief Optional compatible Action version. */
-    std::optional<std::string> version{};
+    std::optional<std::string> version;
     /**
      * @brief Searchable labels in registration presentation order.
      *
      * Matching is case-sensitive and exact. Empty or duplicate tags are rejected
      * at validation; they are not silently dropped.
      */
-    std::vector<std::string> tags{};
+    std::vector<std::string> tags;
     /**
      * @brief Adapter-owned extra string facts keyed in deterministic lexical order.
      *
      * Keys must be non-empty. Empty values are allowed and mean the host supplied
      * an explicit empty string.
      */
-    std::map<std::string, std::string, std::less<>> metadata{};
+    std::map<std::string, std::string, std::less<>> metadata;
 
     /** @brief Destroys the descriptor without propagating an exception. */
     ~ActionDescriptor() noexcept = default;

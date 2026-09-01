@@ -47,8 +47,8 @@ void diagnoseNotification(const logging::Logger& logger,
 [[nodiscard]] std::optional<std::string>
 moduleFromCanonicalActionId(const std::string_view action_id) {
     const auto separator = action_id.find('.');
-    if(separator == std::string_view::npos || separator != action_id.rfind('.') || separator == 0U ||
-       separator + 1U == action_id.size()) {
+    if(separator == std::string_view::npos || separator != action_id.rfind('.') ||
+       separator == 0U || separator + 1U == action_id.size()) {
         return std::nullopt;
     }
     const auto module = action_id.substr(0U, separator);
@@ -125,20 +125,16 @@ void NotificationHub::emit(const TaskDescriptor& descriptor) noexcept {
 
 void NotificationHub::close() noexcept { closed_.store(true, std::memory_order_release); }
 
-TaskControl::TaskControl(TaskId id,
-                         std::string name,
-                         std::weak_ptr<NotificationHub> notifications,
-                         logging::Logger&& logger,
-                         std::function<std::shared_ptr<const void>()> cancelled_result,
-                         std::optional<TaskOrigin> origin)
-    : descriptor_{.id = std::move(id),
-                  .name = std::move(name),
+TaskControl::TaskControl(Construction construction)
+    : descriptor_{.id = std::move(construction.id),
+                  .name = std::move(construction.name),
                   .state = TaskState::Pending,
                   .progress = {},
                   .error = std::nullopt,
-                  .origin = std::move(origin)},
-      notifications_(std::move(notifications)), logger_(std::move(logger)),
-      cancelled_result_(std::move(cancelled_result)) {}
+                  .origin = std::move(construction.origin)},
+      notifications_(std::move(construction.notifications)),
+      logger_(std::move(construction.logger)),
+      cancelled_result_(std::move(construction.cancelled_result)) {}
 
 TaskDescriptor TaskControl::describe() const {
     std::scoped_lock const lock{mutex_};

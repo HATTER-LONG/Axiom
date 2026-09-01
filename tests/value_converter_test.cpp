@@ -81,7 +81,11 @@ static_assert(
     !ValueConvertible<std::vector<std::map<std::string, int, NonDefaultConstructibleCompare>>>);
 
 TEST(ValueConverter, SharesDefinitionsWithPublicCallableRegistration) {
-    axiom::ModuleBuilder builder{{.namespace_name = "conversion", .metadata = {}}};
+    axiom::ModuleBuilder builder{{.namespace_name = "conversion",
+                                  .description = {},
+                                  .version = {},
+                                  .tags = {},
+                                  .metadata = {}}};
     const auto registered =
         builder.add("echo", "Echo", [](int value) { return value; }, axiom::param("value"));
     EXPECT_TRUE(registered);

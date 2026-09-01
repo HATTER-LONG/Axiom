@@ -45,7 +45,8 @@ public:
 
     /**
      * @brief Returns records matching @p query in ascending collection order.
-     * @param query Severity, category-prefix, and optional newest-N limit.
+     * @param query Severity, category-prefix, optional correlation fields, and
+     *        optional newest-N limit applied after filtering.
      * @return Matching records; when @p query.limit is non-zero, only the newest
      *         matches are kept, still ordered oldest-to-newest within that subset.
      */
@@ -53,7 +54,7 @@ public:
 
     /**
      * @brief Alias for records(), provided for query-oriented call sites.
-     * @param query Severity, category-prefix, and optional newest-N limit.
+     * @param query Same filter as records().
      * @return Same result as records(@p query).
      */
     [[nodiscard]] std::vector<LogRecord> query(const LogQuery& query) const;
