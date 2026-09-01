@@ -21,6 +21,11 @@ namespace axiom::introspection {
  * registries change. The members are collected in module/action, resource,
  * then task order; this is a sequential observation, not a cross-registry
  * atomic snapshot. Each source retains its own list consistency contract.
+ * Collection and element
+ * copies may throw `std::bad_alloc`. A snapshot query may
+ * run concurrently with source
+ * operations, provided source destruction is
+ * synchronized by the caller.
  */
 struct RuntimeSnapshot final {
     /** @brief Modules sorted by canonical namespace. */

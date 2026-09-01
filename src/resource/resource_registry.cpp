@@ -5,6 +5,7 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
 
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace axiom::resource {
 namespace {
@@ -141,7 +143,7 @@ bool ResourceRegistry::remove(const ResourceId& id) {
     // particular, a Resource destructor may call into unrelated user state.
     std::shared_ptr<void> removed;
     {
-        std::unique_lock lock{impl_->mutex};
+        const std::unique_lock lock{impl_->mutex};
         const auto found = impl_->entries.find(id.str());
         if(found == impl_->entries.end()) {
             return false;
@@ -221,7 +223,7 @@ Result<ResourceId> ResourceRegistry::adopt(void* const object,
     const TypeIdentity identity{type};
     // `hold` is declared before the lock so any failed operation releases the
     // user resource only after the lock guard has been destroyed.
-    std::unique_lock lock{impl_->mutex};
+    const std::unique_lock lock{impl_->mutex};
     const auto binding = impl_->bindings.find(logical_name);
     if(binding != impl_->bindings.end() && binding->second != identity) {
         return Result<ResourceId>::failure(logicalNameConflictError(logical_name));
@@ -234,7 +236,7 @@ Result<ResourceId> ResourceRegistry::adopt(void* const object,
     if(!allocated) {
         return Result<ResourceId>::failure(allocated.error());
     }
-    const ResourceId identity_id = std::move(allocated.value());
+    ResourceId identity_id = std::move(allocated.value());
 
     const auto [binding_position, binding_inserted] =
         impl_->bindings.try_emplace(std::string{logical_name}, identity);
@@ -257,7 +259,10 @@ Result<ResourceId> ResourceRegistry::adopt(void* const object,
         }
         throw;
     }
-    return Result<ResourceId>::success(identity_id);
+    // The maps own independent ID text after this point. Moving into Result keeps
+    // the committed tail non-allocating, so no exception can strand a registration
+    // after successful map insertion.
+    return Result<ResourceId>::success(std::move(identity_id));
 }
 
 } // namespace axiom::resource

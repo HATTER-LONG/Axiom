@@ -142,12 +142,25 @@ public:
      * @return Success, or an empty-builder, invalid/duplicate descriptor error without
      *         changing this builder.
      * @throws std::bad_alloc If descriptor or callable storage preparation cannot allocate.
-     * @throws Any exception raised while copying or moving callable into owned storage.
-     *         The builder remains unchanged when callable construction throws.
-     * @note This overload participates only when callable storage can be copied and invoked
-     *       with the converted lvalue argument objects. In particular, rvalue-reference-only,
-     *       generic, overloaded, non-copyable, and type-erased callables are rejected during
-     *       overload resolution. Ordinary function names decay to function pointers before
+     * @throws Any exception raised while copying or moving callable into owned storage. The
+     *
+     * builder remains unchanged when callable construction throws.
+     * @note After Runtime
+     * registers this builder, one stored callable instance serves every
+     *       invocation of
+     * its Action. Calls may overlap, so a callable with mutable state or
+     *       mutable
+     * captures must provide its own synchronization. Runtime does not serialize
+     * callable
+     * execution.
+     * @note This overload participates only when callable storage can be copied
+     * and invoked
+     *       with the converted lvalue argument objects. In particular,
+     * rvalue-reference-only,
+     *       generic, overloaded, non-copyable, and type-erased
+     * callables are rejected during
+     *       overload resolution. Ordinary function names decay
+     * to function pointers before
      *       their signature is inspected and stored.
      */
     template <typename Callable, typename... Documentation>

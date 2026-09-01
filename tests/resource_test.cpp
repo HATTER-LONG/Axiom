@@ -1,6 +1,7 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/value.hpp>
 #include <axiom/resource/handle.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
 #include <axiom/resource/resource_ref.hpp>
 #include <axiom/resource/resource_registry.hpp>
@@ -48,21 +49,29 @@ struct ReentrantDestructorState {
     bool contains_result{false};
     bool describe_succeeded{false};
     bool describe_not_found{false};
+    bool query_threw{false};
     int destructor_calls{0};
 };
 struct ReentrantDestructor {
     explicit ReentrantDestructor(ReentrantDestructorState* state) noexcept : state_(state) {}
 
     ~ReentrantDestructor() noexcept {
-        if(state_ == nullptr || state_->registry == nullptr || state_->id == nullptr) {
-            return;
+        try {
+            if(state_ == nullptr || state_->registry == nullptr || state_->id == nullptr) {
+                return;
+            }
+            ++state_->destructor_calls;
+            state_->contains_result = state_->registry->contains(*state_->id);
+            const auto described = state_->registry->describe(*state_->id);
+            state_->describe_succeeded = static_cast<bool>(described);
+            state_->describe_not_found =
+                !described && described.error().code == axiom::ErrorCode::NotFound;
+        } catch(...) {
+            // Test destructor must preserve the production noexcept callback contract.
+            if(state_ != nullptr) {
+                state_->query_threw = true;
+            }
         }
-        ++state_->destructor_calls;
-        state_->contains_result = state_->registry->contains(*state_->id);
-        const auto described = state_->registry->describe(*state_->id);
-        state_->describe_succeeded = static_cast<bool>(described);
-        state_->describe_not_found = !described &&
-                                     described.error().code == axiom::ErrorCode::NotFound;
     }
 
 private:
@@ -168,6 +177,57 @@ using axiom::resource::ResourceDescriptor;
 using axiom::resource::ResourceId;
 using axiom::resource::ResourceRef;
 using axiom::resource::ResourceRegistry;
+
+constexpr int concurrent_operation_count = 256;
+
+void recordConcurrentWrite(ResourceRegistry& registry,
+                           std::barrier<>& start,
+                           std::atomic<int>& failures) {
+    start.arrive_and_wait();
+    for(int index = 0; index < concurrent_operation_count; ++index) {
+        const auto added = registry.add(std::make_unique<Mesh>());
+        if(!added || !registry.remove(added.value().id())) {
+            ++failures;
+        }
+    }
+}
+
+void recordConcurrentResolve(ResourceRegistry& registry,
+                             const Handle<Mesh>& stable_handle,
+                             std::barrier<>& start,
+                             std::atomic<int>& failures) {
+    start.arrive_and_wait();
+    for(int index = 0; index < concurrent_operation_count; ++index) {
+        const auto resolved = registry.resolve(stable_handle);
+        if(!resolved || !registry.contains(stable_handle.id())) {
+            ++failures;
+        }
+    }
+}
+
+void recordConcurrentDescribe(ResourceRegistry& registry,
+                              const Handle<Mesh>& stable_handle,
+                              std::barrier<>& start,
+                              std::atomic<int>& failures) {
+    start.arrive_and_wait();
+    for(int index = 0; index < concurrent_operation_count; ++index) {
+        const auto described = registry.describe(stable_handle.id());
+        if(!described || described.value().type != "mesh") {
+            ++failures;
+        }
+    }
+}
+
+void recordConcurrentList(const ResourceRegistry& registry,
+                          std::barrier<>& start,
+                          std::atomic<int>& failures) {
+    start.arrive_and_wait();
+    for(int index = 0; index < concurrent_operation_count; ++index) {
+        if(!std::ranges::is_sorted(registry.list(), {}, &ResourceDescriptor::id)) {
+            ++failures;
+        }
+    }
+}
 
 template <typename T>
 concept CanFormHandle = requires { typename Handle<T>; };
@@ -527,50 +587,18 @@ TEST(ResourceRegistry, SupportsConcurrentReadWriteAndDiscoveryOperations) {
     ASSERT_TRUE(stable);
     const Handle<Mesh> stable_handle{stable.value().id()};
 
-    constexpr int iterations = 256;
     std::barrier start{4};
     std::atomic<int> failures{0};
     std::vector<std::thread> workers;
     workers.reserve(4U);
-    workers.emplace_back([&] {
-        start.arrive_and_wait();
-        for(int index = 0; index < iterations; ++index) {
-            const auto added = registry.add(std::make_unique<Mesh>());
-            if(!added || !registry.remove(added.value().id())) {
-                ++failures;
-            }
-        }
-    });
-    workers.emplace_back([&] {
-        start.arrive_and_wait();
-        for(int index = 0; index < iterations; ++index) {
-            const auto resolved = registry.resolve(stable_handle);
-            if(!resolved || !registry.contains(stable_handle.id())) {
-                ++failures;
-            }
-        }
-    });
-    workers.emplace_back([&] {
-        start.arrive_and_wait();
-        for(int index = 0; index < iterations; ++index) {
-            const auto described = registry.describe(stable_handle.id());
-            if(!described || described.value().type != "mesh") {
-                ++failures;
-            }
-        }
-    });
-    workers.emplace_back([&] {
-        start.arrive_and_wait();
-        for(int index = 0; index < iterations; ++index) {
-            const auto descriptions = registry.list();
-            for(std::size_t position = 1U; position < descriptions.size(); ++position) {
-                if(descriptions[position - 1U].id > descriptions[position].id) {
-                    ++failures;
-                    break;
-                }
-            }
-        }
-    });
+    workers.emplace_back(recordConcurrentWrite, std::ref(registry), std::ref(start),
+                         std::ref(failures));
+    workers.emplace_back(recordConcurrentResolve, std::ref(registry), std::cref(stable_handle),
+                         std::ref(start), std::ref(failures));
+    workers.emplace_back(recordConcurrentDescribe, std::ref(registry), std::cref(stable_handle),
+                         std::ref(start), std::ref(failures));
+    workers.emplace_back(recordConcurrentList, std::ref(registry), std::ref(start),
+                         std::ref(failures));
     for(auto& worker : workers) {
         worker.join();
     }
@@ -759,6 +787,7 @@ TEST(ResourceRegistry, RemoveReleasesUserDestructorOutsideRegistryLock) {
     EXPECT_FALSE(state.contains_result);
     EXPECT_FALSE(state.describe_succeeded);
     EXPECT_TRUE(state.describe_not_found);
+    EXPECT_FALSE(state.query_threw);
 }
 
 TEST(ResourceRegistry, ConstRegistryYieldsMutableAccess) {
@@ -828,6 +857,9 @@ TEST(ResourceRegistry, SerialExhaustionReturnsInternalErrorWithoutMutation) {
         EXPECT_EQ(rejected.error().code, ErrorCode::InternalError);
         EXPECT_EQ(Counted::destroyed, 1);
         EXPECT_TRUE(registry.contains(existing.value().id()));
+        const auto descriptions = registry.list();
+        ASSERT_EQ(descriptions.size(), 1U);
+        EXPECT_EQ(descriptions.front().id, existing.value().id());
     }
     const auto after = registry.add(std::make_unique<Shape>());
     ASSERT_TRUE(after);

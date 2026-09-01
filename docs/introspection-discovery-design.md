@@ -242,10 +242,10 @@ Resource Discovery。
 `Runtime::registerModule()`、`Runtime::invoke()` 或 `ResourceRegistry` 修改方法。要满足原始
 MVP 的线程安全目标，锁必须位于各自状态的拥有模块：
 
-- Action Registry 使用读写同步：Module 注册取得独占锁；invoke、find 和 discover 取得
-  共享锁。锁内允许定位并保留不可变 Action 实现所需的稳定访问，但不得把新的粗粒度锁带入
-  用户 callable 或 logging sink。具体方案需要先验证 Action 实现的生命周期，再决定是在
-  调用期间持有共享锁，还是复制稳定的内部调用句柄。
+- Action Registry 在注册时构造并原子发布不可变 State；invoke、find 和 discover 先保留完整
+  State，再无锁读取稳定的 descriptor 或 implementation。不得把新的粗粒度锁带入用户 callable
+  或 logging sink。一个 Action 只有一个存储的 callable 实例，多个 `invoke()` 可以同时进入它；
+  callable 及其可变捕获状态的同步责任属于注册方。
 - ResourceRegistry 使用内部同步保护 entries 和 bindings；`add/remove/resolve/contains/list/
   describe` 支持并发。和现有 Task 规则一致，不在 Registry 锁内销毁用户 Resource；remove
   先移出 keepalive，再在解锁后释放。

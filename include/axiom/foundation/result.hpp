@@ -23,6 +23,7 @@ public:
      * @param value Value to own.
      * @return Result holding value.
      */
+    // NOLINTNEXTLINE(performance-unnecessary-value-param): sink owns then moves.
     [[nodiscard]] static Result success(T value) { return Result{std::move(value)}; }
     /**
      * @brief Creates a failed result.
@@ -84,6 +85,7 @@ public:
     }
 
 private:
+    // NOLINTNEXTLINE(performance-unnecessary-value-param): sink owns then moves.
     explicit Result(T value) : storage_(std::move(value)) {}
     explicit Result(Error error) : storage_(std::move(error)) {}
 

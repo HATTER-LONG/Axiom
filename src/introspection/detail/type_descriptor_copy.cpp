@@ -1,5 +1,7 @@
 #include "type_descriptor_copy.hpp"
 
+#include <axiom/foundation/type_descriptor.hpp>
+
 #include <memory>
 #include <unordered_map>
 #include <vector>

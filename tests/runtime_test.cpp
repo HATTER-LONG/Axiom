@@ -15,14 +15,18 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <barrier>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <latch>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -268,6 +272,81 @@ void expectEmptyBuilderFailure(const Result<void>& result) {
     EXPECT_EQ(result.error().code, ErrorCode::InvalidArgument);
 }
 
+constexpr std::size_t concurrent_registration_count = 6;
+constexpr std::size_t concurrent_invocation_thread_count = 4;
+constexpr std::size_t concurrent_invocation_count_per_thread = 32;
+
+struct ConcurrentRuntimeState {
+    ConcurrentRuntimeState(Runtime& runtime,
+                           std::barrier<>& start,
+                           std::latch& registrations_finished,
+                           std::atomic<std::size_t>& registrations_completed,
+                           std::atomic<int>& failures)
+        : runtime(runtime), start(start), registrations_finished(registrations_finished),
+          registrations_completed(registrations_completed), failures(failures) {}
+
+    Runtime& runtime;
+    std::barrier<>& start;
+    std::latch& registrations_finished;
+    std::atomic<std::size_t>& registrations_completed;
+    std::atomic<int>& failures;
+};
+
+void appendRegistrationWorkers(ConcurrentRuntimeState& state,
+                               std::vector<ModuleBuilder>& builders,
+                               std::vector<std::thread>& workers) {
+    std::ranges::for_each(builders, [&state, &workers](ModuleBuilder& builder) {
+        workers.emplace_back([&state, builder = std::move(builder)]() mutable {
+            state.start.arrive_and_wait();
+            if(!state.runtime.registerModule(std::move(builder))) {
+                state.failures.fetch_add(1, std::memory_order_relaxed);
+            }
+            state.registrations_completed.fetch_add(1, std::memory_order_release);
+            state.registrations_finished.count_down();
+        });
+    });
+}
+
+void invokeConcurrentAction(ConcurrentRuntimeState& state) {
+    for(std::size_t call = 0; call < concurrent_invocation_count_per_thread; ++call) {
+        const auto result = state.runtime.invoke(id("concurrent_base.run"), {}, {});
+        if(!result || result.value().asInteger() != 7) {
+            state.failures.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+}
+
+void appendInvocationWorkers(ConcurrentRuntimeState& state, std::vector<std::thread>& workers) {
+    for(std::size_t index = 0; index < concurrent_invocation_thread_count; ++index) {
+        workers.emplace_back([&state] {
+            state.start.arrive_and_wait();
+            invokeConcurrentAction(state);
+        });
+    }
+}
+
+void appendDiscoveryWorker(ConcurrentRuntimeState& state, std::vector<std::thread>& workers) {
+    workers.emplace_back([&state] {
+        state.start.arrive_and_wait();
+        while(state.registrations_completed.load(std::memory_order_acquire) <
+              concurrent_registration_count) {
+            const auto modules = state.runtime.discoverModules();
+            const auto actions = state.runtime.discoverActions();
+            if(modules.empty() || actions.empty() || !state.runtime.findModule("concurrent_base") ||
+               !state.runtime.findAction(id("concurrent_base.run"))) {
+                state.failures.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        state.registrations_finished.wait();
+    });
+}
+
+void joinWorkers(std::vector<std::thread>& workers) {
+    for(auto& worker : workers) {
+        worker.join();
+    }
+}
+
 Result<void> addLateAction(ModuleBuilder& builder) {
     return builder.add("late", "Rejected after ownership transfer", [] { return 1; });
 }
@@ -310,13 +389,10 @@ TEST(Runtime, InvokesTypedFunctionsAndDiscoversStableDescriptors) {
 }
 
 TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
-    ModuleBuilder initial{
-        axiom::ModuleDescriptor{.namespace_name = "lifetime", .metadata = {}}};
+    ModuleBuilder initial{axiom::ModuleDescriptor{.namespace_name = "lifetime", .metadata = {}}};
     ASSERT_TRUE(initial.add(
         "nested", "Describes nested values",
-        [](const std::vector<std::vector<int>>& values) {
-            return static_cast<int>(values.size());
-        },
+        [](const std::vector<std::vector<int>>& values) { return static_cast<int>(values.size()); },
         param("values", "Nested values")));
 
     Runtime runtime;
@@ -341,16 +417,14 @@ TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
     ASSERT_EQ(&found_type, &discovered_type);
     EXPECT_EQ(found_type.kind, axiom::TypeDescriptor::Kind::Array);
     EXPECT_EQ(found_type.element_type->kind, axiom::TypeDescriptor::Kind::Array);
-    EXPECT_EQ(found_type.element_type->element_type->kind,
-              axiom::TypeDescriptor::Kind::Integer);
+    EXPECT_EQ(found_type.element_type->element_type->kind, axiom::TypeDescriptor::Kind::Integer);
 
     std::barrier registration_start{2};
     std::latch registration_finished{1};
     bool registration_succeeded = false;
     std::thread registrar([&] {
         registration_start.arrive_and_wait();
-        ModuleBuilder later{
-            axiom::ModuleDescriptor{.namespace_name = "later", .metadata = {}}};
+        ModuleBuilder later{axiom::ModuleDescriptor{.namespace_name = "later", .metadata = {}}};
         const auto added = later.add("action", "Later action", [] { return 1; });
         if(added) {
             registration_succeeded = static_cast<bool>(runtime.registerModule(std::move(later)));
@@ -366,8 +440,7 @@ TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
     EXPECT_EQ(discovered_descriptor.id.str(), "lifetime.nested");
     ASSERT_NE(found_type.element_type, nullptr);
     ASSERT_NE(found_type.element_type->element_type, nullptr);
-    EXPECT_EQ(found_type.element_type->element_type->kind,
-              axiom::TypeDescriptor::Kind::Integer);
+    EXPECT_EQ(found_type.element_type->element_type->kind, axiom::TypeDescriptor::Kind::Integer);
     EXPECT_EQ(runtime.discoverActions().size(), 2U);
 }
 
@@ -828,78 +901,85 @@ TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutat
 TEST(Runtime, CoordinatesConcurrentRegistrationDiscoveryAndInvocation) {
     Runtime runtime;
     auto invocation_count = std::make_shared<std::atomic<int>>(0);
-    ModuleBuilder base{axiom::ModuleDescriptor{.namespace_name = "concurrent_base", .metadata = {}}};
+    ModuleBuilder base{
+        axiom::ModuleDescriptor{.namespace_name = "concurrent_base", .metadata = {}}};
     ASSERT_TRUE(base.add("run", "Counts concurrent invocations", [invocation_count] {
         invocation_count->fetch_add(1, std::memory_order_relaxed);
         return 7;
     }));
     ASSERT_TRUE(runtime.registerModule(std::move(base)));
 
-    constexpr std::size_t registration_count = 6;
-    constexpr std::size_t invocation_thread_count = 4;
-    constexpr std::size_t invocation_count_per_thread = 32;
-    constexpr std::size_t participant_count = registration_count + invocation_thread_count + 1;
+    constexpr std::size_t participant_count =
+        concurrent_registration_count + concurrent_invocation_thread_count + 1;
     std::vector<ModuleBuilder> builders;
-    builders.reserve(registration_count);
-    for(std::size_t index = 0; index < registration_count; ++index) {
+    builders.reserve(concurrent_registration_count);
+    for(std::size_t index = 0; index < concurrent_registration_count; ++index) {
         const auto module_name = "concurrent_" + std::to_string(index);
-        ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = module_name, .metadata = {}}};
-        ASSERT_TRUE(builder.add("value", "Returns its module index", [index] {
-            return static_cast<int>(index);
-        }));
+        ModuleBuilder builder{
+            axiom::ModuleDescriptor{.namespace_name = module_name, .metadata = {}}};
+        ASSERT_TRUE(builder.add("value", "Returns its module index",
+                                [index] { return static_cast<int>(index); }));
         builders.emplace_back(std::move(builder));
     }
 
     std::barrier start{static_cast<std::ptrdiff_t>(participant_count)};
-    std::latch registrations_finished{static_cast<std::ptrdiff_t>(registration_count)};
+    std::latch registrations_finished{static_cast<std::ptrdiff_t>(concurrent_registration_count)};
     std::atomic<std::size_t> registrations_completed{0};
     std::atomic<int> failures{0};
     std::vector<std::thread> workers;
     workers.reserve(participant_count);
 
-    for(std::size_t index = 0; index < registration_count; ++index) {
-        workers.emplace_back([&, builder = std::move(builders[index])]() mutable {
-            start.arrive_and_wait();
-            if(!runtime.registerModule(std::move(builder))) {
-                failures.fetch_add(1, std::memory_order_relaxed);
-            }
-            registrations_completed.fetch_add(1, std::memory_order_release);
-            registrations_finished.count_down();
-        });
-    }
-    for(std::size_t index = 0; index < invocation_thread_count; ++index) {
-        workers.emplace_back([&] {
-            start.arrive_and_wait();
-            for(std::size_t call = 0; call < invocation_count_per_thread; ++call) {
-                const auto result = runtime.invoke(id("concurrent_base.run"), {}, {});
-                if(!result || result.value().asInteger() != 7) {
-                    failures.fetch_add(1, std::memory_order_relaxed);
-                }
-            }
-        });
-    }
-
-    workers.emplace_back([&] {
-        start.arrive_and_wait();
-        while(registrations_completed.load(std::memory_order_acquire) < registration_count) {
-            const auto modules = runtime.discoverModules();
-            const auto actions = runtime.discoverActions();
-            if(modules.empty() || actions.empty() ||
-               !runtime.findModule("concurrent_base") ||
-               !runtime.findAction(id("concurrent_base.run"))) {
-                failures.fetch_add(1, std::memory_order_relaxed);
-            }
-        }
-        registrations_finished.wait();
-    });
-
-    for(auto& worker : workers) {
-        worker.join();
-    }
+    ConcurrentRuntimeState state{runtime, start, registrations_finished, registrations_completed,
+                                 failures};
+    appendRegistrationWorkers(state, builders, workers);
+    appendInvocationWorkers(state, workers);
+    appendDiscoveryWorker(state, workers);
+    joinWorkers(workers);
 
     EXPECT_EQ(failures.load(std::memory_order_acquire), 0);
     EXPECT_EQ(invocation_count->load(std::memory_order_acquire),
-              static_cast<int>(invocation_thread_count * invocation_count_per_thread));
-    EXPECT_EQ(runtime.discoverModules().size(), registration_count + 1);
-    EXPECT_EQ(runtime.discoverActions().size(), registration_count + 1);
+              static_cast<int>(concurrent_invocation_thread_count *
+                               concurrent_invocation_count_per_thread));
+    EXPECT_EQ(runtime.discoverModules().size(), concurrent_registration_count + 1);
+    EXPECT_EQ(runtime.discoverActions().size(), concurrent_registration_count + 1);
+}
+
+TEST(Runtime, AllowsOverlappingCallsToOneActionWhenCallableSynchronizesState) {
+    struct SharedState {
+        std::mutex mutex;
+        std::condition_variable changed;
+        int active{0};
+        int peak{0};
+        int entries{0};
+        bool release{false};
+    } state;
+
+    Runtime runtime;
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "overlap", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Waits with synchronized shared state", [&state] {
+        std::unique_lock lock{state.mutex};
+        ++state.active;
+        state.peak = std::max(state.peak, state.active);
+        ++state.entries;
+        state.changed.notify_all();
+        state.changed.wait(lock, [&state] { return state.release; });
+        --state.active;
+        return 1;
+    }));
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    std::thread first{[&runtime] { EXPECT_TRUE(runtime.invoke(id("overlap.run"), {}, {})); }};
+    std::thread second{[&runtime] { EXPECT_TRUE(runtime.invoke(id("overlap.run"), {}, {})); }};
+
+    {
+        std::unique_lock lock{state.mutex};
+        EXPECT_TRUE(state.changed.wait_for(lock, std::chrono::seconds{2},
+                                           [&state] { return state.entries == 2; }));
+        state.release = true;
+    }
+    state.changed.notify_all();
+    first.join();
+    second.join();
+
+    EXPECT_EQ(state.peak, 2);
 }

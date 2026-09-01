@@ -133,7 +133,10 @@ public:
      * remain, otherwise when the last ResourceRef is released.
      *
      * @param id Full identity to unregister.
-     * @return true when this call removed a live registration.
+     * @return true when this call removed a live
+     * registration.
+     * @note This query/mutation may run concurrently with other Registry
+     * operations.
      */
     [[nodiscard]] bool remove(const ResourceId& id);
 
@@ -144,7 +147,12 @@ public:
      * the object alive.
      *
      * @param id Full identity to query.
-     * @return true when @p id is currently registered in this Registry.
+     * @return true when @p id is currently registered in
+     * this Registry.
+     * @note This query may run concurrently with other Registry operations.
+     * Its result is a
+     *       point-in-time observation and does not keep the object alive.
+
      */
     [[nodiscard]] bool contains(const ResourceId& id) const;
 
@@ -154,8 +162,14 @@ public:
      * Unknown, removed, or foreign-Registry identities return NotFound.
      *
      * @param id Full identity to describe.
-     * @return Resource identity and logical type, or a NotFound failure.
-     * @throws std::bad_alloc If the descriptor copy or failure details cannot be allocated.
+     * @return Resource identity and logical type, or a
+     * NotFound failure.
+     * @throws std::bad_alloc If the descriptor copy or failure details
+     * cannot be allocated.
+     * @note This query may run concurrently with other Registry
+     * operations. A successful
+     *       descriptor is an independently owned point-in-time
+     * value.
      */
     [[nodiscard]] Result<ResourceDescriptor> describe(const ResourceId& id) const;
 
@@ -167,7 +181,12 @@ public:
      * does not keep any resource object alive.
      *
      * @return Stable, independently owned descriptions.
-     * @throws std::bad_alloc If the result or descriptor copies cannot be allocated.
+     * @throws std::bad_alloc If the result
+     * or descriptor copies cannot be allocated.
+     * @note This query may run concurrently with
+     * other Registry operations. It is one
+     *       Registry-level point-in-time snapshot, not
+     * an object keepalive.
      */
     [[nodiscard]] std::vector<ResourceDescriptor> list() const;
 

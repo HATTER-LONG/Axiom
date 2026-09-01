@@ -10,6 +10,7 @@ foundation <- resource
 foundation <- events
 foundation <- async
 task -> foundation / async / events / logging
+introspection -> action / resource / task
 ```
 
 `foundation` owns the only dynamic boundary model: `Value`, `Error`, `Result`,
@@ -20,11 +21,32 @@ Callable adaptation templates are installed under `axiom/action/detail/` and
 not supported extension APIs; library code and consumers use the same
 definitions.
 
+`introspection` is a top-level, read-only, non-owning, uncached aggregation layer
+over Action, Resource, and Task discovery. Every query returns independently owned
+values. `RuntimeSnapshot` samples module/action, then resource, then task in a
+fixed order; it is not a global atomic snapshot across those sources. The three
+sources must outlive an `IntrospectionService`, and source destruction must not
+overlap a Service query.
+
 `logging` is structured and independent from Action except that `Runtime` may
 emit diagnostic records. `resource` owns typed host registrations and does not
 depend on Action or logging. `events::Signal` is a thread-safe, ordered snapshot
 publisher. `async::Executor` drains submitted work; `async::Scheduler` dispatches
 timed callbacks through an Executor and requires that Executor to outlive it.
+
+Runtime registration, discovery, lookup, and invocation support concurrent use;
+ResourceRegistry operations likewise support concurrent use. Destruction of either
+object still requires caller synchronization. Runtime resolves an Action before
+executing it and never holds a registration or discovery lock around user code.
+Calls to one Action may overlap and share its one stored callable instance, so the
+callable and every mutable capture must provide their own synchronization.
+
+Runtime publishes immutable registry States to make discovery and invocation
+lock-free after snapshot acquisition. The current implementation copies the maps
+when registering a Module, giving a sequence of registrations O(n²) aggregate map
+copy work. This preserves all-or-nothing publication and stable descriptor
+lifetimes; replacing it with shared-mutex-protected append-only maps is a future
+performance option, provided lookup releases its lock before user invocation.
 
 `task` owns tracked asynchronous work independently of Action invocation. A
 `task::TaskRegistry` submits directly to an existing Executor and retains task

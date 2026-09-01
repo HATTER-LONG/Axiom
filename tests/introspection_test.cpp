@@ -1,10 +1,19 @@
 #include <axiom/introspection/introspection_service.hpp>
 
+#include <axiom/action/action_id.hpp>
+#include <axiom/action/module.hpp>
 #include <axiom/action/module_builder.hpp>
+#include <axiom/action/runtime.hpp>
 #include <axiom/async/executor.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
+#include <axiom/introspection/runtime_snapshot.hpp>
+#include <axiom/resource/resource_id.hpp>
+#include <axiom/resource/resource_registry.hpp>
 #include <axiom/resource/resource_traits.hpp>
+#include <axiom/task/task_id.hpp>
+#include <axiom/task/task_registry.hpp>
+#include <axiom/task/task_types.hpp>
 
 #include <gtest/gtest.h>
 
@@ -17,10 +26,16 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
+namespace {
+
 struct Widget final {};
-template <> struct axiom::resource::ResourceTraits<Widget> {
+
+} // namespace
+
+template <> struct axiom::resource::ResourceTraits<::Widget> {
     static constexpr std::string_view type_name = "widget";
 };
 
@@ -56,10 +71,38 @@ struct RuntimeFixture {
     }
 };
 
+void expectSequentialSnapshot(const axiom::introspection::RuntimeSnapshot& snapshot) {
+    EXPECT_FALSE(snapshot.modules.empty());
+    EXPECT_TRUE(
+        std::ranges::is_sorted(snapshot.modules, {}, &axiom::ModuleDescriptor::namespace_name));
+    for(const auto& module : snapshot.modules) {
+        EXPECT_FALSE(module.namespace_name.empty());
+    }
+    EXPECT_FALSE(snapshot.actions.empty());
+    EXPECT_TRUE(std::ranges::is_sorted(snapshot.actions, {},
+                                       [](const auto& action) { return action.id.str(); }));
+    for(const auto& action : snapshot.actions) {
+        EXPECT_FALSE(action.id.str().empty());
+    }
+    for(const auto& resource : snapshot.resources) {
+        EXPECT_EQ(resource.type, "widget");
+        EXPECT_TRUE(axiom::resource::ResourceId::parse(resource.id.str()));
+    }
+    for(const auto& task : snapshot.tasks) {
+        EXPECT_TRUE(axiom::task::TaskId::parse(task.id.str()));
+        EXPECT_GE(task.progress.value, 0.0);
+        EXPECT_LE(task.progress.value, 1.0);
+        EXPECT_TRUE(std::isfinite(task.progress.value));
+        if(task.error.has_value()) {
+            EXPECT_TRUE(axiom::task::isTerminal(task.state));
+        }
+    }
+}
+
 TEST(IntrospectionService, ListsAndFiltersWithIndependentValues) {
-    RuntimeFixture fixture;
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const RuntimeFixture fixture;
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
 
     const auto modules = service.modules();
     ASSERT_EQ(modules.size(), 2U);
@@ -91,8 +134,8 @@ TEST(IntrospectionService, ListsAndFiltersWithIndependentValues) {
 
 TEST(IntrospectionService, DescribesAndForwardsNotFound) {
     RuntimeFixture fixture;
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
     const auto action = service.describeAction(actionId("alpha.lookup"));
     ASSERT_TRUE(action);
     EXPECT_EQ(action.value().description, "Lookup");
@@ -105,21 +148,23 @@ TEST(IntrospectionService, DescribesAndForwardsNotFound) {
     const auto described = service.describeResource(resource.value().id());
     ASSERT_TRUE(described);
     EXPECT_EQ(described.value().type, "widget");
-    const auto missing_resource =
-        service.describeResource(axiom::resource::ResourceId::parse("widget:999999").value());
+    const auto missing_resource_id = axiom::resource::ResourceId::parse("widget:999999");
+    ASSERT_TRUE(missing_resource_id);
+    const auto missing_resource = service.describeResource(missing_resource_id.value());
     ASSERT_FALSE(missing_resource);
     EXPECT_EQ(missing_resource.error().code, axiom::ErrorCode::NotFound);
 
-    const auto missing_task =
-        service.describeTask(axiom::task::TaskId::parse("task:999999").value());
+    const auto missing_task_id = axiom::task::TaskId::parse("task:999999");
+    ASSERT_TRUE(missing_task_id);
+    const auto missing_task = service.describeTask(missing_task_id.value());
     ASSERT_FALSE(missing_task);
     EXPECT_EQ(missing_task.error().code, axiom::ErrorCode::NotFound);
 }
 
 TEST(IntrospectionService, FiltersResourcesAndPreservesTaskValues) {
     RuntimeFixture fixture;
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
     const auto first = fixture.resources.add(std::make_unique<Widget>());
     ASSERT_TRUE(first);
     const auto all = service.resources();
@@ -147,8 +192,8 @@ TEST(IntrospectionService, FiltersResourcesAndPreservesTaskValues) {
 
 TEST(IntrospectionService, ForwardsTaskProgressFailureAndErrorValues) {
     RuntimeFixture fixture;
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
     axiom::async::Executor executor{1};
     const auto submitted = fixture.tasks.submit(
         executor, "fragile", [](axiom::task::TaskContext& context) -> axiom::Result<int> {
@@ -174,18 +219,18 @@ TEST(IntrospectionService, ForwardsTaskProgressFailureAndErrorValues) {
     EXPECT_EQ(error.message, "deterministic task failure");
     ASSERT_TRUE(error.path.has_value());
     EXPECT_EQ(*error.path, "jobs[2]");
-    ASSERT_TRUE(error.details.has_value());
-    ASSERT_TRUE(error.details->isObject());
-    EXPECT_EQ(error.details->asObject().at("attempt").asInteger(), 2);
-    EXPECT_FALSE(error.details->asObject().at("retryable").asBoolean());
+    const auto* const details = error.details ? &error.details->asObject() : nullptr;
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->at("attempt").asInteger(), 2);
+    EXPECT_FALSE(details->at("retryable").asBoolean());
 }
 
 TEST(IntrospectionService, SnapshotOwnsAllCollectionsAndUsesStableOrder) {
     RuntimeFixture fixture;
     const auto resource = fixture.resources.add(std::make_unique<Widget>());
     ASSERT_TRUE(resource);
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
     const auto snapshot = service.snapshot();
     ASSERT_EQ(snapshot.modules.size(), 2U);
     ASSERT_EQ(snapshot.actions.size(), 4U);
@@ -201,8 +246,8 @@ TEST(IntrospectionService, SnapshotOwnsAllCollectionsAndUsesStableOrder) {
 
 TEST(IntrospectionService, SnapshotObservesConcurrentSourcesIndependently) {
     RuntimeFixture fixture;
-    axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
-                                                       fixture.tasks};
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
     axiom::async::Executor executor{2};
     constexpr std::size_t rounds = 24U;
     std::latch ready{3};
@@ -213,9 +258,8 @@ TEST(IntrospectionService, SnapshotObservesConcurrentSourcesIndependently) {
         ready.count_down();
         start.wait();
         for(std::size_t round = 0; round < rounds; ++round) {
-            axiom::ModuleBuilder module{{.namespace_name = "concurrent_module_" +
-                                                       std::to_string(round),
-                                         .metadata = {}}};
+            axiom::ModuleBuilder module{
+                {.namespace_name = "concurrent_module_" + std::to_string(round), .metadata = {}}};
             EXPECT_TRUE(module.add("action", "Action", [] { return 1; }));
             EXPECT_TRUE(fixture.runtime.registerModule(std::move(module)));
         }
@@ -234,47 +278,22 @@ TEST(IntrospectionService, SnapshotObservesConcurrentSourcesIndependently) {
         start.wait();
         for(std::size_t round = 0; round < rounds; ++round) {
             const auto submitted = fixture.tasks.submit(
-                executor, "concurrent-task", [](const axiom::task::TaskContext&) {
-                    return axiom::Result<void>::success();
-                });
+                executor, "concurrent-task",
+                [](const axiom::task::TaskContext&) { return axiom::Result<void>::success(); });
             EXPECT_TRUE(submitted);
         }
         writers_done.count_down();
     };
 
-    std::jthread modules{register_modules};
-    std::jthread resources{register_resources};
-    std::jthread tasks{submit_tasks};
+    const std::jthread modules{register_modules};
+    const std::jthread resources{register_resources};
+    const std::jthread tasks{submit_tasks};
     ready.wait();
     start.count_down();
     for(std::size_t round = 0; round < rounds; ++round) {
         const auto snapshot = service.snapshot();
 
-        EXPECT_FALSE(snapshot.modules.empty());
-        EXPECT_TRUE(std::ranges::is_sorted(
-            snapshot.modules, {}, &axiom::ModuleDescriptor::namespace_name));
-        for(const auto& module : snapshot.modules) {
-            EXPECT_FALSE(module.namespace_name.empty());
-        }
-        EXPECT_FALSE(snapshot.actions.empty());
-        EXPECT_TRUE(std::ranges::is_sorted(snapshot.actions, {},
-                                           [](const auto& action) { return action.id.str(); }));
-        for(const auto& action : snapshot.actions) {
-            EXPECT_FALSE(action.id.str().empty());
-        }
-        for(const auto& resource : snapshot.resources) {
-            EXPECT_EQ(resource.type, "widget");
-            EXPECT_TRUE(axiom::resource::ResourceId::parse(resource.id.str()));
-        }
-        for(const auto& task : snapshot.tasks) {
-            EXPECT_TRUE(axiom::task::TaskId::parse(task.id.str()));
-            EXPECT_GE(task.progress.value, 0.0);
-            EXPECT_LE(task.progress.value, 1.0);
-            EXPECT_TRUE(std::isfinite(task.progress.value));
-            if(task.error.has_value()) {
-                EXPECT_TRUE(axiom::task::isTerminal(task.state));
-            }
-        }
+        expectSequentialSnapshot(snapshot);
         // These are independent source observations. The test intentionally does
         // not assert that counts or values came from one global point in time.
     }

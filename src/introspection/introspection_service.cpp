@@ -2,13 +2,25 @@
 
 #include "detail/type_descriptor_copy.hpp"
 
+#include <axiom/action/descriptor.hpp>
+#include <axiom/action/module.hpp>
+#include <axiom/action/runtime.hpp>
 #include <axiom/foundation/error.hpp>
-#include <axiom/foundation/type_descriptor.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/introspection/runtime_snapshot.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
+#include <axiom/resource/resource_id.hpp>
+#include <axiom/resource/resource_registry.hpp>
 #include <axiom/resource/resource_traits.hpp>
+#include <axiom/task/task_id.hpp>
+#include <axiom/task/task_registry.hpp>
+#include <axiom/task/task_types.hpp>
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -49,8 +61,6 @@ IntrospectionService::IntrospectionService(const Runtime& actions,
                                            const resource::ResourceRegistry& resources,
                                            const task::TaskRegistry& tasks) noexcept
     : actions_{&actions}, resources_{&resources}, tasks_{&tasks} {}
-
-IntrospectionService::~IntrospectionService() noexcept = default;
 
 std::vector<ModuleDescriptor> IntrospectionService::modules() const {
     const auto source = actions_->discoverModules();

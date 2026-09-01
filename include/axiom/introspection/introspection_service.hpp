@@ -47,60 +47,128 @@ public:
                          const resource::ResourceRegistry& resources,
                          const task::TaskRegistry& tasks) noexcept;
     /** @brief Destroys the non-owning service without affecting its sources. */
-    ~IntrospectionService() noexcept;
+    ~IntrospectionService() noexcept = default;
 
     IntrospectionService(const IntrospectionService&) = delete;
     IntrospectionService& operator=(const IntrospectionService&) = delete;
     IntrospectionService(IntrospectionService&&) = delete;
     IntrospectionService& operator=(IntrospectionService&&) = delete;
 
-    /** @brief Returns independently owned Modules sorted by namespace. */
+    /**
+     * @brief Returns independently owned Modules sorted by canonical namespace.
+     *
+     * @return Owning value copies in ascending canonical namespace order.
+     * @throws
+     * std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run
+     * concurrently with source operations. This service and all three
+     *       sources must
+     * remain alive; source destruction must not overlap the query.
+     */
     [[nodiscard]] std::vector<ModuleDescriptor> modules() const;
-    /** @brief Returns independently owned Actions sorted by full identifier. */
+    /**
+     * @brief Returns independently owned Actions sorted by canonical full identifier.
+
+     * * @return Owning value copies in ascending canonical full-identifier order.
+     * @throws
+     * std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run
+     * concurrently with source operations; source lifetime rules apply.
+     */
     [[nodiscard]] std::vector<ActionDescriptor> actions() const;
     /**
      * @brief Returns Actions whose module component exactly equals @p module_namespace.
      * @param module_namespace Canonical Module namespace; no prefix matching is performed.
+     *
      * @return Matching Actions sorted by full identifier, or an empty vector.
+     * @throws
+     * std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run
+     * concurrently with source operations; source lifetime rules apply.
      */
     [[nodiscard]] std::vector<ActionDescriptor> actions(std::string_view module_namespace) const;
     /**
      * @brief Returns an owning copy of one Action description.
      * @param id Parsed canonical Action identifier.
-     * @return Deep-copied description, or the source's NotFound error unchanged.
+     * @return Deep-copied description, or the
+     * source's NotFound error unchanged.
+     * @throws std::bad_alloc If descriptor copying or
+     * result/error allocation fails.
+     * @note May run concurrently with source operations;
+     * source lifetime rules apply.
      */
     [[nodiscard]] Result<ActionDescriptor> describeAction(const ActionId& id) const;
 
-    /** @brief Returns independently owned Resources sorted by full identifier. */
+    /**
+     * @brief Returns independently owned Resources sorted by full identifier.
+     *
+     * @return Owning value copies in ascending canonical resource-identifier order.
+     * @throws
+     * std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run
+     * concurrently with source operations; source lifetime rules apply.
+     */
     [[nodiscard]] std::vector<resource::ResourceDescriptor> resources() const;
     /**
      * @brief Returns Resources whose logical type exactly equals @p type.
      * @param type Canonical logical Resource type (`[a-z][a-z0-9_]*`).
-     * @return Matching Resources sorted by full identifier, or InvalidArgument for
-     *         a non-canonical type.
+     * @return Matching Resources sorted by full identifier, or InvalidArgument for a
+     *
+     * non-canonical type.
+     * @throws std::bad_alloc If result allocation, validation, or
+     * descriptor copying fails.
+     * @note May run concurrently with source operations; source
+     * lifetime rules apply.
      */
     [[nodiscard]] Result<std::vector<resource::ResourceDescriptor>>
     resources(std::string_view type) const;
     /**
      * @brief Returns an owning copy of one Resource description.
      * @param id Resource identity to query.
-     * @return Description, or the source's NotFound error unchanged.
+     * @return Description, or the source's NotFound
+     * error unchanged.
+     * @throws std::bad_alloc If descriptor copying or result/error
+     * allocation fails.
+     * @note May run concurrently with source operations; source lifetime
+     * rules apply.
      */
     [[nodiscard]] Result<resource::ResourceDescriptor>
     describeResource(const resource::ResourceId& id) const;
 
-    /** @brief Returns independently owned Task descriptors sorted by ID. */
+    /**
+     * @brief Returns independently owned Task descriptors sorted by canonical ID.
+     *
+     * @return Owning value copies in ascending canonical task-ID order.
+     * @throws
+     * std::bad_alloc If result allocation or descriptor copying fails.
+     * @note May run
+     * concurrently with source operations; source lifetime rules apply.
+     */
     [[nodiscard]] std::vector<task::TaskDescriptor> tasks() const;
     /**
      * @brief Returns an owning copy of one Task description.
      * @param id Task identity to query.
-     * @return Description, or the source's NotFound error unchanged.
+     * @return Description, or the source's NotFound error
+     * unchanged.
+     * @throws std::bad_alloc If descriptor copying or result/error allocation
+     * fails.
+     * @note May run concurrently with source operations; source lifetime rules
+     * apply.
      */
     [[nodiscard]] Result<task::TaskDescriptor> describeTask(const task::TaskId& id) const;
 
     /**
      * @brief Collects modules/actions, then resources, then tasks in that fixed order.
+     *
      * @return An independently owned sequential observation; it is not globally atomic.
+     *
+     * @throws std::bad_alloc If collection or any descriptor copy fails.
+     * @note May run
+     * concurrently with source operations. It samples each source in the
+     *       stated order,
+     * so concurrent changes can be reflected by different source
+     *       generations. Source
+     * destruction must not overlap this query.
      */
     [[nodiscard]] RuntimeSnapshot snapshot() const;
 
