@@ -16,7 +16,10 @@
 #define TEST(suite_name, test_name) void suite_name##_##test_name()
 #endif
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <barrier>
 #include <compare>
 #include <cstddef>
 #include <functional>
@@ -39,6 +42,32 @@ struct Shape {
 };
 int Shape::destroyed = 0;
 struct Mesh {};
+struct ReentrantDestructorState {
+    axiom::resource::ResourceRegistry* registry{nullptr};
+    const axiom::resource::ResourceId* id{nullptr};
+    bool contains_result{false};
+    bool describe_succeeded{false};
+    bool describe_not_found{false};
+    int destructor_calls{0};
+};
+struct ReentrantDestructor {
+    explicit ReentrantDestructor(ReentrantDestructorState* state) noexcept : state_(state) {}
+
+    ~ReentrantDestructor() noexcept {
+        if(state_ == nullptr || state_->registry == nullptr || state_->id == nullptr) {
+            return;
+        }
+        ++state_->destructor_calls;
+        state_->contains_result = state_->registry->contains(*state_->id);
+        const auto described = state_->registry->describe(*state_->id);
+        state_->describe_succeeded = static_cast<bool>(described);
+        state_->describe_not_found = !described &&
+                                     described.error().code == axiom::ErrorCode::NotFound;
+    }
+
+private:
+    ReentrantDestructorState* state_;
+};
 struct UniqueBody {
     UniqueBody() = default;
     UniqueBody(const UniqueBody&) = delete;
@@ -86,6 +115,10 @@ template <> struct axiom::resource::ResourceTraits<Mesh> {
     static constexpr std::string_view type_name = "mesh";
 };
 
+template <> struct axiom::resource::ResourceTraits<ReentrantDestructor> {
+    static constexpr std::string_view type_name = "reentrant";
+};
+
 template <> struct axiom::resource::ResourceTraits<UniqueBody> {
     static constexpr std::string_view type_name = "body";
 };
@@ -131,6 +164,7 @@ namespace {
 
 using axiom::ErrorCode;
 using axiom::resource::Handle;
+using axiom::resource::ResourceDescriptor;
 using axiom::resource::ResourceId;
 using axiom::resource::ResourceRef;
 using axiom::resource::ResourceRegistry;
@@ -418,6 +452,131 @@ TEST(ResourceRegistry, UnknownIdIsNotFound) {
     EXPECT_EQ(resolved.error().code, ErrorCode::NotFound);
 }
 
+TEST(ResourceRegistry, ListsDescriptorsInStableIdentityOrder) {
+    ResourceRegistry registry;
+    const auto first = registry.add(std::make_unique<Shape>());
+    const auto second = registry.add(std::make_unique<Mesh>());
+    const auto third = registry.add(std::make_unique<Shape>());
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    ASSERT_TRUE(third);
+
+    const auto descriptions = registry.list();
+    ASSERT_EQ(descriptions.size(), 3U);
+    for(std::size_t position = 1U; position < descriptions.size(); ++position) {
+        EXPECT_LE(descriptions[position - 1U].id, descriptions[position].id);
+    }
+    EXPECT_TRUE(std::ranges::any_of(descriptions, [&](const ResourceDescriptor& descriptor) {
+        return descriptor.id == first.value().id() && descriptor.type == "shape";
+    }));
+    EXPECT_TRUE(std::ranges::any_of(descriptions, [&](const ResourceDescriptor& descriptor) {
+        return descriptor.id == second.value().id() && descriptor.type == "mesh";
+    }));
+    EXPECT_TRUE(std::ranges::any_of(descriptions, [&](const ResourceDescriptor& descriptor) {
+        return descriptor.id == third.value().id() && descriptor.type == "shape";
+    }));
+
+    const auto described = registry.describe(second.value().id());
+    ASSERT_TRUE(described);
+    EXPECT_EQ(described.value().id, second.value().id());
+    EXPECT_EQ(described.value().type, "mesh");
+
+    const auto snapshot = registry.list();
+    ASSERT_TRUE(registry.remove(second.value().id()));
+    ASSERT_EQ(snapshot.size(), 3U);
+    EXPECT_TRUE(registry.list().size() == 2U);
+    EXPECT_TRUE(std::ranges::any_of(snapshot, [&](const ResourceDescriptor& descriptor) {
+        return descriptor.id == second.value().id() && descriptor.type == "mesh";
+    }));
+}
+
+TEST(ResourceRegistry, DescribeUnknownAndRemovedIdentityReturnsNotFound) {
+    ResourceRegistry first;
+    ResourceRegistry second;
+    const auto added = first.add(std::make_unique<Shape>());
+    ASSERT_TRUE(added);
+
+    const auto foreign = second.describe(added.value().id());
+    ASSERT_FALSE(foreign);
+    EXPECT_EQ(foreign.error().code, ErrorCode::NotFound);
+
+    ASSERT_TRUE(first.remove(added.value().id()));
+    const auto removed = first.describe(added.value().id());
+    ASSERT_FALSE(removed);
+    EXPECT_EQ(removed.error().code, ErrorCode::NotFound);
+}
+
+TEST(ResourceRegistry, DiscoveryDoesNotKeepResourceAlive) {
+    resetLifetimeCounters();
+    ResourceRegistry registry;
+    const auto added = registry.add(std::make_unique<Counted>());
+    ASSERT_TRUE(added);
+    const auto descriptor = registry.describe(added.value().id());
+    const auto list = registry.list();
+    ASSERT_TRUE(descriptor);
+    ASSERT_EQ(list.size(), 1U);
+    ASSERT_TRUE(registry.remove(added.value().id()));
+    EXPECT_EQ(Counted::destroyed, 1);
+    EXPECT_EQ(descriptor.value().id, added.value().id());
+    EXPECT_EQ(list.front().type, "counted");
+}
+
+TEST(ResourceRegistry, SupportsConcurrentReadWriteAndDiscoveryOperations) {
+    ResourceRegistry registry;
+    const auto stable = registry.add(std::make_unique<Mesh>());
+    ASSERT_TRUE(stable);
+    const Handle<Mesh> stable_handle{stable.value().id()};
+
+    constexpr int iterations = 256;
+    std::barrier start{4};
+    std::atomic<int> failures{0};
+    std::vector<std::thread> workers;
+    workers.reserve(4U);
+    workers.emplace_back([&] {
+        start.arrive_and_wait();
+        for(int index = 0; index < iterations; ++index) {
+            const auto added = registry.add(std::make_unique<Mesh>());
+            if(!added || !registry.remove(added.value().id())) {
+                ++failures;
+            }
+        }
+    });
+    workers.emplace_back([&] {
+        start.arrive_and_wait();
+        for(int index = 0; index < iterations; ++index) {
+            const auto resolved = registry.resolve(stable_handle);
+            if(!resolved || !registry.contains(stable_handle.id())) {
+                ++failures;
+            }
+        }
+    });
+    workers.emplace_back([&] {
+        start.arrive_and_wait();
+        for(int index = 0; index < iterations; ++index) {
+            const auto described = registry.describe(stable_handle.id());
+            if(!described || described.value().type != "mesh") {
+                ++failures;
+            }
+        }
+    });
+    workers.emplace_back([&] {
+        start.arrive_and_wait();
+        for(int index = 0; index < iterations; ++index) {
+            const auto descriptions = registry.list();
+            for(std::size_t position = 1U; position < descriptions.size(); ++position) {
+                if(descriptions[position - 1U].id > descriptions[position].id) {
+                    ++failures;
+                    break;
+                }
+            }
+        }
+    });
+    for(auto& worker : workers) {
+        worker.join();
+    }
+    EXPECT_EQ(failures.load(), 0);
+}
+
 TEST(ResourceRegistry, CrossRegistryIdIsNotFound) {
     ResourceRegistry first;
     ResourceRegistry second;
@@ -581,6 +740,25 @@ TEST(ResourceRegistry, LastRefReleaseDestroysExactlyOnce) {
     }
     EXPECT_EQ(Counted::destroyed, 1);
     EXPECT_EQ(Counted::constructed, 1);
+}
+
+TEST(ResourceRegistry, RemoveReleasesUserDestructorOutsideRegistryLock) {
+    ReentrantDestructorState state;
+    ResourceRegistry registry;
+    state.registry = &registry;
+
+    const auto added = registry.add(std::make_unique<ReentrantDestructor>(&state));
+    ASSERT_TRUE(added);
+    state.id = &added.value().id();
+
+    const bool removed = registry.remove(added.value().id());
+    EXPECT_TRUE(removed);
+    // Avoid re-entering a Registry during its destructor if the removal assertion fails.
+    state.registry = nullptr;
+    EXPECT_EQ(state.destructor_calls, 1);
+    EXPECT_FALSE(state.contains_result);
+    EXPECT_FALSE(state.describe_succeeded);
+    EXPECT_TRUE(state.describe_not_found);
 }
 
 TEST(ResourceRegistry, ConstRegistryYieldsMutableAccess) {

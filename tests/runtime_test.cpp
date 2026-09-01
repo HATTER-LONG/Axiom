@@ -15,15 +15,19 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <barrier>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <latch>
 #include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -303,6 +307,68 @@ TEST(Runtime, InvokesTypedFunctionsAndDiscoversStableDescriptors) {
     ASSERT_TRUE(descriptor);
     EXPECT_EQ(descriptor.value().get().parameters[0].type.kind,
               axiom::TypeDescriptor::Kind::Integer);
+}
+
+TEST(Runtime, KeepsDiscoveryReferencesStableAcrossLaterRegistration) {
+    ModuleBuilder initial{
+        axiom::ModuleDescriptor{.namespace_name = "lifetime", .metadata = {}}};
+    ASSERT_TRUE(initial.add(
+        "nested", "Describes nested values",
+        [](const std::vector<std::vector<int>>& values) {
+            return static_cast<int>(values.size());
+        },
+        param("values", "Nested values")));
+
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(initial)));
+
+    const auto found = runtime.findAction(id("lifetime.nested"));
+    const auto discovered = runtime.discoverActions();
+    ASSERT_TRUE(found);
+    ASSERT_EQ(discovered.size(), 1U);
+
+    // Keep both public reference views, including a recursively owned child, while
+    // another thread publishes a later Runtime state.
+    const auto& found_descriptor = found.value().get();
+    const auto& discovered_descriptor = discovered.front().get();
+    ASSERT_EQ(found_descriptor.id.str(), "lifetime.nested");
+    ASSERT_EQ(&found_descriptor, &discovered_descriptor);
+    ASSERT_EQ(found_descriptor.parameters.size(), 1U);
+    const auto& found_type = found_descriptor.parameters.front().type;
+    const auto& discovered_type = discovered_descriptor.parameters.front().type;
+    ASSERT_NE(found_type.element_type, nullptr);
+    ASSERT_NE(found_type.element_type->element_type, nullptr);
+    ASSERT_EQ(&found_type, &discovered_type);
+    EXPECT_EQ(found_type.kind, axiom::TypeDescriptor::Kind::Array);
+    EXPECT_EQ(found_type.element_type->kind, axiom::TypeDescriptor::Kind::Array);
+    EXPECT_EQ(found_type.element_type->element_type->kind,
+              axiom::TypeDescriptor::Kind::Integer);
+
+    std::barrier registration_start{2};
+    std::latch registration_finished{1};
+    bool registration_succeeded = false;
+    std::thread registrar([&] {
+        registration_start.arrive_and_wait();
+        ModuleBuilder later{
+            axiom::ModuleDescriptor{.namespace_name = "later", .metadata = {}}};
+        const auto added = later.add("action", "Later action", [] { return 1; });
+        if(added) {
+            registration_succeeded = static_cast<bool>(runtime.registerModule(std::move(later)));
+        }
+        registration_finished.count_down();
+    });
+    registration_start.arrive_and_wait();
+    registration_finished.wait();
+    registrar.join();
+
+    ASSERT_TRUE(registration_succeeded);
+    EXPECT_EQ(found_descriptor.id.str(), "lifetime.nested");
+    EXPECT_EQ(discovered_descriptor.id.str(), "lifetime.nested");
+    ASSERT_NE(found_type.element_type, nullptr);
+    ASSERT_NE(found_type.element_type->element_type, nullptr);
+    EXPECT_EQ(found_type.element_type->element_type->kind,
+              axiom::TypeDescriptor::Kind::Integer);
+    EXPECT_EQ(runtime.discoverActions().size(), 2U);
 }
 
 TEST(Runtime, PreservesBusinessErrorsAndSupportsVoidResults) {
@@ -757,4 +823,83 @@ TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutat
     Runtime runtime;
     ASSERT_TRUE(runtime.registerModule(std::move(builder)));
     EXPECT_EQ(runtime.discoverActions().size(), 1U);
+}
+
+TEST(Runtime, CoordinatesConcurrentRegistrationDiscoveryAndInvocation) {
+    Runtime runtime;
+    auto invocation_count = std::make_shared<std::atomic<int>>(0);
+    ModuleBuilder base{axiom::ModuleDescriptor{.namespace_name = "concurrent_base", .metadata = {}}};
+    ASSERT_TRUE(base.add("run", "Counts concurrent invocations", [invocation_count] {
+        invocation_count->fetch_add(1, std::memory_order_relaxed);
+        return 7;
+    }));
+    ASSERT_TRUE(runtime.registerModule(std::move(base)));
+
+    constexpr std::size_t registration_count = 6;
+    constexpr std::size_t invocation_thread_count = 4;
+    constexpr std::size_t invocation_count_per_thread = 32;
+    constexpr std::size_t participant_count = registration_count + invocation_thread_count + 1;
+    std::vector<ModuleBuilder> builders;
+    builders.reserve(registration_count);
+    for(std::size_t index = 0; index < registration_count; ++index) {
+        const auto module_name = "concurrent_" + std::to_string(index);
+        ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = module_name, .metadata = {}}};
+        ASSERT_TRUE(builder.add("value", "Returns its module index", [index] {
+            return static_cast<int>(index);
+        }));
+        builders.emplace_back(std::move(builder));
+    }
+
+    std::barrier start{static_cast<std::ptrdiff_t>(participant_count)};
+    std::latch registrations_finished{static_cast<std::ptrdiff_t>(registration_count)};
+    std::atomic<std::size_t> registrations_completed{0};
+    std::atomic<int> failures{0};
+    std::vector<std::thread> workers;
+    workers.reserve(participant_count);
+
+    for(std::size_t index = 0; index < registration_count; ++index) {
+        workers.emplace_back([&, builder = std::move(builders[index])]() mutable {
+            start.arrive_and_wait();
+            if(!runtime.registerModule(std::move(builder))) {
+                failures.fetch_add(1, std::memory_order_relaxed);
+            }
+            registrations_completed.fetch_add(1, std::memory_order_release);
+            registrations_finished.count_down();
+        });
+    }
+    for(std::size_t index = 0; index < invocation_thread_count; ++index) {
+        workers.emplace_back([&] {
+            start.arrive_and_wait();
+            for(std::size_t call = 0; call < invocation_count_per_thread; ++call) {
+                const auto result = runtime.invoke(id("concurrent_base.run"), {}, {});
+                if(!result || result.value().asInteger() != 7) {
+                    failures.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+
+    workers.emplace_back([&] {
+        start.arrive_and_wait();
+        while(registrations_completed.load(std::memory_order_acquire) < registration_count) {
+            const auto modules = runtime.discoverModules();
+            const auto actions = runtime.discoverActions();
+            if(modules.empty() || actions.empty() ||
+               !runtime.findModule("concurrent_base") ||
+               !runtime.findAction(id("concurrent_base.run"))) {
+                failures.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        registrations_finished.wait();
+    });
+
+    for(auto& worker : workers) {
+        worker.join();
+    }
+
+    EXPECT_EQ(failures.load(std::memory_order_acquire), 0);
+    EXPECT_EQ(invocation_count->load(std::memory_order_acquire),
+              static_cast<int>(invocation_thread_count * invocation_count_per_thread));
+    EXPECT_EQ(runtime.discoverModules().size(), registration_count + 1);
+    EXPECT_EQ(runtime.discoverActions().size(), registration_count + 1);
 }

@@ -6,9 +6,11 @@
 #include <axiom/action/module.hpp>
 #include <axiom/foundation/result.hpp>
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -47,8 +49,8 @@ struct PendingAction {
  * Registry validates descriptions before mutation, rejects duplicate module and
  * Action identifiers, and provides deterministic discovery ordered by the canonical
  * module or Action identifier. It does not invoke implementations, convert Values,
- * or impose logging behavior. Phase 1 supports registration followed by queries;
- * registration and queries must not run concurrently.
+ * or impose logging behavior. Registration commits are serialized, while queries
+ * and Action resolution read immutable state snapshots and may run concurrently.
  */
 class Registry {
 public:
@@ -163,7 +165,11 @@ private:
         std::map<std::string, std::shared_ptr<RegisteredAction>, std::less<>> actions;
     };
 
-    std::unique_ptr<State> state_;
+    // State is immutable after publication. Atomic shared_ptr operations let readers
+    // retain a complete snapshot without holding a lock across descriptor access or
+    // Action invocation. The mutex only serializes competing registration commits.
+    std::atomic<std::shared_ptr<const State>> state_;
+    mutable std::mutex registration_mutex_;
 };
 
 } // namespace axiom::detail
