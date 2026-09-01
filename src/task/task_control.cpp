@@ -7,6 +7,7 @@
 #include <axiom/task/task_id.hpp>
 #include <axiom/task/task_types.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -15,6 +16,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -28,7 +30,70 @@ void diagnoseNotification(const logging::Logger& logger,
                              {"task_name", Value{descriptor.name}}}),
               "{}", message);
 }
+
+[[nodiscard]] bool isRuntimeOwnedLogField(const std::string_view key) noexcept {
+    return key == "request_id" || key == "trace_id" || key == "caller" || key == "module" ||
+           key == "action" || key == "task_id" || key == "task_name" || key == "status" ||
+           key == "duration_ms";
+}
+
+[[nodiscard]] bool isCanonicalActionComponent(const std::string_view text) noexcept {
+    return !text.empty() && std::ranges::all_of(text, [](const char character) noexcept {
+        return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') ||
+               character == '_';
+    });
+}
+
+[[nodiscard]] std::optional<std::string>
+moduleFromCanonicalActionId(const std::string_view action_id) {
+    const auto separator = action_id.find('.');
+    if(separator == std::string_view::npos || separator != action_id.rfind('.') || separator == 0U ||
+       separator + 1U == action_id.size()) {
+        return std::nullopt;
+    }
+    const auto module = action_id.substr(0U, separator);
+    const auto action = action_id.substr(separator + 1U);
+    if(!isCanonicalActionComponent(module) || !isCanonicalActionComponent(action)) {
+        return std::nullopt;
+    }
+    return std::string{module};
+}
+
+void appendOriginLogFields(Value::Object& fields, const TaskOrigin& origin) {
+    for(const auto& [key, value] : origin.metadata) {
+        if(!isRuntimeOwnedLogField(key)) {
+            fields.insert_or_assign(key, Value{value});
+        }
+    }
+    if(!origin.request_id.empty()) {
+        fields.insert_or_assign("request_id", Value{origin.request_id});
+    }
+    if(!origin.trace_id.empty()) {
+        fields.insert_or_assign("trace_id", Value{origin.trace_id});
+    }
+    if(!origin.caller.empty()) {
+        fields.insert_or_assign("caller", Value{origin.caller});
+    }
+    if(!origin.action_id.empty()) {
+        fields.insert_or_assign("action", Value{origin.action_id});
+        if(auto module = moduleFromCanonicalActionId(origin.action_id)) {
+            fields.insert_or_assign("module", Value{std::move(*module)});
+        }
+    }
+}
 } // namespace
+
+Value::Object taskLogFields(const TaskId& id,
+                            const std::string_view name,
+                            const std::optional<TaskOrigin>& origin) {
+    Value::Object fields;
+    if(origin) {
+        appendOriginLogFields(fields, *origin);
+    }
+    fields.insert_or_assign("task_id", Value{std::string{id.str()}});
+    fields.insert_or_assign("task_name", Value{std::string{name}});
+    return fields;
+}
 
 NotificationHub::NotificationHub(logging::Logger logger) : logger_(std::move(logger)) {}
 
@@ -64,19 +129,25 @@ TaskControl::TaskControl(TaskId id,
                          std::string name,
                          std::weak_ptr<NotificationHub> notifications,
                          logging::Logger&& logger,
-                         std::function<std::shared_ptr<const void>()> cancelled_result)
+                         std::function<std::shared_ptr<const void>()> cancelled_result,
+                         std::optional<TaskOrigin> origin)
     : descriptor_{.id = std::move(id),
                   .name = std::move(name),
                   .state = TaskState::Pending,
                   .progress = {},
                   .error = std::nullopt,
-                  .origin = std::nullopt},
+                  .origin = std::move(origin)},
       notifications_(std::move(notifications)), logger_(std::move(logger)),
       cancelled_result_(std::move(cancelled_result)) {}
 
 TaskDescriptor TaskControl::describe() const {
     std::scoped_lock const lock{mutex_};
     return descriptor_;
+}
+
+Value::Object TaskControl::executionLogFields() const {
+    std::scoped_lock const lock{mutex_};
+    return taskLogFields(descriptor_.id, descriptor_.name, descriptor_.origin);
 }
 
 TaskState TaskControl::state() const {

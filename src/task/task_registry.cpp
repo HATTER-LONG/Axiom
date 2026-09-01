@@ -26,6 +26,11 @@
 
 namespace axiom::task {
 namespace {
+[[nodiscard]] bool isUnknownOrigin(const TaskOrigin& origin) noexcept {
+    return origin.request_id.empty() && origin.trace_id.empty() && origin.caller.empty() &&
+           origin.action_id.empty() && origin.metadata.empty();
+}
+
 [[nodiscard]] Error missingTask() {
     return {.code = ErrorCode::NotFound,
             .message = "Task was not found",
@@ -57,7 +62,7 @@ TaskRegistry::~TaskRegistry() noexcept { impl_->notifications->close(); }
 
 Result<std::shared_ptr<detail::TaskControl>> TaskRegistry::submitControl(
     async::Executor& executor,
-    std::string name,
+    TaskSubmission submission,
     std::function<void(const std::shared_ptr<detail::TaskControl>&)> function,
     std::function<std::shared_ptr<const void>()> cancelled_result) {
     static std::atomic_uint64_t next_id{1};
@@ -76,11 +81,19 @@ Result<std::shared_ptr<detail::TaskControl>> TaskRegistry::submitControl(
     }
     auto id = TaskId::parse("task:" + std::to_string(serial));
     const auto descriptor_id = id.value();
-    auto task_logger = impl_->logger.child("task").withFields(
-        {{"task_id", Value{std::string{descriptor_id.str()}}}, {"task_name", Value{name}}});
+    if(submission.origin && isUnknownOrigin(*submission.origin)) {
+        submission.origin.reset();
+    }
+    logging::Logger task_logger;
+    try {
+        auto fields = detail::taskLogFields(descriptor_id, submission.name, submission.origin);
+        task_logger = impl_->logger.child("task").withFields(std::move(fields));
+    } catch(...) {
+        task_logger = {};
+    }
     auto control = std::make_shared<detail::TaskControl>(
-        std::move(id.value()), std::move(name), impl_->notifications, std::move(task_logger),
-        std::move(cancelled_result));
+        std::move(id.value()), std::move(submission.name), impl_->notifications,
+        std::move(task_logger), std::move(cancelled_result), std::move(submission.origin));
     const auto control_id = control->describe().id;
     {
         std::scoped_lock const lock{impl_->mutex};

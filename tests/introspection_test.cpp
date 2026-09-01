@@ -206,6 +206,38 @@ TEST(IntrospectionService, FiltersResourcesAndPreservesTaskValues) {
     EXPECT_EQ(task.value().id, tasks.front().id);
 }
 
+TEST(IntrospectionService, CopiesTaskOriginIndependently) {
+    RuntimeFixture fixture;
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
+    axiom::async::Executor executor{1};
+    axiom::task::TaskOrigin origin{.request_id = "intro-req",
+                                   .trace_id = "intro-trace",
+                                   .caller = "suite",
+                                   .action_id = "alpha.ping",
+                                   .metadata = {{"k", "v"}}};
+    const auto submitted = fixture.tasks.submit(
+        executor, axiom::task::TaskSubmission{.name = "origin", .origin = origin},
+        [](axiom::task::TaskContext&) { return axiom::Result<int>::success(1); });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    auto described = service.describeTask(submitted.value().id());
+    ASSERT_TRUE(described);
+    ASSERT_TRUE(described.value().origin);
+    EXPECT_EQ(described.value().origin->request_id, "intro-req");
+    described.value().origin->request_id = "mutated";
+    described.value().origin->metadata["k"] = "mutated";
+    const auto again = service.describeTask(submitted.value().id());
+    ASSERT_TRUE(again);
+    ASSERT_TRUE(again.value().origin);
+    EXPECT_EQ(again.value().origin->request_id, "intro-req");
+    EXPECT_EQ(again.value().origin->metadata.at("k"), "v");
+    const auto listed = service.tasks();
+    ASSERT_EQ(listed.size(), 1U);
+    ASSERT_TRUE(listed.front().origin);
+    EXPECT_EQ(listed.front().origin->action_id, "alpha.ping");
+}
+
 TEST(IntrospectionService, ForwardsTaskProgressFailureAndErrorValues) {
     RuntimeFixture fixture;
     const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,

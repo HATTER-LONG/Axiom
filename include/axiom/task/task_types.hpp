@@ -64,6 +64,17 @@ struct TaskDescriptor final {
     std::optional<TaskOrigin> origin{};
 };
 
+/**
+ * @brief Submission-time name and optional origin for a new Task.
+ *
+ * Origin is copied when the Registry accepts the Task. Later submits, retries,
+ * and derived Tasks do not inherit it unless the caller passes it again.
+ */
+struct TaskSubmission final {
+    std::string name;
+    std::optional<TaskOrigin> origin{};
+};
+
 /** @brief Copyable, thread-safe observation of a task's cooperative cancellation request. */
 class AXIOM_API CancellationToken final {
 public:

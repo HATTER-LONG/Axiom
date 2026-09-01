@@ -62,8 +62,11 @@ namespace {
 }
 
 [[nodiscard]] bool isRuntimeOwnedLogField(const std::string_view key) noexcept {
-    // Runtime overwrites these keys after merging caller metadata so invoke logs stay consistent.
-    return key == "module" || key == "action" || key == "status" || key == "duration_ms";
+    // Drop caller metadata that collides with reserved diagnostic keys before writing
+    // authoritative Runtime fields. Identity keys are only written when non-empty.
+    return key == "request_id" || key == "trace_id" || key == "caller" || key == "module" ||
+           key == "action" || key == "task_id" || key == "task_name" || key == "status" ||
+           key == "duration_ms";
 }
 
 [[nodiscard]] Value::Object invocationContextFields(const InvocationContext& context,

@@ -90,9 +90,13 @@ Signal's propagation contract. Registry destruction closes subscription entry;
 already acquired notification snapshots may finish without a join.
 
 Task execution installs scoped `task_id` and `task_name` fields on its execution
-thread for the associated LoggingService. The scope restores previous context,
-does not propagate to user-created threads, and follows normal logging field
-precedence. Value and Resource handles are ordinary typed results: returning a
+thread for the associated LoggingService, plus non-empty origin correlation
+fields (`request_id`, `trace_id`, `caller`, `action`, and `module` when
+`action_id` is canonical `module.action` text). Caller origin metadata is
+filtered then overwritten using the same reserved-key rule as Action Runtime.
+The scope restores previous context, does not propagate to user-created threads,
+and follows normal logging field precedence. Origin is submission-time data only
+and is not inherited by retries or derived Tasks. Value and Resource handles are ordinary typed results: returning a
 Resource handle does not extend its host registration lifetime.
 
 The library is static by default and supports shared builds. Public symbols use

@@ -4,7 +4,9 @@
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
+#include <axiom/foundation/value.hpp>
 #include <axiom/logging/logger.hpp>
+#include <axiom/logging/scoped_log_context.hpp>
 #include <axiom/task/task_id.hpp>
 #include <axiom/task/task_types.hpp>
 
@@ -16,6 +18,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace axiom::task::detail {
@@ -34,13 +37,18 @@ private:
     std::atomic_bool closed_{false};
 };
 
+[[nodiscard]] AXIOM_API Value::Object taskLogFields(const TaskId& id,
+                                                   std::string_view name,
+                                                   const std::optional<TaskOrigin>& origin);
+
 class AXIOM_API TaskControl final : public std::enable_shared_from_this<TaskControl> {
 public:
     TaskControl(TaskId id,
                 std::string name,
                 std::weak_ptr<NotificationHub> notifications,
                 logging::Logger&& logger,
-                std::function<std::shared_ptr<const void>()> cancelled_result);
+                std::function<std::shared_ptr<const void>()> cancelled_result,
+                std::optional<TaskOrigin> origin = std::nullopt);
 
     [[nodiscard]] TaskDescriptor describe() const;
     [[nodiscard]] const TaskId& id() const noexcept { return descriptor_.id; }
@@ -48,6 +56,8 @@ public:
     [[nodiscard]] Progress progress() const;
     [[nodiscard]] CancellationToken cancellation() const noexcept;
     [[nodiscard]] const logging::Logger& logger() const noexcept { return logger_; }
+    /** @brief Returns logger and execution-thread fields for this task. */
+    [[nodiscard]] Value::Object executionLogFields() const;
     [[nodiscard]] bool requestCancel();
     [[nodiscard]] bool start();
     void reportProgress(double value, std::string message);
@@ -89,9 +99,12 @@ void execute(const std::shared_ptr<TaskControl>& control, Function& function) {
         if(!control->start()) {
             return;
         }
-        [[maybe_unused]] auto scoped_context =
-            control->logger().scopedContext({{"task_id", Value{std::string{control->id().str()}}},
-                                             {"task_name", Value{control->describe().name}}});
+        logging::ScopedLogContext scoped_context;
+        try {
+            scoped_context = control->logger().scopedContext(control->executionLogFields());
+        } catch(...) {
+            scoped_context = {};
+        }
         // NOLINTNEXTLINE(misc-const-correctness)
         TaskContext context{control};
         Result<T> result = std::invoke(std::move(function), context);

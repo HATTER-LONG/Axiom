@@ -752,6 +752,38 @@ TEST(Runtime, IncludesOnlyProvidedInvocationContextFieldsInLogs) {
     EXPECT_EQ(empty_start.fields.at("action").asString(), "context_fields.run");
 }
 
+TEST(Runtime, InvocationMetadataCannotPlantReservedCorrelationKeys) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    Runtime runtime{logging.logger("runtime")};
+    ModuleBuilder builder{
+        axiom::ModuleDescriptor{.namespace_name = "context_reserved", .metadata = {}}};
+    ASSERT_TRUE(builder.add("run", "Returns a fixed value", [] { return 1; }));
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext context{.request_id = {},
+                                    .trace_id = {},
+                                    .caller = {},
+                                    .metadata = {{"request_id", "spoofed-request"},
+                                                 {"trace_id", "spoofed-trace"},
+                                                 {"caller", "spoofed-caller"},
+                                                 {"task_id", "spoofed-task"},
+                                                 {"task_name", "spoofed-name"},
+                                                 {"keep", "yes"}}};
+    ASSERT_TRUE(runtime.invoke(id("context_reserved.run"), {}, context));
+    const auto& start = recordAt(*sink, 1U);
+    EXPECT_FALSE(start.fields.contains("request_id"));
+    EXPECT_FALSE(start.fields.contains("trace_id"));
+    EXPECT_FALSE(start.fields.contains("caller"));
+    EXPECT_FALSE(start.fields.contains("task_id"));
+    EXPECT_FALSE(start.fields.contains("task_name"));
+    EXPECT_EQ(start.fields.at("keep").asString(), "yes");
+    EXPECT_EQ(start.fields.at("module").asString(), "context_reserved");
+    EXPECT_EQ(start.fields.at("action").asString(), "context_reserved.run");
+    static_cast<void>(subscription);
+}
+
 TEST(Runtime, KeepsExecutionAndResultsWhenASinkThrows) {
     LoggingService logging;
     const auto good_sink = std::make_shared<RuntimeRecordingSink>();

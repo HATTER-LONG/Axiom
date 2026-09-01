@@ -141,7 +141,11 @@ Registries retain terminal tasks until removal or Registry destruction. Handles
 and accepted work survive Registry destruction, which never cancels or waits.
 Callers still own the lifetime of references captured by business callables and
 observers. Use a Registry constructed with a Logger to associate same-service,
-same-thread business logs with `task_id` and `task_name`.
+same-thread business logs with `task_id` and `task_name`. Submit with
+`task::TaskSubmission` to copy an optional immutable `TaskOrigin`; non-empty
+origin fields are also bound as `request_id`, `trace_id`, `caller`, `action`,
+and a `module` component only when `action_id` is canonical `module.action`
+text. Name-only `submit` remains available and records unknown origin.
 
 Inside the callable, use `context.reportProgress(0.5, "Batch complete")` and
 `context.cancellation().requested()`. The runnable example in
