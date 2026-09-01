@@ -274,13 +274,19 @@ TEST(IntrospectionService, ForwardsTaskProgressFailureAndErrorValues) {
     EXPECT_EQ(described.value().state, axiom::task::TaskState::Failed);
     EXPECT_DOUBLE_EQ(described.value().progress.value, 0.375);
     EXPECT_EQ(described.value().progress.message, "phase two");
-    ASSERT_TRUE(described.value().error.has_value());
-    const auto& error = *described.value().error;
-    EXPECT_EQ(error.code, axiom::ErrorCode::InvocationFailed);
-    EXPECT_EQ(error.message, "deterministic task failure");
-    ASSERT_TRUE(error.path.has_value());
-    EXPECT_EQ(*error.path, "jobs[2]");
-    const auto* const details = error.details ? &error.details->asObject() : nullptr;
+    const auto& error = described.value().error;
+    if(!error.has_value()) {
+        FAIL() << "failed task should report an error";
+        return;
+    }
+    EXPECT_EQ(error->code, axiom::ErrorCode::InvocationFailed);
+    EXPECT_EQ(error->message, "deterministic task failure");
+    if(!error->path.has_value()) {
+        FAIL() << "failed task should report an error path";
+        return;
+    }
+    EXPECT_EQ(*error->path, "jobs[2]");
+    const auto* const details = error->details ? &error->details->asObject() : nullptr;
     ASSERT_NE(details, nullptr);
     EXPECT_EQ(details->at("attempt").asInteger(), 2);
     EXPECT_FALSE(details->at("retryable").asBoolean());
@@ -466,14 +472,18 @@ TEST(IntrospectionService, QueryFiltersActionsByExactModuleAndAllOfTags) {
                                   .version = {},
                                   .tags = {},
                                   .metadata = {}}};
-    EXPECT_TRUE(catalog.add("list", "List", [] { return 1; }, std::vector<std::string>{"search"}));
     EXPECT_TRUE(catalog.add(
-        "search", "Search", [] { return 1; }, std::vector<std::string>{"search", "index"}));
+        "list", "List", [] { return 1; },
+        axiom::ActionOptions{.version = {}, .tags = {"search"}, .metadata = {}}));
+    EXPECT_TRUE(catalog.add(
+        "search", "Search", [] { return 1; },
+        axiom::ActionOptions{.version = {}, .tags = {"search", "index"}, .metadata = {}}));
     EXPECT_TRUE(fixture.runtime.registerModule(std::move(catalog)));
     axiom::ModuleBuilder other{
         {.namespace_name = "other", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
     EXPECT_TRUE(other.add(
-        "search", "Search", [] { return 1; }, std::vector<std::string>{"search", "index"}));
+        "search", "Search", [] { return 1; },
+        axiom::ActionOptions{.version = {}, .tags = {"search", "index"}, .metadata = {}}));
     EXPECT_TRUE(fixture.runtime.registerModule(std::move(other)));
     const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
                                                              fixture.tasks};
@@ -710,8 +720,9 @@ TEST(IntrospectionService, QueryResultsStayInternallyConsistentDuringSourceChang
                                          .version = {},
                                          .tags = {},
                                          .metadata = {}}};
-            EXPECT_TRUE(
-                module.add("action", "Action", [] { return 1; }, std::vector<std::string>{"live"}));
+            EXPECT_TRUE(module.add(
+                "action", "Action", [] { return 1; },
+                axiom::ActionOptions{.version = {}, .tags = {"live"}, .metadata = {}}));
             EXPECT_TRUE(fixture.runtime.registerModule(std::move(module)));
         }
         writers_done.count_down();

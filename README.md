@@ -57,7 +57,9 @@ The public header is available as:
 The public API is centered on `Value`/`Arguments` for ordered dynamic values,
 `ModuleBuilder` for staging typed callable Actions, `Runtime` for module
 registration, discovery and synchronous invocation, and `Error`/`Result<T>` for
-structured failures at the boundary. Action identifiers use canonical
+structured failures at the boundary. `ActionOptions` supplies Action `version`,
+`tags`, and `metadata` at registration without additional `add()` overloads.
+Action identifiers use canonical
 `module.action` syntax, with lowercase ASCII letters, digits, and underscores
 in each component.
 

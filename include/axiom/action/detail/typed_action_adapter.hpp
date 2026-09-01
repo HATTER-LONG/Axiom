@@ -291,6 +291,13 @@ public:
             return Result<Value>::failure(conversion.error());
         }
         if constexpr(InjectInvocation) {
+            if(!action_id_.has_value()) {
+                return Result<Value>::failure(
+                    {.code = ErrorCode::InternalError,
+                     .message = "Contextual Action was invoked before its ActionId was bound",
+                     .path = std::nullopt,
+                     .details = std::nullopt});
+            }
             const ActionInvocation invocation{*action_id_, context};
             return invokeWithValues(converted, invocation);
         } else {

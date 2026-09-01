@@ -52,7 +52,9 @@ the authoritative `ActionId` and the call's `InvocationContext`. That view is va
 only on the synchronous invoke stack and is not listed in
 `ActionDescriptor::parameters`. Ordinary `ModuleBuilder::add()` continues to infer
 only Value-convertible parameters and does not treat a special first parameter type
-as context.
+as context. Both registration entry points accept an optional `ActionOptions` value
+that copies `version`, `tags`, and `metadata` onto `ActionDescriptor`; they do not
+gain extra overloads for those fields.
 
 Runtime publishes immutable registry States to make discovery and invocation
 lock-free after snapshot acquisition. The current implementation copies the maps

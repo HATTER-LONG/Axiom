@@ -793,8 +793,10 @@ TEST(TaskRegistry, NestedSubmitDoesNotInheritOrigin) {
     ASSERT_TRUE(parent);
     nested_done.get_future().wait();
     executor.close();
-    ASSERT_TRUE(child_id);
-    ASSERT_TRUE(explicit_id);
+    if(!child_id.has_value() || !explicit_id.has_value()) {
+        FAIL() << "nested tasks should publish child identifiers";
+        return;
+    }
     EXPECT_TRUE(originMatches(tasks.describe(parent.value().id()).value().origin, parent_origin));
     EXPECT_FALSE(tasks.describe(*child_id).value().origin.has_value());
     const auto explicit_described = tasks.describe(*explicit_id);
