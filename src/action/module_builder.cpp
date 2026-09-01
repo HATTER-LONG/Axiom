@@ -69,6 +69,7 @@ Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
             builderError(ErrorCode::AlreadyExists,
                          "Action is already pending: " + std::string{descriptor->id.str()}));
     }
+    implementation->bindActionId(descriptor->id);
     state_->actions.emplace_back(std::move(descriptor), std::move(implementation));
     return Result<void>::success();
 }

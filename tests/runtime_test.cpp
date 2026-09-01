@@ -39,6 +39,7 @@
 namespace {
 
 using axiom::ActionId;
+using axiom::ActionInvocation;
 using axiom::Arguments;
 using axiom::ErrorCode;
 using axiom::InvocationContext;
@@ -135,6 +136,14 @@ concept PubliclyAddable =
                     std::forward<Documentation>(documentation)...);
     };
 
+template <typename Callable, typename... Documentation>
+concept PubliclyAddableContextual =
+    requires(ModuleBuilder& builder, Callable&& callable, Documentation&&... documentation) {
+        builder.addContextual("probe", "Compile-time contextual registration probe",
+                              std::forward<Callable>(callable),
+                              std::forward<Documentation>(documentation)...);
+    };
+
 using ParameterDoc = axiom::ParameterDocumentation;
 using CopyableLambda = decltype([](const int value) { return value; });
 
@@ -200,6 +209,23 @@ static_assert(!PubliclyAddable<std::function<int(int)>, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyEntriesCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyHashMapCallable, ParameterDoc>);
 static_assert(!PubliclyAddable<PolicyVectorCallable, ParameterDoc>);
+
+using ContextualFunction = int (*)(const ActionInvocation&, int);
+using CopyableContextualLambda =
+    decltype([](const ActionInvocation& invocation, const int value) {
+        static_cast<void>(invocation);
+        return value;
+    });
+
+static_assert(!PubliclyAddable<ContextualFunction, ParameterDoc>);
+static_assert(!PubliclyAddable<CopyableContextualLambda, ParameterDoc>);
+static_assert(PubliclyAddableContextual<ContextualFunction, ParameterDoc>);
+static_assert(PubliclyAddableContextual<CopyableContextualLambda, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<decltype(add)&, ParameterDoc, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<RvalueOnly, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<OverloadedCallable, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<NonCopyableCallable, ParameterDoc>);
+static_assert(!PubliclyAddableContextual<std::function<int(int)>, ParameterDoc>);
 
 ActionId id(const std::string_view text) {
     const auto parsed = ActionId::parse(text);
@@ -982,4 +1008,212 @@ TEST(Runtime, AllowsOverlappingCallsToOneActionWhenCallableSynchronizesState) {
     second.join();
 
     EXPECT_EQ(state.peak, 2);
+}
+
+Result<int> contextualChecked(const ActionInvocation& invocation, const int value) {
+    static_cast<void>(invocation);
+    return checked(value);
+}
+
+void contextualThrowStandard(const ActionInvocation& invocation) {
+    static_cast<void>(invocation);
+    throwStandard();
+}
+
+void contextualThrowUnknown(const ActionInvocation& invocation) {
+    static_cast<void>(invocation);
+    throwUnknown();
+}
+
+TEST(Runtime, ContextualActionReceivesInvokeIdentityAndAuthoritativeActionId) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "index", .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual(
+        "rebuild", "Exposes invocation identity",
+        [](const ActionInvocation& invocation, const std::string& target) {
+            EXPECT_EQ(invocation.actionId().str(), "index.rebuild");
+            EXPECT_EQ(invocation.actionId().module(), "index");
+            EXPECT_EQ(invocation.actionId().action(), "rebuild");
+            EXPECT_EQ(invocation.context().request_id, "request-7");
+            EXPECT_EQ(invocation.context().trace_id, "trace-9");
+            EXPECT_EQ(invocation.context().caller, "client");
+            EXPECT_EQ(invocation.context().metadata.at("tenant"), "north");
+            return target;
+        },
+        param("target", "Target index")));
+
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto descriptor = runtime.findAction(id("index.rebuild"));
+    ASSERT_TRUE(descriptor);
+    ASSERT_EQ(descriptor.value().get().parameters.size(), 1U);
+    EXPECT_EQ(descriptor.value().get().parameters.front().name, "target");
+    EXPECT_EQ(descriptor.value().get().parameters.front().type.kind,
+              axiom::TypeDescriptor::Kind::String);
+
+    const InvocationContext context{.request_id = "request-7",
+                                    .trace_id = "trace-9",
+                                    .caller = "client",
+                                    .metadata = {{"tenant", "north"}}};
+    const auto result =
+        runtime.invoke(id("index.rebuild"), Arguments{{"target", Value{"primary"}}}, context);
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value().asString(), "primary");
+}
+
+TEST(Runtime, ConcurrentContextualInvocationsKeepSeparateContexts) {
+    struct SharedState {
+        std::mutex mutex;
+        std::condition_variable changed;
+        int active{0};
+        int peak{0};
+        bool release{false};
+        std::map<std::string, InvocationContext> seen;
+        std::map<std::string, std::string> action_ids;
+    } state;
+
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "index", .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual(
+        "probe", "Captures overlapping invocation identity",
+        [&state](const ActionInvocation& invocation, const std::string& key) {
+            std::unique_lock lock{state.mutex};
+            ++state.active;
+            state.peak = std::max(state.peak, state.active);
+            state.seen.insert_or_assign(key, invocation.context());
+            state.action_ids.insert_or_assign(key, std::string{invocation.actionId().str()});
+            state.changed.notify_all();
+            state.changed.wait(lock, [&state] { return state.release; });
+            --state.active;
+            return 1;
+        },
+        param("key", "Call key")));
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext first{.request_id = "req-a",
+                                  .trace_id = "tr-a",
+                                  .caller = "caller-a",
+                                  .metadata = {{"tenant", "north"}}};
+    const InvocationContext second{.request_id = "req-b",
+                                   .trace_id = "tr-b",
+                                   .caller = "caller-b",
+                                   .metadata = {{"tenant", "south"}}};
+
+    std::thread left{[&runtime, &first] {
+        EXPECT_TRUE(runtime.invoke(id("index.probe"), Arguments{{"key", Value{"left"}}}, first));
+    }};
+    std::thread right{[&runtime, &second] {
+        EXPECT_TRUE(runtime.invoke(id("index.probe"), Arguments{{"key", Value{"right"}}}, second));
+    }};
+
+    {
+        std::unique_lock lock{state.mutex};
+        EXPECT_TRUE(state.changed.wait_for(lock, std::chrono::seconds{2},
+                                           [&state] { return state.active == 2; }));
+        state.release = true;
+    }
+    state.changed.notify_all();
+    left.join();
+    right.join();
+
+    EXPECT_EQ(state.peak, 2);
+    ASSERT_EQ(state.seen.size(), 2U);
+    EXPECT_EQ(state.seen.at("left").request_id, "req-a");
+    EXPECT_EQ(state.seen.at("left").trace_id, "tr-a");
+    EXPECT_EQ(state.seen.at("left").caller, "caller-a");
+    EXPECT_EQ(state.seen.at("left").metadata.at("tenant"), "north");
+    EXPECT_EQ(state.seen.at("right").request_id, "req-b");
+    EXPECT_EQ(state.seen.at("right").trace_id, "tr-b");
+    EXPECT_EQ(state.seen.at("right").caller, "caller-b");
+    EXPECT_EQ(state.seen.at("right").metadata.at("tenant"), "south");
+    EXPECT_EQ(state.action_ids.at("left"), "index.probe");
+    EXPECT_EQ(state.action_ids.at("right"), "index.probe");
+}
+
+TEST(Runtime, ContextualActionsPreserveCurrentFailureAndSilentLoggerBehavior) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context_errors", .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual("checked", "Returns a business error", &contextualChecked,
+                                      param("value", "Candidate value")));
+    ASSERT_TRUE(builder.addContextual("standard", "Throws a standard exception",
+                                      &contextualThrowStandard));
+    ASSERT_TRUE(
+        builder.addContextual("unknown", "Throws an unknown exception", &contextualThrowUnknown));
+    int invocations = 0;
+    ASSERT_TRUE(builder.addContextual("silent", "Counts executions without a logger",
+                                      [&invocations](const ActionInvocation& invocation) {
+                                          static_cast<void>(invocation);
+                                          ++invocations;
+                                          return 11;
+                                      }));
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto missing = runtime.invoke(id("context_errors.checked"), {}, {});
+    const auto mismatch =
+        runtime.invoke(id("context_errors.checked"), Arguments{{"value", Value{"one"}}}, {});
+    const auto business =
+        runtime.invoke(id("context_errors.checked"), Arguments{{"value", Value{-1}}}, {});
+    const auto standard = runtime.invoke(id("context_errors.standard"), {}, {});
+    const auto unknown = runtime.invoke(id("context_errors.unknown"), {}, {});
+    const auto silent = runtime.invoke(id("context_errors.silent"), {}, {});
+
+    ASSERT_FALSE(missing);
+    EXPECT_EQ(missing.error().code, ErrorCode::MissingArgument);
+    ASSERT_FALSE(mismatch);
+    EXPECT_EQ(mismatch.error().code, ErrorCode::TypeMismatch);
+    ASSERT_FALSE(business);
+    EXPECT_EQ(business.error().code, ErrorCode::InvalidArgument);
+    ASSERT_FALSE(standard);
+    EXPECT_EQ(standard.error().code, ErrorCode::InvocationFailed);
+    ASSERT_FALSE(unknown);
+    EXPECT_EQ(unknown.error().code, ErrorCode::InternalError);
+    ASSERT_TRUE(silent);
+    EXPECT_EQ(silent.value().asInteger(), 11);
+    EXPECT_EQ(invocations, 1);
+}
+
+TEST(Runtime, ContextualActionLogsKeepAuthoritativeModuleActionFields) {
+    LoggingService logging;
+    const auto sink = std::make_shared<RuntimeRecordingSink>();
+    auto subscription = logging.addSink(sink);
+    const auto business_logger =
+        std::make_shared<axiom::logging::Logger>(logging.logger("business"));
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "context", .metadata = {}}};
+    ASSERT_TRUE(builder.addContextual(
+        "emit", "Emits a business record from a contextual Action",
+        [business_logger](const ActionInvocation& invocation) {
+            EXPECT_EQ(invocation.actionId().str(), "context.emit");
+            try {
+                business_logger->write(LogLevel::Info, "business event");
+            } catch(...) {
+                return 42;
+            }
+            return 42;
+        }));
+    Runtime runtime{logging.logger("runtime")};
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const InvocationContext context{.request_id = "request-7",
+                                    .trace_id = "trace-9",
+                                    .caller = "client",
+                                    .metadata = {{"tenant", "north"},
+                                                 {"module", "metadata-module"},
+                                                 {"action", "metadata-action"},
+                                                 {"status", "metadata-status"},
+                                                 {"duration_ms", "metadata-duration"}}};
+    const auto result = runtime.invoke(id("context.emit"), {}, context);
+
+    ASSERT_TRUE(result);
+    ASSERT_EQ(sink->records.size(), 4U);
+    const auto& business_record = recordAt(*sink, 2U);
+    EXPECT_EQ(business_record.category, "business");
+    EXPECT_EQ(business_record.fields.at("request_id").asString(), "request-7");
+    EXPECT_EQ(business_record.fields.at("trace_id").asString(), "trace-9");
+    EXPECT_EQ(business_record.fields.at("caller").asString(), "client");
+    EXPECT_EQ(business_record.fields.at("tenant").asString(), "north");
+    EXPECT_EQ(business_record.fields.at("module").asString(), "context");
+    EXPECT_EQ(business_record.fields.at("action").asString(), "context.emit");
+    EXPECT_FALSE(business_record.fields.contains("status"));
+    EXPECT_FALSE(business_record.fields.contains("duration_ms"));
 }

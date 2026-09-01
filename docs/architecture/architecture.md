@@ -44,6 +44,14 @@ executing it and never holds a registration or discovery lock around user code.
 Calls to one Action may overlap and share its one stored callable instance, so the
 callable and every mutable capture must provide their own synchronization.
 
+Typed Actions that need request, trace, caller, or metadata register through
+`ModuleBuilder::addContextual()`. Runtime injects an `ActionInvocation` view with
+the authoritative `ActionId` and the call's `InvocationContext`. That view is valid
+only on the synchronous invoke stack and is not listed in
+`ActionDescriptor::parameters`. Ordinary `ModuleBuilder::add()` continues to infer
+only Value-convertible parameters and does not treat a special first parameter type
+as context.
+
 Runtime publishes immutable registry States to make discovery and invocation
 lock-free after snapshot acquisition. The current implementation copies the maps
 when registering a Module, giving a sequence of registrations O(n²) aggregate map

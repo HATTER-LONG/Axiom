@@ -170,6 +170,37 @@ public:
                                    Callable&& callable,
                                    Documentation&&... documentation);
 
+    /**
+     * @brief Adds a callable Action that receives the current invocation identity.
+     *
+     * The callable's first parameter must accept `const ActionInvocation&`. That
+     * injected view is valid only on the synchronous invoke stack and is omitted
+     * from ActionDescriptor::parameters. Remaining parameters use the same
+     * documentation, Value conversion, return conversion, and exception
+     * normalization as add().
+     *
+     * @tparam Callable A supported copyable callable whose first parameter is
+     *         ActionInvocation and whose remaining parameters are Value-convertible.
+     * @tparam Documentation Parameter documentation argument types.
+     * @param action_name Local Action name; Runtime combines it with the Module namespace.
+     * @param description Caller-facing Action description.
+     * @param callable Business callable copied (or moved, when an rvalue) into pending storage.
+     * @param documentation One param() entry for every non-injected callable parameter, in
+     *        signature order after ActionInvocation.
+     * @return Success, or an empty-builder, invalid/duplicate descriptor error without
+     *         changing this builder.
+     * @throws std::bad_alloc If descriptor or callable storage preparation cannot allocate.
+     * @throws Any exception raised while copying or moving callable into owned storage. The
+     *         builder remains unchanged when callable construction throws.
+     * @note Ordinary add() does not treat ActionInvocation as a special first parameter.
+     */
+    template <typename Callable, typename... Documentation>
+        requires detail::AdaptableContextualCallable<Callable>
+    [[nodiscard]] Result<void> addContextual(std::string_view action_name,
+                                             std::string description,
+                                             Callable&& callable,
+                                             Documentation&&... documentation);
+
 private:
     friend class Runtime;
 
@@ -219,6 +250,37 @@ makeMemberBinding(std::shared_ptr<Object> object,
     return MemberBinding<Method, Object, Return, Arguments...>{std::move(object)};
 }
 
+template <typename ArgumentTuple, typename... Documentation>
+[[nodiscard]] Result<std::vector<ParameterDescriptor>>
+describeCallableParameters(Documentation&&... documentation) {
+    constexpr auto parameter_count = std::tuple_size_v<ArgumentTuple>;
+    static_assert((std::same_as<std::remove_cvref_t<Documentation>, ParameterDocumentation> && ...),
+                  "Each Action parameter must be described with param(name, description)");
+    static_assert(
+        sizeof...(Documentation) == parameter_count,
+        "Action registration needs exactly one param(name, description) per callable parameter");
+
+    std::vector<ParameterDescriptor> parameters;
+    parameters.reserve(parameter_count);
+    (parameters.push_back({.name = documentation.name,
+                           .description = documentation.description,
+                           .required = !documentation.default_value.has_value(),
+                           .type = {},
+                           .default_value = documentation.default_value}),
+     ...);
+    [&]<std::size_t... Index>(std::index_sequence<Index...>) {
+        ((parameters[Index].type = typeDescriptorFor<
+              std::remove_cvref_t<std::tuple_element_t<Index, ArgumentTuple>>>()),
+         ...);
+    }(std::make_index_sequence<parameter_count>{});
+
+    auto default_validation = validateParameterDefaults<ArgumentTuple>(parameters);
+    if(!default_validation) {
+        return Result<std::vector<ParameterDescriptor>>::failure(default_validation.error());
+    }
+    return Result<std::vector<ParameterDescriptor>>::success(std::move(parameters));
+}
+
 } // namespace detail
 
 /**
@@ -245,40 +307,45 @@ Result<void> ModuleBuilder::add(std::string_view action_name,
                                 Callable&& callable,
                                 Documentation&&... documentation) {
     using StoredCallable = std::decay_t<Callable>;
-    static_assert((std::same_as<std::remove_cvref_t<Documentation>, ParameterDocumentation> && ...),
-                  "Each Action parameter must be described with param(name, description)");
-
     using Traits = detail::FunctionTraits<StoredCallable>;
     using SourceArguments = Traits::ArgumentTypes;
     using Return = Traits::ReturnType;
-    constexpr auto parameter_count = std::tuple_size_v<SourceArguments>;
-    static_assert(
-        sizeof...(Documentation) == parameter_count,
-        "Action registration needs exactly one param(name, description) per callable parameter");
 
-    std::vector<ParameterDescriptor> parameters;
-    parameters.reserve(parameter_count);
-    (parameters.push_back({.name = documentation.name,
-                           .description = documentation.description,
-                           .required = !documentation.default_value.has_value(),
-                           .type = {},
-                           .default_value = documentation.default_value}),
-     ...);
-    [&]<std::size_t... Index>(std::index_sequence<Index...>) {
-        ((parameters[Index].type = detail::typeDescriptorFor<
-              std::remove_cvref_t<std::tuple_element_t<Index, SourceArguments>>>()),
-         ...);
-    }(std::make_index_sequence<parameter_count>{});
-
-    auto default_validation = detail::validateParameterDefaults<SourceArguments>(parameters);
-    if(!default_validation) {
-        return default_validation;
+    auto parameters =
+        detail::describeCallableParameters<SourceArguments>(std::forward<Documentation>(documentation)...);
+    if(!parameters) {
+        return Result<void>::failure(parameters.error());
     }
 
     auto implementation = std::make_unique<detail::TypedActionAdapter<StoredCallable>>(
-        std::forward<Callable>(callable), parameters);
+        std::forward<Callable>(callable), parameters.value());
     return addPreparedAction(action_name, std::move(description), std::move(implementation),
-                             std::move(parameters), detail::returnTypeDescriptor<Return>());
+                             std::move(parameters.value()), detail::returnTypeDescriptor<Return>());
+}
+
+template <typename Callable, typename... Documentation>
+    requires detail::AdaptableContextualCallable<Callable>
+Result<void> ModuleBuilder::addContextual(std::string_view action_name,
+                                          std::string description,
+                                          Callable&& callable,
+                                          Documentation&&... documentation) {
+    using StoredCallable = std::decay_t<Callable>;
+    using Traits = detail::FunctionTraits<StoredCallable>;
+    using SourceArguments = Traits::ArgumentTypes;
+    using ParameterArguments = typename detail::ParameterArgumentTypes<true, SourceArguments>::Type;
+    using Return = Traits::ReturnType;
+
+    auto parameters =
+        detail::describeCallableParameters<ParameterArguments>(std::forward<Documentation>(documentation)...);
+    if(!parameters) {
+        return Result<void>::failure(parameters.error());
+    }
+
+    auto implementation =
+        std::make_unique<detail::TypedActionAdapter<StoredCallable, true>>(
+            std::forward<Callable>(callable), parameters.value());
+    return addPreparedAction(action_name, std::move(description), std::move(implementation),
+                             std::move(parameters.value()), detail::returnTypeDescriptor<Return>());
 }
 
 } // namespace axiom
