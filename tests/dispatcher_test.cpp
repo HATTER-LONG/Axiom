@@ -117,6 +117,7 @@ ActionDescriptor action(const std::string_view id,
         .return_type = integerType(),
         .version = std::nullopt,
         .tags = {},
+        .metadata = {},
     };
 }
 

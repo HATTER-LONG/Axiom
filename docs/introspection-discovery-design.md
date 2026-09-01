@@ -7,7 +7,7 @@ Agent Adapter，回答以下问题：
 
 - 当前注册了哪些 Module 和 Action，Action 的调用契约是什么；
 - 当前注册了哪些 Resource，它们的稳定身份和逻辑类型是什么；
-- 当前保留了哪些 Task，它们的状态、进度和失败信息是什么；
+- 当前保留了哪些 Task，它们的状态、进度、失败信息和可选来源关联是什么；
 - 顺序读取上述来源时，Axiom 的可观察状态是什么。
 
 结合当前项目，原始需求需要作四点修正：
@@ -44,10 +44,12 @@ introspection -> action / resource / task
 
 ### 2.1 Action 的现状
 
-- `ModuleDescriptor` 已包含规范 namespace 和字符串 metadata。
-- `ActionDescriptor` 已包含 `ActionId`、描述、按调用顺序排列的参数、返回类型、版本和 tags。
+- `ModuleDescriptor` 已包含规范 namespace、描述、可选 version、有序 tags 和字符串 metadata。
+  `namespace_name` 即规范身份，不再增加重复的 `id`。
+- `ActionDescriptor` 已包含 `ActionId`、描述、按调用顺序排列的参数、返回类型、版本、tags
+  和有序字符串 metadata。本地名称与所属 Module 只从 `ActionId` 读取。
 - `ParameterDescriptor` 已包含名称、描述、是否必填、`TypeDescriptor` 和默认值。
-- discovery 结果按规范 Module namespace 或完整 Action ID 升序排列。
+- discovery 结果按规范 Module namespace 或完整 Action ID 升序排列；新增显示字段不参与排序。
 - Descriptor 由 `Runtime` 拥有，当前查询返回只读引用，生命周期持续到 Runtime 析构。
 - `Runtime` 当前明确声明为非线程安全：注册、发现和调用不能并发。
 
@@ -68,7 +70,9 @@ introspection -> action / resource / task
 
 ### 2.3 Task 的现状
 
-- `TaskDescriptor` 已包含 ID、名称、状态、进度和可选 `Error`。
+- `TaskDescriptor` 已包含 ID、名称、状态、进度、可选 `Error` 和可选弱关联 `origin`。
+  完全未知来源为 `std::nullopt`；`TaskOrigin` 各空字段表示该维度未知，`action_id` 为规范
+  文本而不是 `ActionId`。
 - `TaskRegistry::describe()` 返回单个一致的值快照；`list()` 返回按 Task ID 排序的独立值。
 - `list()` 中每项各自一致，但不承诺所有 Task 来自同一个时刻。
 - Task 查询、提交、取消和移除已经支持并发。
@@ -375,7 +379,8 @@ Introspection 依赖 logging。
 - `modules()` / `actions()`：Axiom 当前公开哪些同步能力；
 - `describeAction()`：某个 Action 的参数、默认值、返回类型和描述是什么；
 - `resources()` / `describeResource()`：Registry 当前拥有哪些身份及其逻辑类型；
-- `tasks()` / `describeTask()`：Registry 当前保留哪些 Task，它们运行到哪里、是否失败；
+- `tasks()` / `describeTask()`：Registry 当前保留哪些 Task，它们运行到哪里、是否失败、是否
+  声明了弱来源关联；
 - `snapshot()`：一次调用期间顺序观察到的上述完整值集合。
 
 验收不应声称 Resource 具有当前模型没有保存的名称或 metadata，不应声称 snapshot 是全局原子

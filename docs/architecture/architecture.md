@@ -23,7 +23,10 @@ definitions.
 
 `introspection` is a top-level, read-only, non-owning, uncached aggregation layer
 over Action, Resource, and Task discovery. Every query returns independently owned
-values. `RuntimeSnapshot` samples module/action, then resource, then task in a
+values. Module and Action descriptors carry owned discovery fields (`description`,
+optional `version`, `tags`, ordered string `metadata`) in addition to canonical
+identity; Resource descriptors remain `id` and `type` only. Task descriptors may
+include an optional weak `origin`. `RuntimeSnapshot` samples module/action, then resource, then task in a
 fixed order; it is not a global atomic snapshot across those sources. The three
 sources must outlive an `IntrospectionService`, and source destruction must not
 overlap a Service query.

@@ -23,6 +23,7 @@
 #include <latch>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -53,7 +54,11 @@ struct RuntimeFixture {
     axiom::task::TaskRegistry tasks;
 
     RuntimeFixture() {
-        axiom::ModuleBuilder alpha{{.namespace_name = "alpha", .metadata = {{"kind", "test"}}}};
+        axiom::ModuleBuilder alpha{{.namespace_name = "alpha",
+                                    .description = "Alpha module",
+                                    .version = "1.0",
+                                    .tags = {"alpha", "test"},
+                                    .metadata = {{"kind", "test"}, {"owner", "suite"}}}};
         EXPECT_TRUE(alpha.add(
             "lookup", "Lookup",
             [](const std::map<std::string, int>& value) { return static_cast<int>(value.size()); },
@@ -107,6 +112,17 @@ TEST(IntrospectionService, ListsAndFiltersWithIndependentValues) {
     const auto modules = service.modules();
     ASSERT_EQ(modules.size(), 2U);
     EXPECT_EQ(modules[0].namespace_name, "alpha");
+    EXPECT_EQ(modules[0].description, "Alpha module");
+    EXPECT_EQ(modules[0].version, "1.0");
+    ASSERT_EQ(modules[0].tags.size(), 2U);
+    EXPECT_EQ(modules[0].tags[0], "alpha");
+    EXPECT_EQ(modules[0].tags[1], "test");
+    auto metadata = modules[0].metadata.begin();
+    ASSERT_NE(metadata, modules[0].metadata.end());
+    EXPECT_EQ(metadata->first, "kind");
+    ++metadata;
+    ASSERT_NE(metadata, modules[0].metadata.end());
+    EXPECT_EQ(metadata->first, "owner");
     EXPECT_EQ(modules[1].namespace_name, "alphabet");
 
     const auto all = service.actions();
@@ -299,6 +315,55 @@ TEST(IntrospectionService, SnapshotObservesConcurrentSourcesIndependently) {
     }
     writers_done.wait();
     executor.close();
+}
+
+TEST(IntrospectionService, ReturnedDiscoveryValuesStayIndependentOfLaterSourceMutation) {
+    RuntimeFixture fixture;
+    const axiom::introspection::IntrospectionService service{fixture.runtime, fixture.resources,
+                                                             fixture.tasks};
+    auto modules = service.modules();
+    auto actions = service.actions();
+    ASSERT_FALSE(modules.empty());
+    ASSERT_FALSE(actions.empty());
+    modules[0].description = "mutated";
+    modules[0].metadata["kind"] = "changed";
+    modules[0].tags.clear();
+    actions[0].metadata["injected"] = "value";
+    actions[0].tags.push_back("injected");
+
+    const auto modules_again = service.modules();
+    const auto actions_again = service.actions();
+    ASSERT_FALSE(modules_again.empty());
+    ASSERT_FALSE(actions_again.empty());
+    EXPECT_EQ(modules_again[0].description, "Alpha module");
+    EXPECT_EQ(modules_again[0].metadata.at("kind"), "test");
+    ASSERT_EQ(modules_again[0].tags.size(), 2U);
+    EXPECT_TRUE(actions_again[0].metadata.empty());
+    EXPECT_TRUE(actions_again[0].tags.empty());
+
+    const auto resource = fixture.resources.add(std::make_unique<Widget>());
+    ASSERT_TRUE(resource);
+    auto resources = service.resources();
+    ASSERT_EQ(resources.size(), 1U);
+    EXPECT_EQ(resources.front().type, "widget");
+    resources.front().type = "forged";
+    EXPECT_EQ(service.resources().front().type, "widget");
+
+    axiom::async::Executor executor{1};
+    const auto submitted =
+        fixture.tasks.submit(executor, "origin-copy", [](const axiom::task::TaskContext&) {
+            return axiom::Result<void>::success();
+        });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    auto tasks = service.tasks();
+    ASSERT_EQ(tasks.size(), 1U);
+    EXPECT_FALSE(tasks.front().origin.has_value());
+    tasks.front().origin = axiom::task::TaskOrigin{
+        .request_id = "forged", .trace_id = {}, .caller = {}, .action_id = {}, .metadata = {}};
+    const auto described = service.describeTask(tasks.front().id);
+    ASSERT_TRUE(described);
+    EXPECT_FALSE(described.value().origin.has_value());
 }
 
 } // namespace

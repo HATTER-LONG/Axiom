@@ -9,6 +9,7 @@
 #include <axiom/foundation/type_descriptor.hpp>
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,6 +55,7 @@ Result<void> ModuleBuilder::addPreparedAction(std::string_view action_name,
         .return_type = return_type,
         .version = std::nullopt,
         .tags = {},
+        .metadata = {},
     });
     auto validation = validate(*descriptor);
     if(!validation) {

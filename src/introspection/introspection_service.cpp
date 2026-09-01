@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -44,7 +45,25 @@ namespace {
             .parameters = std::move(parameters),
             .return_type = detail::copyTypeDescriptor(source.return_type),
             .version = source.version,
-            .tags = source.tags};
+            .tags = source.tags,
+            .metadata = source.metadata};
+}
+
+[[nodiscard]] ModuleDescriptor copyModule(const ModuleDescriptor& source) {
+    return {.namespace_name = source.namespace_name,
+            .description = source.description,
+            .version = source.version,
+            .tags = source.tags,
+            .metadata = source.metadata};
+}
+
+[[nodiscard]] task::TaskDescriptor copyTask(const task::TaskDescriptor& source) {
+    return {.id = source.id,
+            .name = source.name,
+            .state = source.state,
+            .progress = source.progress,
+            .error = source.error,
+            .origin = source.origin};
 }
 
 [[nodiscard]] Error invalidResourceType(std::string_view type) {
@@ -67,7 +86,7 @@ std::vector<ModuleDescriptor> IntrospectionService::modules() const {
     std::vector<ModuleDescriptor> result;
     result.reserve(source.size());
     std::ranges::transform(source, std::back_inserter(result),
-                           [](const auto& module) { return module.get(); });
+                           [](const auto& module) { return copyModule(module.get()); });
     return result;
 }
 
@@ -119,10 +138,20 @@ IntrospectionService::describeResource(const resource::ResourceId& id) const {
     return resources_->describe(id);
 }
 
-std::vector<task::TaskDescriptor> IntrospectionService::tasks() const { return tasks_->list(); }
+std::vector<task::TaskDescriptor> IntrospectionService::tasks() const {
+    auto source = tasks_->list();
+    std::vector<task::TaskDescriptor> result;
+    result.reserve(source.size());
+    std::ranges::transform(source, std::back_inserter(result), copyTask);
+    return result;
+}
 
 Result<task::TaskDescriptor> IntrospectionService::describeTask(const task::TaskId& id) const {
-    return tasks_->describe(id);
+    auto found = tasks_->describe(id);
+    if(!found) {
+        return found;
+    }
+    return Result<task::TaskDescriptor>::success(copyTask(found.value()));
 }
 
 RuntimeSnapshot IntrospectionService::snapshot() const {

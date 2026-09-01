@@ -66,6 +66,7 @@ ActionDescriptor action(const std::string_view id) {
         .return_type = integerType(),
         .version = std::nullopt,
         .tags = {},
+        .metadata = {},
     };
 }
 
@@ -329,4 +330,64 @@ TEST(Registry, DiscoversDescriptionsInStableCanonicalOrder) {
     EXPECT_EQ(actions[0].get().id.str(), "alpha.first");
     EXPECT_EQ(actions[1].get().id.str(), "middle.next");
     EXPECT_EQ(actions[2].get().id.str(), "zeta.last");
+}
+
+TEST(Registry, DiscoversCopiedModuleAndActionDiscoveryFieldsIndependently) {
+    int destruction_count = 0;
+    Registry registry;
+    axiom::ModuleDescriptor module{
+        .namespace_name = "math",
+        .description = "Arithmetic",
+        .version = "2.0",
+        .tags = {"math", "core"},
+        .metadata = {{"z", "last"}, {"a", "first"}},
+    };
+    auto registered = action("math.add");
+    registered.version = "1.1";
+    registered.tags = {"add", "pure"};
+    registered.metadata = {{"z", "last"}, {"a", "first"}};
+
+    ASSERT_TRUE(registry.registerModule(module));
+    ASSERT_TRUE(registry.registerAction(registered, implementation(destruction_count)));
+    module.description = "mutated";
+    module.metadata["a"] = "changed";
+    registered.tags.clear();
+    registered.metadata["a"] = "changed";
+
+    const auto discovered_module = registry.findModule("math");
+    const auto discovered_action = registry.findAction(actionId("math.add"));
+    ASSERT_TRUE(discovered_module);
+    ASSERT_TRUE(discovered_action);
+    EXPECT_EQ(discovered_module.value().get().description, "Arithmetic");
+    EXPECT_EQ(discovered_module.value().get().version, "2.0");
+    ASSERT_EQ(discovered_module.value().get().tags.size(), 2U);
+    EXPECT_EQ(discovered_module.value().get().tags[0], "math");
+    EXPECT_EQ(discovered_module.value().get().tags[1], "core");
+    auto module_metadata = discovered_module.value().get().metadata.begin();
+    EXPECT_EQ(module_metadata->first, "a");
+    EXPECT_EQ(module_metadata->second, "first");
+    EXPECT_EQ(discovered_action.value().get().version, "1.1");
+    ASSERT_EQ(discovered_action.value().get().tags.size(), 2U);
+    EXPECT_EQ(discovered_action.value().get().tags[0], "add");
+    auto action_metadata = discovered_action.value().get().metadata.begin();
+    EXPECT_EQ(action_metadata->first, "a");
+    EXPECT_EQ(action_metadata->second, "first");
+}
+
+TEST(Registry, RejectsInvalidModuleAndActionDiscoveryFieldsWithoutChangingState) {
+    int destruction_count = 0;
+    Registry registry;
+    const auto empty_module_tag =
+        registry.registerModule({.namespace_name = "math", .tags = {""}, .metadata = {}});
+    ASSERT_TRUE(registry.registerModule({.namespace_name = "math", .metadata = {}}));
+    auto duplicate_tags = action("math.add");
+    duplicate_tags.tags = {"math", "math"};
+    const auto invalid_action =
+        registry.registerAction(duplicate_tags, implementation(destruction_count));
+
+    EXPECT_EQ(empty_module_tag.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(invalid_action.error().code, axiom::ErrorCode::InvalidDescriptor);
+    EXPECT_EQ(registry.discoverModules().size(), 1U);
+    EXPECT_TRUE(registry.discoverActions().empty());
+    EXPECT_EQ(destruction_count, 1);
 }

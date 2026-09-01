@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -153,6 +154,38 @@ queueDefaultChildren(const Value& value,
     return Result<void>::success();
 }
 
+[[nodiscard]] Result<void> validateOptionalVersion(const std::optional<std::string>& version,
+                                                   std::string empty_message) {
+    if(version && version->empty()) {
+        return invalidDescriptor(std::move(empty_message));
+    }
+    return Result<void>::success();
+}
+
+[[nodiscard]] Result<void> validateTags(const std::vector<std::string>& tags) {
+    std::set<std::string, std::less<>> seen;
+    for(const std::string& tag : tags) {
+        if(tag.empty()) {
+            return invalidDescriptor("Tags cannot be empty");
+        }
+        if(!seen.insert(tag).second) {
+            return invalidDescriptor("Tags must be unique", tag);
+        }
+    }
+    return Result<void>::success();
+}
+
+[[nodiscard]] Result<void>
+validateMetadata(const std::map<std::string, std::string, std::less<>>& metadata) {
+    for(const auto& [key, value] : metadata) {
+        static_cast<void>(value);
+        if(key.empty()) {
+            return invalidDescriptor("Metadata keys must be non-empty");
+        }
+    }
+    return Result<void>::success();
+}
+
 } // namespace
 
 Result<void> validate(const ActionDescriptor& descriptor) {
@@ -160,8 +193,17 @@ Result<void> validate(const ActionDescriptor& descriptor) {
     if(!result_type) {
         return result_type;
     }
-    if(descriptor.version && descriptor.version->empty()) {
-        return invalidDescriptor("Action version cannot be empty");
+    auto version = validateOptionalVersion(descriptor.version, "Action version cannot be empty");
+    if(!version) {
+        return version;
+    }
+    auto tags = validateTags(descriptor.tags);
+    if(!tags) {
+        return tags;
+    }
+    auto metadata = validateMetadata(descriptor.metadata);
+    if(!metadata) {
+        return metadata;
     }
     return validateParameters(descriptor.parameters);
 }
@@ -171,7 +213,15 @@ Result<void> validate(const ModuleDescriptor& descriptor) {
         return invalidDescriptor("Module namespace must match [a-z0-9_]+",
                                  descriptor.namespace_name);
     }
-    return Result<void>::success();
+    auto version = validateOptionalVersion(descriptor.version, "Module version cannot be empty");
+    if(!version) {
+        return version;
+    }
+    auto tags = validateTags(descriptor.tags);
+    if(!tags) {
+        return tags;
+    }
+    return validateMetadata(descriptor.metadata);
 }
 
 } // namespace axiom

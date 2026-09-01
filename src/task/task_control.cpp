@@ -69,7 +69,8 @@ TaskControl::TaskControl(TaskId id,
                   .name = std::move(name),
                   .state = TaskState::Pending,
                   .progress = {},
-                  .error = std::nullopt},
+                  .error = std::nullopt,
+                  .origin = std::nullopt},
       notifications_(std::move(notifications)), logger_(std::move(logger)),
       cancelled_result_(std::move(cancelled_result)) {}
 
