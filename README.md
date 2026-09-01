@@ -1,11 +1,12 @@
 # Axiom
 
-A compact C++20 application framework built with CMake. Its current core is an
-installable synchronous capability runtime: typed C++ callables are registered
-as described `Module`/`Action` entries, discovered through metadata, and invoked
-through the dynamic `Value` boundary with structured `Result` errors. Independent
-tracked asynchronous tasks provide progress, cancellation and typed results on
-the same library target. It also ships a small demo executable, tests, and
+A compact C++20 application infrastructure library built with CMake. Its current
+core models application capabilities as described `Module`/`Action` entries,
+invoked synchronously through the dynamic `Value` boundary with structured
+`Result` errors. Typed host resources, structured logging, events, asynchronous
+execution and tracked tasks provide the surrounding runtime infrastructure, while
+`IntrospectionService` exposes owning read-only discovery across Actions,
+Resources and Tasks. It also ships a small demo executable, tests, and
 reproducible quality gates.
 
 ## Build
@@ -65,11 +66,31 @@ values, `std::string`, recursive `std::vector<T>`, and string-keyed
 `std::map`/`std::unordered_map`. Integer inputs may widen to floating point;
 out-of-range integer narrowing and implicit string conversions are rejected.
 Floating-point conversions follow C++ numeric conversion semantics. Optional parameters use
-validated `param(..., default_value)` values. The runtime is intentionally not
-thread-safe: registration, discovery, and invocation must not run concurrently.
+validated `param(..., default_value)` values.
+
+Runtime registration, discovery, lookup and invocation support concurrent use.
+Registration commits are serialized and atomically publish immutable registry
+states; discovery and invocation operate from acquired snapshots. Runtime never
+holds a registration or discovery lock while executing user code. Invocations of
+the same Action may overlap and share the single stored callable instance, so the
+callable and any mutable state it captures must provide their own synchronization.
+Runtime destruction still requires caller synchronization with concurrent access.
+
 Axiom library does not provide protocol adapters, JSON serialization, networking, plugins,
 or authorization. Independent `async::Executor` and `async::Scheduler` services
 provide asynchronous work; Action invocation itself remains synchronous.
+
+## Runtime discovery and introspection
+
+`axiom::introspection::IntrospectionService` is a read-only, non-owning aggregation
+layer over an existing `Runtime`, `resource::ResourceRegistry` and
+`task::TaskRegistry`. It provides owning copies of Module, Action, Resource and
+Task descriptors, plus filtered queries and a combined `RuntimeSnapshot`.
+
+The service is uncached and does not own registry state. Its three sources must
+outlive it, and source destruction must not overlap a query. A combined snapshot
+samples Actions, Resources and Tasks in a fixed sequence and is therefore not a
+globally atomic snapshot across all sources.
 
 ## Tracked asynchronous tasks
 
@@ -135,6 +156,7 @@ tasks by ID. It requires neither polling nor timing-dependent sleeps.
 | `include/axiom`, `src` | Public headers and implementations of `Axiom::Axiom`; events are header-only. |
 | `apps/demo` | Application consuming the same Axiom library target as other clients. |
 | `tests` | GoogleTest suites and installed-package consumer. |
+| `docs/architecture` | Architecture, dependency and lifetime contracts. |
 | `cmake` | Target policy, runtime deployment and build verification. |
 | `checkflow.json` | Quality flow ordering and thresholds (the single policy source). |
 | `CMakePresets.json` | Compiler, library kind, instrumentation and build directories. |
