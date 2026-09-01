@@ -12,7 +12,7 @@ endif ()
 
 add_executable(axiom_test core_test.cpp descriptor_test.cpp dispatcher_test.cpp events_test.cpp
                async_test.cpp logging_test.cpp registry_test.cpp resource_test.cpp runtime_test.cpp
-               value_converter_test.cpp task_test.cpp task_concurrency_test.cpp)
+               value_converter_test.cpp task_test.cpp task_concurrency_test.cpp introspection_test.cpp)
 # Internal unit tests compile their private implementation locally. Public Runtime
 # and installed-consumer tests still exercise the shared library boundary.
 if (BUILD_SHARED_LIBS)

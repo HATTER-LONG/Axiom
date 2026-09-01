@@ -158,6 +158,28 @@ namespace {
     }
     return resources.remove(resource.value().id()) && lifetime.expired();
 }
+
+[[nodiscard]] bool useInstalledIntrospection() {
+    axiom::Runtime runtime;
+    axiom::ModuleBuilder builder{{.namespace_name = "inspect", .metadata = {}}};
+    if(!builder.add("answer", "Answer", [] { return 42; }) ||
+       !runtime.registerModule(std::move(builder))) {
+        return false;
+    }
+    axiom::resource::ResourceRegistry resources;
+    auto resource = resources.add(std::make_unique<InstalledResource>());
+    if(!resource) {
+        return false;
+    }
+    axiom::task::TaskRegistry tasks;
+    axiom::introspection::IntrospectionService service{runtime, resources, tasks};
+    const auto snapshot = service.snapshot();
+    return snapshot.modules.size() == 1U && snapshot.actions.size() == 1U &&
+           snapshot.resources.size() == 1U && snapshot.tasks.empty() &&
+           service.actions("inspect").size() == 1U && service.resources("installed") &&
+           service.describeAction(snapshot.actions.front().id) &&
+           service.describeResource(resource.value().id());
+}
 } // namespace
 
 int main() {
@@ -167,6 +189,7 @@ int main() {
                    checkInstalledContract(useInstalledTaskResult(), "task result") &&
                    checkInstalledContract(useInstalledVoidTask(), "void task notifications") &&
                    checkInstalledContract(useInstalledResourceTask(), "resource task lifetime") &&
+                   checkInstalledContract(useInstalledIntrospection(), "introspection") &&
                    checkInstalledContract(useInstalledPendingCancellation(), "pending cancellation")
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

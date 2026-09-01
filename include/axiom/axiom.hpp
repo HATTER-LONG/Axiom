@@ -2,7 +2,7 @@
 
 /**
  * @file axiom.hpp
- * @brief Umbrella header for Axiom foundation, action, logging, resource, events, async and task.
+ * @brief Umbrella header for the complete public Axiom API.
  *
  * Prefer including this header from application and test code. Module-internal
  * translation units may include the narrower headers they need.
@@ -23,6 +23,8 @@
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/foundation/value.hpp>
+#include <axiom/introspection/introspection_service.hpp>
+#include <axiom/introspection/runtime_snapshot.hpp>
 #include <axiom/logging/callback_sink.hpp>
 #include <axiom/logging/console_sink.hpp>
 #include <axiom/logging/log_collector.hpp>
@@ -35,6 +37,7 @@
 #include <axiom/logging/logging_service.hpp>
 #include <axiom/logging/scoped_log_context.hpp>
 #include <axiom/resource/handle.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
 #include <axiom/resource/resource_ref.hpp>
 #include <axiom/resource/resource_registry.hpp>

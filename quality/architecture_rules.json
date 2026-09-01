@@ -2,6 +2,26 @@
   "schema": "axiom-architecture-rules/v1",
   "forbidden_include_prefixes": [
     {
+      "id": "lower-layers-must-not-depend-on-introspection",
+      "from": [
+        "src/foundation/",
+        "include/axiom/foundation/",
+        "src/action/",
+        "include/axiom/action/",
+        "src/resource/",
+        "include/axiom/resource/",
+        "src/task/",
+        "include/axiom/task/",
+        "src/async/",
+        "include/axiom/async/",
+        "src/events/",
+        "include/axiom/events/",
+        "src/logging/",
+        "include/axiom/logging/"
+      ],
+      "forbidden": ["axiom/introspection/"]
+    },
+    {
       "id": "library-must-not-depend-on-app-or-test",
       "from": ["src/", "include/axiom/"],
       "forbidden": ["apps/", "tests/"]
