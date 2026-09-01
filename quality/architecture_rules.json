@@ -55,6 +55,40 @@
       "id": "async-must-not-depend-on-services",
       "from": ["src/async/", "include/axiom/async/"],
       "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/task/"]
+    },
+    {
+      "id": "core-must-not-depend-on-python-binding",
+      "from": [
+        "src/foundation/", "include/axiom/foundation/",
+        "src/action/", "include/axiom/action/",
+        "src/resource/", "include/axiom/resource/",
+        "src/task/", "include/axiom/task/",
+        "src/introspection/", "include/axiom/introspection/",
+        "src/logging/", "include/axiom/logging/",
+        "src/events/", "include/axiom/events/",
+        "src/async/", "include/axiom/async/"
+      ],
+      "forbidden": ["axiom/python/"]
+    },
+    {
+      "id": "project-source-must-not-include-python-or-pybind11-outside-python-module",
+      "from": [
+        "src/foundation/", "include/axiom/foundation/",
+        "src/action/", "include/axiom/action/",
+        "src/resource/", "include/axiom/resource/",
+        "src/task/", "include/axiom/task/",
+        "src/introspection/", "include/axiom/introspection/",
+        "src/logging/", "include/axiom/logging/",
+        "src/events/", "include/axiom/events/",
+        "src/async/", "include/axiom/async/",
+        "apps/",
+        "tests/core_test.cpp", "tests/descriptor_test.cpp", "tests/dispatcher_test.cpp",
+        "tests/events_test.cpp", "tests/async_test.cpp", "tests/logging_test.cpp",
+        "tests/registry_test.cpp", "tests/resource_test.cpp", "tests/runtime_test.cpp",
+        "tests/value_converter_test.cpp", "tests/task_test.cpp",
+        "tests/task_concurrency_test.cpp", "tests/introspection_test.cpp"
+      ],
+      "forbidden": ["pybind11/", "Python.h"]
     }
   ]
 }

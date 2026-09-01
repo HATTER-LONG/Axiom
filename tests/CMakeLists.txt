@@ -42,6 +42,24 @@ gtest_discover_tests(axiom_test ${discovery_options})
 if (AXIOM_BUILD_DEMO AND NOT AXIOM_COVERAGE AND NOT AXIOM_MUTATION_TESTING)
     add_test(NAME axiom.demo COMMAND axiom_demo)
 endif ()
+if (AXIOM_BUILD_PYTHON)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+    pybind11_add_module(axiom_python_test_host MODULE python/host_fixture.cpp)
+    axiom_configure_target(axiom_python_test_host)
+    target_link_libraries(axiom_python_test_host PRIVATE Axiom::Axiom pybind11::module)
+    set_target_properties(axiom_python_test_host PROPERTIES
+                          LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python")
+    add_test(
+        NAME axiom.python.smoke
+        COMMAND "${CMAKE_COMMAND}" -E env "PYTHONPATH=$<TARGET_FILE_DIR:axiom_python>"
+                "AXIOM_PYTHON_TEST_HOST_DIR=$<TARGET_FILE_DIR:axiom_python_test_host>"
+                "${AXIOM_PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/python/test_smoke.py")
+    set_tests_properties(axiom.python.smoke PROPERTIES TIMEOUT 30)
+    if (AXIOM_COVERAGE)
+        set_tests_properties(axiom.python.smoke PROPERTIES
+                             ENVIRONMENT "LLVM_PROFILE_FILE=${PROJECT_BINARY_DIR}/axiom-python-%m.profraw")
+    endif ()
+endif ()
 if (AXIOM_BUILD_INSTALL_TEST)
     if (AXIOM_COVERAGE OR AXIOM_SANITIZERS OR AXIOM_MUTATION_TESTING)
         message(FATAL_ERROR "Installation tests require an uninstrumented build; use quality-static/shared")

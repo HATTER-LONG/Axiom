@@ -9,6 +9,7 @@
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
+#include <axiom/foundation/value.hpp>
 #include <axiom/logging/logger.hpp>
 #include <axiom/task/detail/task_control.hpp>
 #include <axiom/task/task_id.hpp>
@@ -116,6 +117,8 @@ public:
     [[nodiscard]] Result<void> cancel(const TaskId& id);
     /** @brief Removes a known terminal task, or returns InvalidArgument/NotFound. */
     [[nodiscard]] Result<void> remove(const TaskId& id);
+    /** @brief Returns a dynamic result snapshot without waiting or removing the task. */
+    [[nodiscard]] Result<TaskResultSnapshot> result(const TaskId& id) const;
     /** @brief Subscribes to future Running, progress, and terminal descriptor snapshots. */
     [[nodiscard]] Subscription onChanged(std::function<void(const TaskDescriptor&)> callback);
 
@@ -124,6 +127,7 @@ private:
     [[nodiscard]] Result<std::shared_ptr<detail::TaskControl>>
     submitControl(async::Executor& executor,
                   TaskSubmission submission,
+                  TaskResultKind result_kind,
                   std::function<void(const std::shared_ptr<detail::TaskControl>&)> function,
                   std::function<std::shared_ptr<const void>()> cancelled_result);
     std::shared_ptr<Impl> impl_;
@@ -144,9 +148,18 @@ auto TaskRegistry::submit(async::Executor& executor, TaskSubmission submission, 
     using T = detail::TaskResultValueT<Returned>;
     static_assert(std::copy_constructible<T> || std::same_as<T, void>,
                   "Task result values must be copy constructible");
+    constexpr TaskResultKind kind = [] {
+        if constexpr(std::same_as<T, void>) {
+            return TaskResultKind::Void;
+        } else if constexpr(std::same_as<T, Value>) {
+            return TaskResultKind::Value;
+        } else {
+            return TaskResultKind::Opaque;
+        }
+    }();
     auto owned = std::make_shared<std::decay_t<F>>(std::forward<F>(function));
     auto submitted = submitControl(
-        executor, std::move(submission),
+        executor, std::move(submission), kind,
         [owned](const auto& control) mutable { detail::execute<T>(control, *owned); },
         [] {
             return std::make_shared<const Result<T>>(

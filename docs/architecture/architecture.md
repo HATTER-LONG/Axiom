@@ -109,6 +109,14 @@ The library is static by default and supports shared builds. Public symbols use
 `AXIOM_API`; dependencies, implementation headers, application code, and tests
 are not part of the installed interface.
 
+`Axiom::Python` is an optional pybind11 module above Core. It owns no Runtime
+registration state: an embedding C++ host attaches shared Runtime, ResourceRegistry,
+and TaskRegistry instances, from which the module builds a lifetime-owning,
+read-only Host view. Python and GIL headers are confined to `src/python/`; Core
+does not include or link them. The adapter copies descriptors and values, leaves
+introspection snapshots non-atomic across sources, and does not release the GIL
+while synchronously invoking host Actions.
+
 Async cancellation prevents future dispatches; work already accepted by an Executor
 is drained by that Executor. A Scheduler does not own its Executor or wait for
 callbacks on destruction. Captured state must outlive accepted work. Periodic

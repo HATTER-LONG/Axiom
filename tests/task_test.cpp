@@ -251,6 +251,114 @@ TEST(TaskRegistry, PreservesResourceHandleResults) {
     }
 }
 
+TEST(TaskRegistry, DynamicResultReturnsValueKindForCompletedValueTask) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted = tasks.submit(
+        executor, "value", [](const TaskContext&) { return Result<Value>::success(Value{42}); });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.kind, axiom::task::TaskResultKind::Value);
+    if(const auto* task_value = peekOptional(snap.value)) {
+        EXPECT_TRUE(task_value->hasValue());
+        EXPECT_EQ(task_value->value().asInteger(), 42);
+    } else {
+        ADD_FAILURE();
+    }
+}
+
+TEST(TaskRegistry, DynamicResultReturnsVoidKindForCompletedVoidTask) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted =
+        tasks.submit(executor, "void", [](const TaskContext&) { return Result<void>::success(); });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.kind, axiom::task::TaskResultKind::Void);
+    if(const auto* task_value = peekOptional(snap.value)) {
+        EXPECT_TRUE(task_value->hasValue());
+    } else {
+        ADD_FAILURE();
+    }
+}
+
+TEST(TaskRegistry, DynamicResultReturnsOpaqueKindForNonValueNonVoidTask) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted = tasks.submit(
+        executor, "opaque", [](const TaskContext&) { return Result<int>::success(42); });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().kind, axiom::task::TaskResultKind::Opaque);
+    EXPECT_FALSE(snapshot.value().value.has_value());
+}
+
+TEST(TaskRegistry, DynamicResultReturnsNotFoundForUnknownTask) {
+    TaskRegistry tasks;
+    const auto unknown = axiom::task::TaskId::parse("task:99999").value();
+    const auto snapshot = tasks.result(unknown);
+    ASSERT_FALSE(snapshot);
+    EXPECT_EQ(snapshot.error().code, ErrorCode::NotFound);
+}
+
+TEST(TaskRegistry, DynamicResultReturnsKindWithoutValueForPendingTask) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    std::promise<void> running;
+    std::promise<void> release;
+    const auto submitted = tasks.submit(executor, "pending", [&running, &release](TaskContext&) {
+        running.set_value();
+        release.get_future().wait();
+        return Result<Value>::success(Value{42});
+    });
+    ASSERT_TRUE(submitted);
+    running.get_future().wait();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().kind, axiom::task::TaskResultKind::Value);
+    EXPECT_FALSE(snapshot.value().value.has_value());
+    release.set_value();
+    executor.close();
+}
+
+TEST(TaskRegistry, DynamicResultPreservesFailureError) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted = tasks.submit(executor, "fail", [](const TaskContext&) -> Result<Value> {
+        return Result<Value>::failure({.code = ErrorCode::InvalidArgument,
+                                       .message = "bad input",
+                                       .path = std::string{"x"},
+                                       .details = Value{std::string{"detail"}}});
+    });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    const auto& snap = snapshot.value();
+    const auto* task_value = peekOptional(snap.value);
+    if(task_value == nullptr) {
+        ADD_FAILURE();
+        return;
+    }
+    EXPECT_FALSE(task_value->hasValue());
+    const auto& error = task_value->error();
+    EXPECT_EQ(error.code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(error.message, "bad input");
+    if(const auto* path = peekOptional(error.path)) {
+        EXPECT_EQ(*path, "x");
+    } else {
+        ADD_FAILURE();
+    }
+}
+
 TEST(TaskRegistry, AcceptsMoveOnlyCallablesAndCopiesProgressMessages) {
     Executor executor{1};
     TaskRegistry tasks;

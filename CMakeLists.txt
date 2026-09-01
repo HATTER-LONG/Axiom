@@ -13,6 +13,7 @@ include(CMakePackageConfigHelpers)
 option(BUILD_SHARED_LIBS "Build Axiom as a shared library" OFF)
 option(AXIOM_BUILD_DEMO "Build the demonstration application" ${PROJECT_IS_TOP_LEVEL})
 option(AXIOM_BUILD_INSTALL_TEST "Test the installed, uninstrumented package" OFF)
+option(AXIOM_BUILD_PYTHON "Build the Axiom Python extension" OFF)
 option(AXIOM_BUILD_DOCS "Build Doxygen API documentation" OFF)
 option(AXIOM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ${PROJECT_IS_TOP_LEVEL})
 option(AXIOM_COVERAGE "Enable LLVM source-based coverage instrumentation" OFF)
@@ -42,6 +43,10 @@ if (AXIOM_BUILD_DOCS)
 endif ()
 
 add_subdirectory(src)
+
+if (AXIOM_BUILD_PYTHON)
+    add_subdirectory(src/python)
+endif ()
 
 if (AXIOM_BUILD_DEMO)
     add_subdirectory(apps/demo)

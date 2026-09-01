@@ -49,6 +49,7 @@ public:
         logging::Logger logger;
         std::function<std::shared_ptr<const void>()> cancelled_result;
         std::optional<TaskOrigin> origin;
+        TaskResultKind result_kind{TaskResultKind::Opaque};
     };
 
     explicit TaskControl(Construction construction);
@@ -68,6 +69,7 @@ public:
                   std::shared_ptr<const void> completed_result,
                   std::optional<Error> error);
     [[nodiscard]] std::shared_ptr<const void> result() const;
+    [[nodiscard]] TaskResultKind resultKind() const;
 
 private:
     void publish(TaskDescriptor descriptor);
@@ -79,6 +81,7 @@ private:
     std::shared_ptr<const void> result_;
     std::weak_ptr<NotificationHub> notifications_;
     logging::Logger logger_;
+    TaskResultKind result_kind_{TaskResultKind::Opaque};
     std::function<std::shared_ptr<const void>()> cancelled_result_;
     std::mutex notification_mutex_;
     std::deque<TaskDescriptor> notifications_queue_;

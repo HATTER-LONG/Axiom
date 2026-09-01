@@ -63,6 +63,7 @@ TaskRegistry::~TaskRegistry() noexcept { impl_->notifications->close(); }
 Result<std::shared_ptr<detail::TaskControl>> TaskRegistry::submitControl(
     async::Executor& executor,
     TaskSubmission submission,
+    TaskResultKind result_kind,
     std::function<void(const std::shared_ptr<detail::TaskControl>&)> function,
     std::function<std::shared_ptr<const void>()> cancelled_result) {
     static std::atomic_uint64_t next_id{1};
@@ -97,7 +98,8 @@ Result<std::shared_ptr<detail::TaskControl>> TaskRegistry::submitControl(
                                           .notifications = impl_->notifications,
                                           .logger = std::move(task_logger),
                                           .cancelled_result = std::move(cancelled_result),
-                                          .origin = std::move(submission.origin)});
+                                          .origin = std::move(submission.origin),
+                                          .result_kind = result_kind});
     const auto control_id = control->describe().id;
     {
         std::scoped_lock const lock{impl_->mutex};
@@ -144,11 +146,11 @@ std::vector<TaskDescriptor> TaskRegistry::list() const {
             controls.push_back(control);
         }
     }
-    std::vector<TaskDescriptor> result;
-    result.reserve(controls.size());
-    std::ranges::transform(controls, std::back_inserter(result),
+    std::vector<TaskDescriptor> descriptors;
+    descriptors.reserve(controls.size());
+    std::ranges::transform(controls, std::back_inserter(descriptors),
                            [](const auto& control) { return control->describe(); });
-    return result;
+    return descriptors;
 }
 
 Result<void> TaskRegistry::cancel(const TaskId& id) {
@@ -180,6 +182,58 @@ Result<void> TaskRegistry::remove(const TaskId& id) {
         impl_->tasks.erase(found);
     }
     return Result<void>::success();
+}
+
+namespace {
+[[nodiscard]] TaskResultSnapshot
+snapshotFromControl(const std::shared_ptr<detail::TaskControl>& control) {
+    TaskResultSnapshot snapshot;
+    snapshot.kind = control->resultKind();
+    const auto state = control->state();
+    if(!isTerminal(state)) {
+        return snapshot;
+    }
+    const auto erased = control->result();
+    if(!erased) {
+        return snapshot;
+    }
+    if(snapshot.kind == TaskResultKind::Value) {
+        const auto typed = std::static_pointer_cast<const Result<Value>>(erased);
+        snapshot.value = *typed;
+        return snapshot;
+    }
+    if(snapshot.kind == TaskResultKind::Void) {
+        if(state == TaskState::Completed) {
+            snapshot.value = Result<Value>::success(Value{});
+        } else {
+            const auto descriptor = control->describe();
+            if(descriptor.error.has_value()) {
+                snapshot.value = Result<Value>::failure(*descriptor.error);
+            }
+        }
+        return snapshot;
+    }
+    if(state == TaskState::Failed || state == TaskState::Cancelled) {
+        const auto descriptor = control->describe();
+        if(descriptor.error.has_value()) {
+            snapshot.value = Result<Value>::failure(*descriptor.error);
+        }
+    }
+    return snapshot;
+}
+} // namespace
+
+Result<TaskResultSnapshot> TaskRegistry::result(const TaskId& id) const {
+    std::shared_ptr<detail::TaskControl> control;
+    {
+        std::scoped_lock const lock{impl_->mutex};
+        const auto found = impl_->tasks.find(id);
+        if(found == impl_->tasks.end()) {
+            return Result<TaskResultSnapshot>::failure(missingTask());
+        }
+        control = found->second;
+    }
+    return Result<TaskResultSnapshot>::success(snapshotFromControl(control));
 }
 
 TaskRegistry::Subscription

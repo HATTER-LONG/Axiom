@@ -7,6 +7,8 @@
 
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>
+#include <axiom/foundation/result.hpp>
+#include <axiom/foundation/value.hpp>
 #include <axiom/task/task_id.hpp>
 
 #include <atomic>
@@ -29,6 +31,15 @@ void execute(const std::shared_ptr<TaskControl>& control, Function& function);
 
 /** @brief Lifecycle state of a submitted task. */
 enum class TaskState : std::uint8_t { Pending, Running, Completed, Failed, Cancelled };
+
+/** @brief Classifies the result type of a task for dynamic inspection. */
+enum class TaskResultKind : std::uint8_t { Void, Value, Opaque };
+
+/** @brief A non-owning, non-blocking observation of a task's dynamic result. */
+struct TaskResultSnapshot final {
+    TaskResultKind kind{TaskResultKind::Opaque};
+    std::optional<Result<Value>> value;
+};
 
 /** @brief A task's copied progress value and message. Progress accepts finite [0,1] values. */
 struct Progress final {

@@ -133,7 +133,7 @@ TaskControl::TaskControl(Construction construction)
                   .error = std::nullopt,
                   .origin = std::move(construction.origin)},
       notifications_(std::move(construction.notifications)),
-      logger_(std::move(construction.logger)),
+      logger_(std::move(construction.logger)), result_kind_(construction.result_kind),
       cancelled_result_(std::move(construction.cancelled_result)) {}
 
 TaskDescriptor TaskControl::describe() const {
@@ -257,6 +257,8 @@ std::shared_ptr<const void> TaskControl::result() const {
     std::scoped_lock const lock{mutex_};
     return result_;
 }
+
+TaskResultKind TaskControl::resultKind() const { return result_kind_; }
 
 void TaskControl::publish(TaskDescriptor descriptor) {
     bool drain = false;

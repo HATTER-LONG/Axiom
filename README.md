@@ -26,6 +26,16 @@ with `-DBUILD_SHARED_LIBS=ON`; the demo always links `Axiom::Axiom`.
 `BUILD_TESTING=OFF` disables tests. Axiom does not enable CTest when embedded
 with `add_subdirectory()`.
 
+## Python adapter
+
+Set `AXIOM_BUILD_PYTHON=ON` to build the optional `axiom` extension. It depends
+on pybind11 and the selected Python development module, but neither dependency
+is part of the Core library. Python receives a read-only, host-injected view of
+an existing Runtime, ResourceRegistry, and TaskRegistry; it cannot register
+Actions or Resources. The extension installs into the relative
+`AXIOM_PYTHON_INSTALL_DIR` (defaulting to the active interpreter's
+site-packages layout).
+
 Installation testing is opt-in (`AXIOM_BUILD_INSTALL_TEST=ON`) and requires an
 uninstrumented build. The test installs and relocates the package, then configures,
 builds and runs a standalone consumer with the same toolchain and configuration.

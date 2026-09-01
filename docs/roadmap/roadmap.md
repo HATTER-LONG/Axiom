@@ -138,6 +138,8 @@ Make runtime discovery efficient and practical for large applications.
 
 ## 6. Python Binding
 
+> Status: implemented (MVP host-injected adapter)
+
 ### Goal
 
 Expose Axiom runtime capabilities to Python while preserving the same semantic model as C++.

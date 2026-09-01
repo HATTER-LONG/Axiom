@@ -14,7 +14,9 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "AXIOM_WARNINGS_AS_ERRORS": "ON",
         "BUILD_SHARED_LIBS": "OFF",
-        "BUILD_TESTING": "ON"
+        "BUILD_TESTING": "ON",
+        "AXIOM_BUILD_PYTHON": "ON",
+        "AXIOM_PYTHON_INSTALL_DIR": "lib/python/site-packages"
       }
     },
     {
@@ -24,6 +26,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_COMPILER": "clang++",
+        "AXIOM_BUILD_PYTHON": "ON",
+        "AXIOM_PYTHON_INSTALL_DIR": "lib/python/site-packages",
         "AXIOM_BUILD_INSTALL_TEST": "OFF",
         "AXIOM_COVERAGE": "OFF",
         "AXIOM_MUTATION_TESTING": "OFF",
