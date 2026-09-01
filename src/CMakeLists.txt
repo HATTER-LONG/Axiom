@@ -6,6 +6,8 @@ set(axiom_sources
     action/module_builder.cpp
     action/registry.cpp
     action/runtime.cpp
+    introspection/introspection_service.cpp
+    introspection/detail/type_descriptor_copy.cpp
     logging/logging_service.cpp
     logging/console_sink.cpp
     logging/log_collector.cpp

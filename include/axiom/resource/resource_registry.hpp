@@ -9,6 +9,7 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/resource/handle.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
 #include <axiom/resource/resource_ref.hpp>
 #include <axiom/resource/resource_traits.hpp>
@@ -18,6 +19,7 @@
 #include <string_view>
 #include <typeinfo>
 #include <utility>
+#include <vector>
 
 namespace axiom::resource {
 
@@ -25,10 +27,11 @@ namespace axiom::resource {
  * @brief Manages resource registration records, type bindings, and identity allocation.
  *
  * A ResourceRegistry is created by the host and is neither copyable nor movable.
- * Its public surface is only `add`, `resolve`, `remove`, and `contains`. The host
- * must serialize all operations and destruction of a given Registry. Distinct
- * Registries may be used independently; process-wide serial allocation remains
- * unique under concurrent use.
+ * Its public surface includes registration, resolution, removal, and read-only
+ * discovery. All operations on one Registry are safe to call concurrently with
+ * one another; destruction still requires the caller to synchronize with all
+ * other operations. Distinct Registries may be used independently; process-wide
+ * serial allocation remains unique under concurrent use.
  *
  * Objects are not copied on resolve. A const Registry still yields mutable access.
  * Removing a registration or destroying the Registry drops the Registry's hold;
@@ -45,8 +48,9 @@ namespace axiom::resource {
  * returned. Allocation failure may throw `std::bad_alloc` and is not converted
  * into InvocationFailed. Failed registration may consume a serial.
  *
- * @note Resource destructor callbacks must not re-enter the Registry that is
- *       currently removing or destroying them.
+ * @note Resource destructor callbacks run outside the Registry's internal lock,
+ *       but must not re-enter a Registry whose destruction is concurrently in
+ *       progress.
  */
 class AXIOM_API ResourceRegistry {
 public:
@@ -129,7 +133,10 @@ public:
      * remain, otherwise when the last ResourceRef is released.
      *
      * @param id Full identity to unregister.
-     * @return true when this call removed a live registration.
+     * @return true when this call removed a live
+     * registration.
+     * @note This query/mutation may run concurrently with other Registry
+     * operations.
      */
     [[nodiscard]] bool remove(const ResourceId& id);
 
@@ -140,9 +147,48 @@ public:
      * the object alive.
      *
      * @param id Full identity to query.
-     * @return true when @p id is currently registered in this Registry.
+     * @return true when @p id is currently registered in
+     * this Registry.
+     * @note This query may run concurrently with other Registry operations.
+     * Its result is a
+     *       point-in-time observation and does not keep the object alive.
+
      */
     [[nodiscard]] bool contains(const ResourceId& id) const;
+
+    /**
+     * @brief Returns an owning description for the currently registered @p id.
+     * The result is a value snapshot and does not keep the resource alive.
+     * Unknown, removed, or foreign-Registry identities return NotFound.
+     *
+     * @param id Full identity to describe.
+     * @return Resource identity and logical type, or a
+     * NotFound failure.
+     * @throws std::bad_alloc If the descriptor copy or failure details
+     * cannot be allocated.
+     * @note This query may run concurrently with other Registry
+     * operations. A successful
+     *       descriptor is an independently owned point-in-time
+     * value.
+     */
+    [[nodiscard]] Result<ResourceDescriptor> describe(const ResourceId& id) const;
+
+    /**
+     * @brief Lists descriptions of all currently registered resources.
+     * The returned owning values are sorted lexicographically by complete
+     * ResourceId text. Removed resources and resources retained only by external
+     * ResourceRefs are absent. The list is one Registry-level read snapshot and
+     * does not keep any resource object alive.
+     *
+     * @return Stable, independently owned descriptions.
+     * @throws std::bad_alloc If the result
+     * or descriptor copies cannot be allocated.
+     * @note This query may run concurrently with
+     * other Registry operations. It is one
+     *       Registry-level point-in-time snapshot, not
+     * an object keepalive.
+     */
+    [[nodiscard]] std::vector<ResourceDescriptor> list() const;
 
 private:
     class Impl;

@@ -5,19 +5,24 @@
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
+#include <axiom/resource/resource_descriptor.hpp>
 #include <axiom/resource/resource_id.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <typeindex>
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace axiom::resource {
 namespace {
@@ -49,6 +54,7 @@ struct TransparentStringHash {
 
 struct Registered {
     std::shared_ptr<void> object;
+    ResourceId id;
     TypeIdentity type;
     std::string_view logical_name;
 };
@@ -64,15 +70,6 @@ using BindingMap =
         .message = "Logical resource type name is already bound to a different C++ type",
         .path = std::nullopt,
         .details = Value{Value::Object{{"expected", Value{std::string{logical_name}}}}},
-    };
-}
-
-[[nodiscard]] Error duplicateIdentityError(const std::string_view id) {
-    return {
-        .code = ErrorCode::InternalError,
-        .message = "Allocated resource identity collided with an existing registration",
-        .path = std::nullopt,
-        .details = Value{Value::Object{{"id", Value{std::string{id}}}}},
     };
 }
 
@@ -132,12 +129,7 @@ Error ResourceRegistry::resourceTypeMismatchError(const TypeMismatchNames& names
 
 class ResourceRegistry::Impl {
 public:
-    [[nodiscard]] std::optional<Error> bindingConflict(std::string_view logical_name,
-                                                       TypeIdentity type) const;
-    [[nodiscard]] Result<ResourceId> store(ResourceId identity,
-                                           std::shared_ptr<void> object,
-                                           std::string_view logical_name,
-                                           TypeIdentity type);
+    mutable std::shared_mutex mutex;
     EntryMap entries;
     BindingMap bindings;
 };
@@ -147,50 +139,59 @@ ResourceRegistry::ResourceRegistry() : impl_(std::make_unique<Impl>()) {}
 ResourceRegistry::~ResourceRegistry() = default;
 
 bool ResourceRegistry::remove(const ResourceId& id) {
-    const auto found = impl_->entries.find(id.str());
-    if(found == impl_->entries.end()) {
-        return false;
+    // Keep the removed hold alive until after the lock is released. In
+    // particular, a Resource destructor may call into unrelated user state.
+    std::shared_ptr<void> removed;
+    {
+        const std::unique_lock lock{impl_->mutex};
+        const auto found = impl_->entries.find(id.str());
+        if(found == impl_->entries.end()) {
+            return false;
+        }
+        removed = std::move(found->second.object);
+        impl_->entries.erase(found);
     }
-    impl_->entries.erase(found);
     return true;
 }
 
 bool ResourceRegistry::contains(const ResourceId& id) const {
+    const std::shared_lock lock{impl_->mutex};
     return impl_->entries.contains(id.str());
 }
 
-std::optional<Error> ResourceRegistry::Impl::bindingConflict(const std::string_view logical_name,
-                                                             const TypeIdentity type) const {
-    const auto found = bindings.find(logical_name);
-    if(found != bindings.end() && found->second != type) {
-        return logicalNameConflictError(logical_name);
+Result<ResourceDescriptor> ResourceRegistry::describe(const ResourceId& id) const {
+    const std::shared_lock lock{impl_->mutex};
+    const auto found = impl_->entries.find(id.str());
+    if(found == impl_->entries.end()) {
+        return Result<ResourceDescriptor>::failure(resourceNotFoundError(id.str()));
     }
-    return std::nullopt;
+    return Result<ResourceDescriptor>::success(ResourceDescriptor{
+        .id = found->second.id, .type = std::string{found->second.logical_name}});
 }
 
-Result<ResourceId> ResourceRegistry::Impl::store(ResourceId identity,
-                                                 std::shared_ptr<void> object,
-                                                 const std::string_view logical_name,
-                                                 const TypeIdentity type) {
-    const auto [position, inserted] = entries.try_emplace(
-        std::string{identity.str()},
-        Registered{.object = std::move(object), .type = type, .logical_name = logical_name});
-    if(!inserted) {
-        return Result<ResourceId>::failure(duplicateIdentityError(position->first));
+std::vector<ResourceDescriptor> ResourceRegistry::list() const {
+    std::vector<ResourceDescriptor> descriptions;
+    {
+        const std::shared_lock lock{impl_->mutex};
+        descriptions.reserve(impl_->entries.size());
+        for(const auto& [identity, registered] : impl_->entries) {
+            static_cast<void>(identity);
+            descriptions.push_back(ResourceDescriptor{
+                .id = registered.id,
+                .type = std::string{registered.logical_name},
+            });
+        }
     }
-    try {
-        bindings.try_emplace(std::string{logical_name}, type);
-    } catch(...) {
-        entries.erase(position);
-        throw;
-    }
-    return Result<ResourceId>::success(std::move(identity));
+    std::ranges::sort(descriptions, {},
+                      [](const ResourceDescriptor& descriptor) { return descriptor.id.str(); });
+    return descriptions;
 }
 
 ResourceRegistry::LookupResult
 ResourceRegistry::lookup(const std::string_view id_text,
                          const std::type_info& expected_type,
                          const std::string_view expected_name) const {
+    const std::shared_lock lock{impl_->mutex};
     const auto found = impl_->entries.find(id_text);
     if(found == impl_->entries.end()) {
         return {.status = LookupStatus::Missing, .access = {}, .actual_logical_name = {}};
@@ -210,10 +211,22 @@ Result<ResourceId> ResourceRegistry::adopt(void* const object,
                                            void (*const destroy)(void*),
                                            const std::string_view logical_name,
                                            const std::type_info& type) {
-    std::shared_ptr<void> hold{object, destroy};
+    // The unique_ptr has already transferred ownership to this function. Make
+    // adoption itself exception safe before taking the Registry lock.
+    std::shared_ptr<void> hold;
+    try {
+        hold = std::shared_ptr<void>{object, destroy};
+    } catch(...) {
+        destroy(object);
+        throw;
+    }
     const TypeIdentity identity{type};
-    if(const auto conflict = impl_->bindingConflict(logical_name, identity)) {
-        return Result<ResourceId>::failure(*conflict);
+    // `hold` is declared before the lock so any failed operation releases the
+    // user resource only after the lock guard has been destroyed.
+    const std::unique_lock lock{impl_->mutex};
+    const auto binding = impl_->bindings.find(logical_name);
+    if(binding != impl_->bindings.end() && binding->second != identity) {
+        return Result<ResourceId>::failure(logicalNameConflictError(logical_name));
     }
     const auto serial = detail::allocateResourceSerial();
     if(!serial) {
@@ -221,9 +234,35 @@ Result<ResourceId> ResourceRegistry::adopt(void* const object,
     }
     auto allocated = identityFromSerial(logical_name, serial.value());
     if(!allocated) {
-        return allocated;
+        return Result<ResourceId>::failure(allocated.error());
     }
-    return impl_->store(std::move(allocated.value()), std::move(hold), logical_name, identity);
+    ResourceId identity_id = std::move(allocated.value());
+
+    const auto [binding_position, binding_inserted] =
+        impl_->bindings.try_emplace(std::string{logical_name}, identity);
+    static_cast<void>(binding_position);
+    // Keep an owner in this function even if map allocation throws or a
+    // duplicate key is reported. This prevents a temporary Registered from
+    // releasing the user's object while the Registry lock is held.
+    const auto entry_hold = hold;
+    try {
+        // Serial allocation is process-wide and monotonic, so this key is
+        // unique even when several registries add concurrently.
+        impl_->entries.try_emplace(std::string{identity_id.str()},
+                                   Registered{.object = entry_hold,
+                                              .id = identity_id,
+                                              .type = identity,
+                                              .logical_name = logical_name});
+    } catch(...) {
+        if(binding_inserted) {
+            impl_->bindings.erase(binding_position);
+        }
+        throw;
+    }
+    // The maps own independent ID text after this point. Moving into Result keeps
+    // the committed tail non-allocating, so no exception can strand a registration
+    // after successful map insertion.
+    return Result<ResourceId>::success(std::move(identity_id));
 }
 
 } // namespace axiom::resource

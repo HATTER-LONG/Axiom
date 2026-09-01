@@ -197,6 +197,16 @@ template <typename Return> [[nodiscard]] TypeDescriptor returnTypeDescriptor() {
     }
 }
 
+/**
+ * @brief Adapts one stored callable instance to the dynamic Action boundary.
+ *
+ * @note This
+ * adapter intentionally shares `callable_` across invocations. The Runtime may
+ *       invoke it
+ * concurrently and does not add locking around user code; mutable callable
+ *       state must
+ * therefore be synchronized by the callable's owner.
+ */
 template <typename Callable> class TypedActionAdapter final : public IAction {
 public:
     using Traits = FunctionTraits<std::remove_cvref_t<Callable>>;

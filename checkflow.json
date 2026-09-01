@@ -142,7 +142,7 @@
         "args": {
           "compilation_database": "build-quality/full",
           "include": ["include/**", "src/**", "apps/**", "tests/**"],
-          "options": ["--quiet", "--warnings-as-errors=*"],
+          "warnings_as_errors": "*",
           "headers": true
         }
       },

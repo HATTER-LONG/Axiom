@@ -84,7 +84,7 @@ namespace {
     if(!submitted) {
         return false;
     }
-    auto handle = submitted.value();
+    const auto& handle = submitted.value();
     executor.close();
     if(!checkInstalledTaskIdentity(tasks, handle) || !tasks.remove(handle.id())) {
         return false;
@@ -158,6 +158,42 @@ namespace {
     }
     return resources.remove(resource.value().id()) && lifetime.expired();
 }
+
+[[nodiscard]] bool
+hasInstalledIntrospectionSnapshot(const axiom::introspection::RuntimeSnapshot& snapshot) {
+    return snapshot.modules.size() == 1U && snapshot.actions.size() == 1U &&
+           snapshot.resources.size() == 1U && snapshot.tasks.empty();
+}
+
+[[nodiscard]] bool
+supportsInstalledIntrospectionQueries(const axiom::introspection::IntrospectionService& service,
+                                      const axiom::introspection::RuntimeSnapshot& snapshot,
+                                      const axiom::resource::ResourceId& resource_id) {
+    return service.actions("inspect").size() == 1U && service.resources("installed") &&
+           service.describeAction(snapshot.actions.front().id) &&
+           service.describeResource(resource_id);
+}
+
+[[nodiscard]] bool useInstalledIntrospection() {
+    axiom::Runtime runtime;
+    axiom::ModuleBuilder builder{{.namespace_name = "inspect", .metadata = {}}};
+    if(!builder.add("answer", "Answer", [] { return 42; }) ||
+       !runtime.registerModule(std::move(builder))) {
+        return false;
+    }
+    axiom::resource::ResourceRegistry resources;
+    auto resource = resources.add(std::make_unique<InstalledResource>());
+    if(!resource) {
+        return false;
+    }
+    const axiom::task::TaskRegistry tasks;
+    const axiom::introspection::IntrospectionService service{runtime, resources, tasks};
+    const auto snapshot = service.snapshot();
+    if(!hasInstalledIntrospectionSnapshot(snapshot)) {
+        return false;
+    }
+    return supportsInstalledIntrospectionQueries(service, snapshot, resource.value().id());
+}
 } // namespace
 
 int main() {
@@ -167,6 +203,7 @@ int main() {
                    checkInstalledContract(useInstalledTaskResult(), "task result") &&
                    checkInstalledContract(useInstalledVoidTask(), "void task notifications") &&
                    checkInstalledContract(useInstalledResourceTask(), "resource task lifetime") &&
+                   checkInstalledContract(useInstalledIntrospection(), "introspection") &&
                    checkInstalledContract(useInstalledPendingCancellation(), "pending cancellation")
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

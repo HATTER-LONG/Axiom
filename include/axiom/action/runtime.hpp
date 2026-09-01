@@ -24,9 +24,16 @@ class RuntimeState;
 /**
  * @brief Owns synchronously invocable Modules and their Actions.
  *
- * Runtime is intentionally not thread-safe: registration, discovery, and invocation
- * must not run concurrently. Registering a ModuleBuilder validates its entire pending
- * contents before mutation, so expected registration failures leave Runtime unchanged.
+ * Runtime coordinates concurrent registration, discovery, lookup, and invocation.
+ * Registration commits are serialized and published atomically; discovery and lookup
+ * observe immutable snapshots. Registering a ModuleBuilder validates its entire
+ * pending contents before publication, so expected registration failures leave
+ * Runtime unchanged. Runtime destruction and concurrent access to the same Runtime
+ * object still require caller synchronization. Invocations of the same Action may overlap.
+ *
+ * Runtime deliberately does not serialize the user callable, so every registered callable
+ * and
+ * all state it captures must be safe for concurrent use.
  */
 class AXIOM_API Runtime {
 public:
@@ -66,7 +73,15 @@ public:
      * @param arguments Named dynamic invocation arguments.
      * @param context Diagnostic context forwarded unchanged to the callable.
      * @return Dynamic result, structural invocation error, preserved business Error, or
+     *
      * normalized exception error.
+     * @note Calls to this method may overlap for the same Action
+     * as well as for different
+     *       Actions. The callable and any captured mutable state
+     * are responsible for their
+     *       own synchronization. Runtime never holds a
+     * registration or discovery lock while
+     *       executing the callable.
      */
     [[nodiscard]] Result<Value> invoke(const ActionId& id,
                                        const Arguments& arguments,
@@ -76,7 +91,8 @@ public:
      * @brief Finds a registered Module.
      * @param namespace_name Canonical module namespace to query.
      * @return A read-only descriptor reference or a NotFound error.
-     * @note The reference remains valid until this Runtime is destroyed.
+     * @note The reference remains valid until this Runtime is destroyed, including
+     *       while other Modules are registered.
      */
     [[nodiscard]] Result<std::reference_wrapper<const ModuleDescriptor>>
     findModule(std::string_view namespace_name) const;
@@ -84,23 +100,26 @@ public:
      * @brief Finds a registered Action descriptor.
      * @param id Parsed canonical Action identifier to query.
      * @return A read-only descriptor reference or a NotFound error.
-     * @note The reference remains valid until this Runtime is destroyed; nested
-     *       TypeDescriptor pointers are recursively const.
+     * @note The reference remains valid until this Runtime is destroyed, including
+     *       while other Modules are registered; nested TypeDescriptor pointers are
+     *       recursively const.
      */
     [[nodiscard]] Result<std::reference_wrapper<const ActionDescriptor>>
     findAction(const ActionId& id) const;
     /**
      * @brief Lists registered Modules in ascending namespace order.
      * @return Read-only descriptor references owned by this Runtime.
-     * @note Every reference remains valid until this Runtime is destroyed.
+     * @note Every reference remains valid until this Runtime is destroyed, including
+     *       while other Modules are registered.
      */
     [[nodiscard]] std::vector<std::reference_wrapper<const ModuleDescriptor>>
     discoverModules() const;
     /**
      * @brief Lists registered Actions in ascending full identifier order.
      * @return Read-only descriptor references owned by this Runtime.
-     * @note Every reference remains valid until this Runtime is destroyed; nested
-     *       TypeDescriptor pointers are recursively const.
+     * @note Every reference remains valid until this Runtime is destroyed, including
+     *       while other Modules are registered; nested TypeDescriptor pointers are
+     *       recursively const.
      */
     [[nodiscard]] std::vector<std::reference_wrapper<const ActionDescriptor>>
     discoverActions() const;
