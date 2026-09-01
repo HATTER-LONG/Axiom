@@ -1,87 +1,86 @@
 ---
 name: agile-delivery
-description: Coordinate complex repository changes using multiple agents, Git worktrees, CheckFlow quality gates, repair loops, and independent review. Use only when the user explicitly requests this delivery workflow.
+description: Coordinate repository changes with adaptive delegation, Git worktrees, CheckFlow validation, repair loops, and optional independent review. Use only when the user explicitly requests this delivery workflow.
 ---
 
 # Agile Delivery
 
-This Skill is executed only by the Primary Agent.
+This Skill is executed only by the Primary.
 
-The Primary owns task decomposition, parallel scheduling, Worktree management,
-integration, quality gates, repair routing, repeated-failure handling, and final
-review.
+`AGENTS.md` defines engineering, testing, documentation, architecture, and
+quality principles. This Skill defines only execution and coordination.
 
-Engineering, testing, architecture, and quality principles are defined by
-`AGENTS.md`.
+Use the **smallest delivery process that safely completes the task**.
 
-CheckFlow is installed globally. All Worktrees use the `checkflow` command
-directly and do not create or depend on a dedicated Python `.venv`.
+Do not create Agents, Worktrees, subtasks, reviews, or validation cycles unless
+they provide clear value.
 
-## 1. Roles
+## 1. Execution Model
 
-### Primary
-
-Responsible for:
-
-- confirming scope, owning module, acceptance criteria, and preserved behavior;
-- decomposing work into dependency-ordered subtasks;
-- identifying tasks that may run in parallel;
-- creating isolated Worktrees;
-- scheduling Implementers;
-- integrating committed results;
-- running integrated `hardening` and final `full`;
-- routing Gate and Review findings;
-- applying simple repairs directly;
-- coordinating non-simple repairs;
-- stopping when the same root cause fails again after repair;
-- coordinating final Review and delivery.
-
-The Primary defines boundaries and dependencies, but does not prescribe
-implementation details.
-
-### Implementer
-
-Each Implementer owns one subtask in an isolated Worktree.
-
-Responsibilities:
-
-- analyze the existing design and choose an implementation;
-- update implementation, tests, and necessary documentation;
-- keep changes focused;
-- run `fast` and repair failures;
-- stop if the same identified failure remains after one repair attempt;
-- commit all completed task changes.
-
-Return:
-
-- implementation summary;
-- Public API changes;
-- tests and documentation updated;
-- `fast` result;
-- commit ID;
-- unresolved issues.
-
-### Reviewer
-
-The Reviewer performs read-only review of the committed range already integrated
-by the Primary and passing `hardening`.
-
-Review:
+The Primary owns:
 
 - scope and acceptance criteria;
-- correctness and edge cases;
-- architecture and module ownership;
-- Public API discipline;
-- test effectiveness;
-- documentation consistency.
+- task decomposition when useful;
+- delegation and scheduling;
+- Worktree lifecycle;
+- integration;
+- integrated validation;
+- repair routing;
+- optional independent review;
+- final delivery.
 
-Return only clear, actionable findings.
+The default execution mode is:
 
-Reuse the same Reviewer for repair verification when possible.
+```text
+Primary
+→ implement
+→ validate
+→ deliver
+```
 
-## 2. Backlog
+Escalate only when needed.
 
-Each subtask contains only:
+Possible escalation:
+
+```text
+Primary
+    ↓
+Delegate isolated work
+    ↓
+Parallel Worktrees when beneficial
+    ↓
+Integrate
+    ↓
+Hardening
+    ↓
+Independent Review when warranted
+    ↓
+Full
+```
+
+## 2. When to Delegate
+
+The Primary may implement work directly.
+
+Create an Implementer only when delegation provides at least one clear benefit:
+
+- independent ownership;
+- useful parallelism;
+- substantial isolated implementation work;
+- reduced context pressure for the Primary;
+- specialized investigation or implementation.
+
+Do not delegate a small localized change merely because an Agent is available.
+
+Do not split implementation, tests, and documentation into separate tasks when
+they belong to one coherent behavior change.
+
+## 3. Decomposition
+
+Decompose only when doing so reduces coupling, context size, integration risk,
+or wall-clock execution time.
+
+Each delegated task contains:
 
 - objective;
 - acceptance criteria;
@@ -89,311 +88,288 @@ Each subtask contains only:
 - preserved behavior;
 - dependencies.
 
-Do not prescribe implementation design in the Backlog.
+Do not prescribe implementation details.
 
 Tasks may run in parallel only when:
 
 - no dependency exists between them;
 - ownership is clear;
-- they do not modify the same core interface or data model;
-- one task's design decisions cannot affect another task's assumptions.
+- they do not compete for the same core interface or data model;
+- one task's design decisions cannot invalidate another task's assumptions.
 
-Otherwise, define an explicit dependency order.
+Otherwise, execute them in dependency order.
 
-## 3. Worktree Protocol
+## 4. Worktrees
 
-All Worktrees in the same parallel batch start from the same Primary-approved
-base commit.
+Use a Worktree for delegated implementation that needs isolated repository
+state.
+
+All Worktrees in the same parallel batch start from the same
+Primary-approved base commit.
 
 ```text
 Primary
-  ├── worktree/task-a → Implementer A
-  ├── worktree/task-b → Implementer B
-  └── worktree/task-c → Implementer C
+  ├── task-a
+  ├── task-b
+  └── task-c
 ```
 
 Rules:
 
-- one Worktree belongs to one task at a time;
-- concurrent Worktrees must use unique paths and branch names;
-- name them from the task id, such as `worktree/task-a`;
-- Implementers must not modify or synchronize other Worktrees;
-- agents exchange results only through committed Git history;
-- uncommitted diffs must never be used as handoff.
+- one Worktree owns one active task;
+- concurrent Worktrees use unique paths and branches;
+- Agents must not modify other Worktrees;
+- handoff occurs through committed Git history;
+- never integrate uncommitted diffs from another Agent.
 
-The Primary normally integrates explicit commits through `cherry-pick`.
-
-## 4. Worktree Lifecycle
-
-A Worktree is temporary execution state.
+The normal lifecycle is:
 
 ```text
 create
 → implement
 → fast
 → commit
-→ Primary integrate
+→ integrate
 → remove
 ```
 
-After successful integration, remove the Worktree when no longer needed.
+Remove completed Worktrees after successful integration unless they are still
+needed for immediate investigation.
 
-Later Gate or Review repairs should use a new Repair Worktree from the current
-Primary HEAD rather than reusing the original task Worktree.
+## 5. Implementer
 
-## 5. CheckFlow
+An Implementer:
 
-Implementers run:
+1. reads only the context needed for its assigned task;
+2. follows `AGENTS.md`;
+3. implements the complete coherent change, including relevant tests and
+   documentation;
+4. runs `checkflow fast`;
+5. repairs ordinary localized failures;
+6. commits completed work.
 
-```bash
-checkflow fast --report build-quality/reports/fast.json
-```
-
-After integration, the Primary runs:
-
-```bash
-checkflow hardening --report build-quality/reports/hardening.json
-```
-
-Before final delivery:
-
-```bash
-checkflow full --report build-quality/reports/full.json
-```
-
-Repository-defined workflows and quality policy come from:
+Return only:
 
 ```text
-checkflow.json
-.checkflow/tools/
-quality/
+commit: <id>
+summary: <short description>
+api: changed | unchanged
+tests: <short description>
+fast: pass | fail
+issues: none | <short description>
 ```
 
-Do not invent, weaken, suppress, skip, exclude, or bypass repository-defined
-Gates.
+Avoid long implementation narratives unless required to explain an unresolved
+design issue.
 
-## 6. Delivery Loop
+## 6. Integration
+
+The Primary integrates committed results according to dependency order,
+normally through explicit commits.
+
+For conflicts:
+
+- resolve simple textual conflicts directly;
+- route semantic, ownership, API, or behavioral conflicts back to appropriate
+  implementation or repair work;
+- never mechanically resolve a conflict whose intended behavior is unclear.
+
+After integrating a coherent batch of semantic changes, run the appropriate
+integrated validation.
+
+## 7. CheckFlow
+
+Use repository-defined CheckFlow workflows.
+
+Typical levels:
+
+```bash
+checkflow fast
+checkflow hardening
+checkflow full
+```
+
+Validation strategy:
+
+### Implementer
+
+Run `fast` once the delegated task reaches a coherent implementation state.
+
+### Primary
+
+Run `hardening` after integrating substantial semantic work.
+
+Run `full` once on the final delivery candidate.
+
+Do not mechanically rerun:
 
 ```text
-Confirm scope
-    ↓
-Build Backlog
-    ↓
-Start ready tasks
-    ↓
-Parallel implementation
-    ↓
-fast
-    ↓
-commit
-    ↓
-Primary integration
-    ↓
-hardening
-    ↓
-Review
-    ↓
-Repair
-    ↓
-full
+fast → hardening → fast → hardening
 ```
 
-An Implementer's `fast` validates only its own task state.
+on unchanged code.
 
-Integrated correctness must always be validated again by the Primary.
+A stronger successful Gate supersedes weaker validation for the same unchanged
+state unless the repository explicitly defines otherwise.
 
-## 7. Gate Failure Repair
+Any relevant semantic change invalidates downstream validation.
 
-When `fast`, `hardening`, or `full` fails, identify the concrete failure and root
-cause before repairing it.
+## 8. Gate Failures
 
-For integrated failures:
+When a Gate fails, first inspect the concrete failure.
 
-- simple failures may be repaired directly by the Primary;
-- non-simple failures belonging to an existing task should preferably return to
-  the original Implementer;
-- cross-cutting, integration-related, or unclear failures require a new Repair
-  Agent.
+Repair directly in the Primary when the failure is localized and its ownership
+is clear.
 
-A failure is simple when it is localized, requires no Public API or ownership
-change, and does not need a new task boundary.
+Examples:
 
-Examples include:
-
-- typo;
 - missing include;
-- one-line test or documentation correction;
-- CheckFlow or Skill configuration correction.
+- typo;
+- formatting issue;
+- localized warning;
+- small test correction;
+- documentation mismatch.
 
-If uncertain, treat the failure as non-simple.
+Create a Repair Agent only when the repair is substantial or benefits from
+isolated context, for example:
 
-Non-simple repairs use a new isolated Repair Worktree from the current Primary
-HEAD.
+- cross-module behavior;
+- unclear ownership;
+- architectural conflict;
+- significant implementation change;
+- integration issue spanning delegated tasks.
 
-```text
-Gate Failure
-    ↓
-Identify root cause
-    ↓
-Simple: repair directly
-    ↓
-Not simple: Repair Worktree + Agent
-    ↓
-fast
-    ↓
-commit
-    ↓
-Primary integrate
-    ↓
-Rerun affected Gate
-```
+Repair Agents use a new Worktree from the current Primary HEAD.
 
-Never make a Gate pass by suppressing diagnostics, skipping tests, weakening
-rules, or adding exclusions.
+Do not create a new Agent merely because a diagnostic requires thought.
 
-## 8. Repeated Failure Stop Policy
+Never bypass or weaken a Gate.
 
-A specific failure receives at most one automatic repair attempt for the same
-identified root cause.
+## 9. Repeated Failure
+
+A specific root cause receives at most one automatic repair attempt after it has
+been clearly identified.
 
 ```text
 failure A
-    ↓
-repair A
-    ↓
-rerun validation
-    ↓
-same root cause remains
-    ↓
-STOP
+→ repair A
+→ rerun
+→ same root cause remains
+→ stop
 ```
 
-A failure is considered repeated when the underlying problem is the same, even
-if line numbers, diagnostic wording, paths, or ordering changed.
-
-If the repair resolves A but reveals a different failure B, B may enter the
+If the repair resolves A and reveals a different failure B, B may enter the
 normal repair flow.
 
-When the same root cause remains after repair:
+When stopping, report concisely:
 
-- stop automatic repair for that delivery path;
-- do not retry the same repair;
-- do not create another Agent merely to retry the same problem;
-- do not modify unrelated code or broaden scope speculatively;
-- do not weaken or bypass validation;
-- report the unresolved failure to the user.
+- failing validation;
+- root cause;
+- attempted repair;
+- rerun result;
+- current repository state.
 
-The report should include:
-
-- failing Gate or Review finding;
-- identified root cause;
-- repair attempted;
-- validation rerun result;
-- relevant diagnostics;
-- current commit and integration state.
-
-This rule applies to Implementer `fast`, Primary Gates, and Review repair loops.
-
-## 9. Validation Invalidation
-
-Any semantic code change invalidates relevant downstream validation.
-
-```text
-semantic change
-    ↓
-hardening
-    ↓
-Review again when required
-    ↓
-full
-```
-
-Do not reuse previous Gate or Review conclusions after relevant semantic changes.
+Do not retry the same repair through additional Agents.
 
 ## 10. Review
 
-Start an independent Reviewer only after all planned tasks are integrated and
-`hardening` passes.
+Independent Review is optional, not a mandatory workflow stage.
 
-The Reviewer inspects committed work only.
+Use a Reviewer when independent reasoning provides meaningful risk reduction,
+such as for:
 
-The Primary records the reviewed commit range.
+- public API changes;
+- ownership or lifetime changes;
+- concurrency;
+- persistence or serialization contracts;
+- security-sensitive behavior;
+- cross-module architecture;
+- substantial refactoring;
+- large or high-risk semantic changes.
 
-For findings:
+Localized internal implementation changes may be reviewed directly by the
+Primary.
 
-- simple findings may be repaired directly by the Primary;
-- non-simple findings use a new Repair Worktree and Agent.
+Review begins only after the relevant integrated `hardening` passes.
+
+The Reviewer:
+
+- reads committed changes only;
+- checks correctness, contracts, architecture, tests, and important edge cases;
+- returns actionable findings only.
+
+If no issue exists, return:
 
 ```text
-Finding
-   ↓
-Repair
-   ↓
-fast when Worktree is used
-   ↓
-commit
-   ↓
-Primary integrate
-   ↓
-hardening
-   ↓
-Same Reviewer verifies repair
+PASS
 ```
 
-Semantic repairs must be reviewed again.
+Do not return a general implementation summary.
 
-If the same Review finding remains after one repair attempt for the same root
-cause, follow the Repeated Failure Stop Policy.
+## 11. Review Repair
 
-## 11. Integration
+Localized findings may be repaired directly by the Primary.
 
-The Primary integrates subtasks according to dependency order.
+Substantial findings may use a Repair Agent and Worktree.
 
-When conflicts occur:
+After semantic repair:
 
-- simple textual conflicts may be resolved by the Primary;
-- behavioral, interface, ownership, or design conflicts must be routed to the
-  relevant Implementer or Repair Agent;
-- do not mechanically resolve semantic conflicts.
+```text
+repair
+→ affected validation
+→ Reviewer recheck when the finding required independent review
+```
 
-Integrated behavior must be validated by the Primary's Gates.
+Reuse the same Reviewer when practical.
 
-## 12. Handoff
+If the same finding remains after one repair for the same identified root cause,
+stop according to the repeated-failure policy.
 
-Primary-to-Implementer handoff contains only:
+## 12. Context Discipline
 
-- objective;
-- acceptance criteria;
-- scope boundary;
-- preserved behavior;
-- dependencies;
-- relevant files;
-- necessary Gate or Review information.
+Agent communication should contain only information required to continue the
+task.
 
-Do not transfer another Agent's full context or prescribe implementation details.
+Primary-to-Agent handoff should prefer:
 
-Implementers return:
+```text
+TASK:
+OBJECTIVE:
+ACCEPT:
+SCOPE:
+PRESERVE:
+DEPEND:
+RELEVANT:
+```
 
-- implementation summary;
-- changed scope;
-- Public API changes;
-- tests and documentation updated;
-- `fast` result;
-- commit ID;
-- unresolved issues.
+Do not transmit:
+
+- another Agent's full reasoning;
+- full repository summaries;
+- unrelated diagnostics;
+- repeated engineering rules already defined by `AGENTS.md`.
+
+Agents should discover implementation details from the repository rather than
+receiving a prescribed implementation from the Primary.
+
+Reuse established findings instead of repeatedly rediscovering unchanged
+context.
 
 ## 13. Completion
 
-Delivery is complete only when:
+Delivery is complete when:
 
-- all acceptance criteria are satisfied;
-- all subtasks are integrated;
-- each subtask's final `fast` passes;
-- integrated `hardening` passes;
-- Review has no unresolved findings;
-- semantic repairs have been revalidated;
-- no repeated failure is awaiting user intervention;
-- final `full` passes.
+- acceptance criteria are satisfied;
+- delegated work is integrated;
+- required validation for the final state passes;
+- required Review has no unresolved finding;
+- no repeated failure is awaiting user intervention.
 
-Never claim that a Gate, Review, test, repair validation, or completion occurred
-when it did not.
+For normal substantial delivery, the final validation is:
+
+```text
+checkflow full
+```
+
+Do not claim completion, validation, review, or repair success unless it
+actually occurred.

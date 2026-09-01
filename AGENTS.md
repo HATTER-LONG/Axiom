@@ -1,93 +1,273 @@
 # Agent Guide
 
-Build in small, verifiable increments. Reuse existing design, keep public
-interfaces small, and never weaken a quality check to make it pass.
+Build in small, coherent, verifiable increments. Reuse existing design, keep
+interfaces small, preserve unrelated behavior, and never weaken validation to
+make a change pass.
 
-## Design and scope
+Examples clarify intent only; they are not implementation templates.
 
-- Prefer **thin interfaces and deep modules**. A public interface should expose only
-  the operations, data, and failure modes callers truly need; its implementation
-  should absorb coordination, representation choices, caching, and platform detail.
-- Judge a module by the complexity it removes from its callers, not by its line
-  count. Keep related policy and state behind one cohesive owner rather than making
-  callers sequence several shallow helpers correctly.
-- Add a public type, method, option, callback, or template parameter only for a
-  current caller-facing requirement. Prefer private helpers, value types, and
-  implementation details over knobs that reveal internal decisions.
-- Public APIs must be minimal, stable, clear, and hide internal complexity. Define
-  ownership, lifetime, thread-safety, ordering, error, and no-op contracts at the
-  boundary; do not require callers to know internal states or call sequences.
-- Avoid leaky abstractions: do not expose storage, third-party types, platform
-  handles, mutable internal collections, or implementation-specific error details
-  unless the module is explicitly an adapter boundary.
-- Put behavior in the module that owns it; keep dependencies one-way: Axiom library must not
-  depend on UI, libraries on applications, or production on tests.
-- Prefer RAII, explicit ownership, and composition. Do not expose third-party
-  implementation types outside an adapter boundary.
-- Change implementation before expanding a public API. Avoid speculative abstractions,
-  catch-all modules such as `utils`, `common`, or `manager`, and unrelated refactors.
-- Before editing, identify the owning module, existing applicable interface,
-  necessary API changes, preserved behavior, and tests that prove the change.
+## 1. Scope
 
-## Cross-platform support
+- Implement only what the current task requires.
+- Prefer the smallest correct change over broad refactoring.
+- Preserve unrelated behavior and compatibility unless explicitly changed.
+- Before editing, identify:
+  - the owning module;
+  - the existing interface or extension point;
+  - required externally visible changes;
+  - preserved behavior;
+  - relevant tests.
+- Avoid speculative abstractions, unrelated cleanup, and future-oriented
+  extension points.
 
-Windows, Linux, and macOS are supported targets. Platform-specific code must be
-isolated behind a small portability boundary and selected with CMake platform or
-compiler predicates (`WIN32`, `APPLE`, `UNIX`, `MSVC`) rather than host assumptions.
+### Example
 
-- Use standard C++ facilities first; do not add OS headers or APIs unless required.
-- Shared-library public symbols use the module export macro. `TESTLIB_CORE_API`
-  maps to `__declspec(dllexport/dllimport)` on Windows and default visibility on
-  Linux/macOS. Never expose a Windows-only declaration unguarded.
-- Keep the static-library default working. When changing build or install behavior,
-  also verify `-DBUILD_SHARED_LIBS=ON` and an installed-package consumer.
-- Prefer CMake target properties and generator expressions over hard-coded paths,
-  shell commands, or file extensions. Treat path separators, executable suffixes,
-  dynamic-library loading, text encodings, and runtime library deployment as
-  platform differences that require an explicit design and test.
+```text
+Good:
+Add the requested filter to the existing query path and update focused tests.
 
-## Implementation and tests
+Avoid:
+Redesign the query subsystem, rename nearby APIs, and introduce a generic
+expression framework while adding one filter.
+```
 
-- Implement the smallest correct solution. Keep control flow, state, error handling,
-  ownership, and lifetimes explicit; never silently swallow failures without a contract.
-- Unit and integration tests use GoogleTest. New behavior needs a test; bug fixes need
-  a regression test. Tests must be deterministic, independent, and externally focused.
-- Prefer `EXPECT_*`; use `ASSERT_*` only when later test code needs the condition.
+## 2. Design
 
-## Documentation
+Prefer **thin interfaces and deep modules**.
 
-Public headers document each public type, free function, and public method using
-Doxygen comments that describe its contract. Document non-obvious invariants,
-ownership, lifetime, ordering, and state transitions; comments explain why, not
-obvious control flow. Keep documentation synchronized with behavior.
+- Keep coordination, state, representation, policy, and platform detail inside
+  the module that owns them.
+- Prefer changing implementation over expanding a public API.
+- Add public types, methods, options, callbacks, or template parameters only for
+  current caller-facing requirements.
+- Make ownership, lifetime, errors, ordering, and thread-safety clear at module
+  boundaries.
+- Avoid exposing third-party types, storage details, platform handles, mutable
+  internals, or implementation-specific errors outside adapter boundaries.
+- Keep dependencies directional and avoid cycles.
+- Prefer RAII, explicit ownership, value semantics where appropriate, and
+  composition.
+- Avoid vague catch-all abstractions such as `utils`, `common`, or `manager`.
+
+### Example
+
+Prefer:
+
+```cpp
+class Service {
+public:
+    Result execute(const Request& request);
+};
+```
+
+when validation, coordination, and internal state can remain hidden.
+
+Avoid requiring callers to manually perform internal phases:
+
+```cpp
+service.prepare();
+service.validate();
+service.execute();
+service.finalize();
+```
+
+unless those phases are intentionally part of the public contract.
+
+## 3. Cross-platform
+
+When multiple platforms are supported:
+
+- prefer standard language and library facilities first;
+- isolate platform-specific behavior behind a small portability boundary;
+- keep platform headers and native types out of portable public interfaces;
+- use build-system platform/compiler predicates instead of host assumptions;
+- avoid hard-coded paths, separators, file extensions, shell behavior, or
+  deployment assumptions.
+
+### Example
+
+Prefer a portable API:
+
+```cpp
+std::uint64_t currentThreadId();
+```
+
+with platform-specific implementation hidden internally.
+
+Avoid exposing `HANDLE`, `pthread_t`, or another native type unless the interface
+is explicitly a platform adapter.
+
+## 4. Implementation and Tests
+
+- Implement the smallest complete solution that satisfies the contract.
+- Keep control flow, ownership, state transitions, lifetime, and error handling
+  explicit.
+- Reuse existing abstractions when they already fit.
+- Do not silently discard failures unless that behavior is intentional.
+- Keep changes localized to the owning module.
+- Avoid mixing behavior changes with unrelated renaming, formatting, or
+  restructuring.
+
+For tests:
+
+- new behavior needs tests;
+- bug fixes should have regression tests;
+- prefer externally meaningful behavior over implementation details;
+- tests must be deterministic and independent;
+- cover important boundaries and failure behavior;
+- never weaken or remove tests merely to make a change pass.
+
+### Example
+
+Prefer testing:
+
+```text
+Given a query with filter X,
+only matching results are returned.
+```
+
+over asserting that a private helper was called a specific number of times.
+
+## 5. Documentation
+
+Keep documentation synchronized with externally visible behavior.
+
+Public headers should document public types, free functions, constructors, and
+public methods with Doxygen comments describing their contract.
+
+Document meaningful details when relevant:
+
+- purpose;
+- parameters and return behavior;
+- ownership and lifetime;
+- errors and exceptions;
+- ordering and thread-safety;
+- important preconditions, postconditions, or invariants.
+
+Use `@file` and `@brief` in public headers.
+
+Use `@tparam`, `@param`, `@return`, `@throws`, `@pre`, `@post`, `@note`, or
+`@warning` whenever they describe a meaningful part of the contract.
+
+### Example
 
 ```cpp
 /**
  * @brief Returns the library ABI version encoded by this build.
- * @return Positive version integer for the current Axiom ABI.
+ * @return Positive version integer for the current ABI.
  */
 [[nodiscard]] int version();
 ```
 
-Use `@file` and `@brief` in public headers and add `@tparam`, `@param`, `@return`,
-`@throws`, `@pre`, `@post`, `@note`, or `@warning` whenever they describe a
-meaningful part of the contract.
+For an interface with parameters and ownership:
 
-## Quality and workspace
+```cpp
+/**
+ * @brief Registers a handler under the given identifier.
+ * @param id Identifier used for registration.
+ * @param handler Handler whose ownership transfers on success.
+ * @return Success or an error describing why registration failed.
+ */
+Result registerHandler(Id id, std::unique_ptr<Handler> handler);
+```
 
-Run commands from the repository root with globally installed `checkflow`; do not
-create a project-local Python environment. Run `fast` after each verifiable step,
-`hardening` after a substantial implementation, and `full` before delivery.
-Inspect and fix the root cause of every failure; never use suppressions, exclusions,
-disabled tests, or weaker rules as a workaround. Architecture policy is in
-`quality/architecture_rules.json`.
+Comments should explain contracts, intent, or non-obvious constraints rather
+than restating obvious code.
 
-Before modifying files, run `git status --short`. Preserve unrelated changes.
-Agents may read and modify `~/.cache/CPM` only as CPM's persistent dependency cache;
-do not treat it as project source or delete its contents wholesale.
+Avoid:
 
-## Done
+```cpp
+// Increment index.
+++index;
+```
 
-Deliver only when the requested behavior is implemented in the correct module, tests
-and documentation match it, dependencies and ownership remain clear, and all required
-quality gates pass.
+Do not add verbose comments to self-explanatory private implementation.
+
+## 6. Quality
+
+Use repository-defined `checkflow` workflows when available.
+
+Typical levels:
+
+```text
+fast       focused development validation
+hardening  broader semantic/integration validation
+full       final delivery validation
+```
+
+- Run `fast` after a coherent implementation increment.
+- Run `hardening` after substantial or integrated semantic changes.
+- Run `full` on the final delivery candidate.
+- Do not rerun weaker validation on unchanged code when a stronger Gate already
+  covered it.
+- Diagnose and fix the cause of failures.
+
+Never make a Gate pass by:
+
+- disabling or skipping tests;
+- adding exclusions;
+- weakening rules or thresholds;
+- suppressing valid diagnostics;
+- bypassing repository-defined checks.
+
+### Example
+
+Prefer:
+
+```text
+implementation + tests + required docs
+→ checkflow fast
+```
+
+over:
+
+```text
+edit one file → fast
+edit one test → fast
+edit one comment → fast
+```
+
+unless an intermediate run is useful for diagnosis.
+
+## 7. Efficiency and Workspace
+
+- Inspect the current working state before editing.
+- Preserve unrelated user changes.
+- Prefer targeted symbol, caller, and test searches over broad repository reads.
+- Reuse already established context instead of rediscovering it.
+- Do not create extra Agents, Worktrees, reviews, or validation passes unless
+  they provide clear isolation, parallelism, independence, or risk reduction.
+- Keep reports concise: changes, API impact, validation, unresolved issues.
+- Do not treat generated files, dependency directories, or caches as project
+  source unless the task explicitly requires them.
+
+### Example
+
+Prefer:
+
+```text
+search symbol
+→ inspect owner
+→ inspect callers
+→ inspect relevant tests
+```
+
+before reading an entire repository.
+
+For one localized behavior change, prefer one coherent implementation owner over
+separate implementation, test, documentation, and repair Agents.
+
+## 8. Done
+
+A task is complete when:
+
+- requested behavior is implemented in the correct ownership boundary;
+- externally visible contracts are correct;
+- relevant tests cover the change;
+- required documentation matches behavior;
+- unrelated behavior remains intact;
+- required validation passes;
+- no known unresolved issue affecting the requested behavior remains.
+
+Never claim a test, Gate, review, or validation passed unless it actually ran
+and passed.
