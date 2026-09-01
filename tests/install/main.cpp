@@ -34,7 +34,9 @@ namespace {
                                   .version = {},
                                   .tags = {},
                                   .metadata = {}}};
-    if(!builder.add("answer", "Answer", [] { return 42; })) {
+    if(!builder.add(
+           "answer", "Answer", [] { return 42; },
+           axiom::ActionOptions{.version = "1", .tags = {"install"}, .metadata = {}})) {
         return false;
     }
     axiom::Runtime runtime;

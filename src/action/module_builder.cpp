@@ -47,9 +47,9 @@ Result<void> ModuleBuilder::addPreparedAction(PreparedAction prepared) {
         .description = std::move(prepared.description),
         .parameters = std::move(prepared.parameters),
         .return_type = prepared.return_type,
-        .version = std::nullopt,
+        .version = std::move(prepared.version),
         .tags = std::move(prepared.tags),
-        .metadata = {},
+        .metadata = std::move(prepared.metadata),
     });
     auto validation = validate(*descriptor);
     if(!validation) {

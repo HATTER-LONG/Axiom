@@ -40,6 +40,7 @@ namespace {
 
 using axiom::ActionId;
 using axiom::ActionInvocation;
+using axiom::ActionOptions;
 using axiom::Arguments;
 using axiom::ErrorCode;
 using axiom::InvocationContext;
@@ -1001,6 +1002,98 @@ TEST(ModuleBuilder, RejectsUseAfterMoveAndRegistrationOfEmptyBuilders) {
     expectEmptyBuilderFailure(empty_registration);
     ASSERT_TRUE(runtime.registerModule(std::move(destination)));
     EXPECT_EQ(runtime.discoverModules().size(), 1U);
+}
+
+TEST(ModuleBuilder, CopiesActionOptionsOntoOrdinaryAndContextualDescriptors) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{
+        .namespace_name = "options", .description = {}, .version = {}, .tags = {}, .metadata = {}}};
+    ASSERT_TRUE(builder.add("plain", "Uses default discovery fields", [] { return 1; }));
+    ASSERT_TRUE(builder.add(
+        "tagged", "Uses registration options", [] { return 2; },
+        ActionOptions{.version = "1.2.3",
+                      .tags = {"search", "index"},
+                      .metadata = {{"owner", "core"}, {"stability", "stable"}}}));
+    ASSERT_TRUE(builder.addContextual(
+        "rebuild", "Contextual action with options", [](const ActionInvocation&) { return 3; },
+        ActionOptions{.version = "9", .tags = {"maintenance"}, .metadata = {{"kind", "index"}}}));
+    ASSERT_TRUE(builder.add(
+        "sum", "Options then parameter documentation", [](const int value) { return value; },
+        ActionOptions{.version = {}, .tags = {"math"}, .metadata = {}}, param("value", "Operand")));
+
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+
+    const auto plain = runtime.findAction(id("options.plain"));
+    ASSERT_TRUE(plain);
+    EXPECT_FALSE(plain.value().get().version.has_value());
+    EXPECT_TRUE(plain.value().get().tags.empty());
+    EXPECT_TRUE(plain.value().get().metadata.empty());
+
+    const auto tagged = runtime.findAction(id("options.tagged"));
+    ASSERT_TRUE(tagged);
+    const auto& tagged_version = tagged.value().get().version;
+    if(!tagged_version.has_value()) {
+        FAIL() << "tagged action should publish a version";
+        return;
+    }
+    EXPECT_EQ(*tagged_version, "1.2.3");
+    EXPECT_EQ(tagged.value().get().tags, (std::vector<std::string>{"search", "index"}));
+    ASSERT_EQ(tagged.value().get().metadata.size(), 2U);
+    EXPECT_EQ(tagged.value().get().metadata.at("owner"), "core");
+    EXPECT_EQ(tagged.value().get().metadata.at("stability"), "stable");
+
+    const auto rebuild = runtime.findAction(id("options.rebuild"));
+    ASSERT_TRUE(rebuild);
+    const auto& rebuild_version = rebuild.value().get().version;
+    if(!rebuild_version.has_value()) {
+        FAIL() << "rebuild action should publish a version";
+        return;
+    }
+    EXPECT_EQ(*rebuild_version, "9");
+    EXPECT_EQ(rebuild.value().get().tags, (std::vector<std::string>{"maintenance"}));
+    EXPECT_EQ(rebuild.value().get().metadata.at("kind"), "index");
+    EXPECT_TRUE(rebuild.value().get().parameters.empty());
+    const auto invoked = runtime.invoke(id("options.rebuild"), {}, {});
+    ASSERT_TRUE(invoked);
+    EXPECT_EQ(invoked.value().asInteger(), 3);
+
+    const auto sum = runtime.findAction(id("options.sum"));
+    ASSERT_TRUE(sum);
+    ASSERT_EQ(sum.value().get().parameters.size(), 1U);
+    EXPECT_EQ(sum.value().get().parameters.front().name, "value");
+    EXPECT_EQ(sum.value().get().tags, (std::vector<std::string>{"math"}));
+}
+
+TEST(ModuleBuilder, RejectsInvalidActionOptionsWithoutStateMutation) {
+    ModuleBuilder builder{axiom::ModuleDescriptor{.namespace_name = "invalid_options",
+                                                  .description = {},
+                                                  .version = {},
+                                                  .tags = {},
+                                                  .metadata = {}}};
+    const auto empty_version = builder.add(
+        "probe", "Empty version", [] { return 1; },
+        ActionOptions{.version = "", .tags = {}, .metadata = {}});
+    const auto duplicate_tags = builder.add(
+        "probe", "Duplicate tags", [] { return 1; },
+        ActionOptions{.version = {}, .tags = {"math", "math"}, .metadata = {}});
+    const auto empty_metadata_key = builder.add(
+        "probe", "Empty metadata key", [] { return 1; },
+        ActionOptions{.version = {}, .tags = {}, .metadata = {{"", "value"}}});
+    const auto added = builder.add(
+        "probe", "Valid after rejected options", [] { return 1; },
+        ActionOptions{.version = "1", .tags = {"math"}, .metadata = {{"owner", "core"}}});
+
+    EXPECT_FALSE(empty_version);
+    EXPECT_EQ(empty_version.error().code, ErrorCode::InvalidDescriptor);
+    EXPECT_FALSE(duplicate_tags);
+    EXPECT_EQ(duplicate_tags.error().code, ErrorCode::InvalidDescriptor);
+    EXPECT_FALSE(empty_metadata_key);
+    EXPECT_EQ(empty_metadata_key.error().code, ErrorCode::InvalidDescriptor);
+    expectAddedAction(added);
+
+    Runtime runtime;
+    ASSERT_TRUE(runtime.registerModule(std::move(builder)));
+    EXPECT_EQ(runtime.discoverActions().size(), 1U);
 }
 
 TEST(ModuleBuilder, RejectsInvalidAndDuplicateActionDefinitionsWithoutStateMutation) {
