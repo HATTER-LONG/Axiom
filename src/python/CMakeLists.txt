@@ -31,7 +31,8 @@ set(python_sources
     src/error_binding.cpp
     src/action_binding.cpp
     src/resource_binding.cpp
-    src/introspection_binding.cpp)
+    src/introspection_binding.cpp
+    src/task_binding.cpp)
 
 pybind11_add_module(axiom_python ${python_sources})
 set_target_properties(axiom_python PROPERTIES OUTPUT_NAME axiom)

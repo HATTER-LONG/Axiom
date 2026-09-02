@@ -117,7 +117,12 @@ public:
     [[nodiscard]] Result<void> cancel(const TaskId& id);
     /** @brief Removes a known terminal task, or returns InvalidArgument/NotFound. */
     [[nodiscard]] Result<void> remove(const TaskId& id);
-    /** @brief Returns a dynamic result snapshot without waiting or removing the task. */
+    /**
+     * @brief Returns a dynamic result snapshot without waiting or removing the task.
+     *
+     * The snapshot observes the task's state and result consistently in one query,
+     * so callers can classify terminal results without a second Registry lookup.
+     */
     [[nodiscard]] Result<TaskResultSnapshot> result(const TaskId& id) const;
     /** @brief Subscribes to future Running, progress, and terminal descriptor snapshots. */
     [[nodiscard]] Subscription onChanged(std::function<void(const TaskDescriptor&)> callback);

@@ -35,8 +35,23 @@ enum class TaskState : std::uint8_t { Pending, Running, Completed, Failed, Cance
 /** @brief Classifies the result type of a task for dynamic inspection. */
 enum class TaskResultKind : std::uint8_t { Void, Value, Opaque };
 
-/** @brief A non-owning, non-blocking observation of a task's dynamic result. */
+/**
+ * @brief An independent, owning snapshot of one task's dynamic result.
+ *
+ * The snapshot copies every value it reports and references no Registry or Task
+ * storage; it remains valid after the Task is removed. @c state and @c kind are
+ * observed consistently in one query. @c value is empty while the Task is
+ * Pending or Running. Terminal semantics:
+ *
+ * - Completed @c Value tasks copy the stored @c Result<Value>;
+ * - Completed @c Void tasks report a successful empty @c Value;
+ * - Completed @c Opaque tasks leave @c value empty because the result cannot be
+ *   represented as an Axiom Value;
+ * - Failed and Cancelled tasks of any kind report the stored Error as a failing
+ *   @c Result<Value>.
+ */
 struct TaskResultSnapshot final {
+    TaskState state{TaskState::Pending};
     TaskResultKind kind{TaskResultKind::Opaque};
     std::optional<Result<Value>> value;
 };

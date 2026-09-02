@@ -48,6 +48,10 @@ void bindAttach(py::module_& module) {
     module.def("_attach", [](std::shared_ptr<axiom::Runtime> rt,
                              std::shared_ptr<axiom::resource::ResourceRegistry> res,
                              std::shared_ptr<axiom::task::TaskRegistry> tsk) {
+        if(!rt || !res || !tsk) {
+            throw py::value_error(
+                "_attach requires live Runtime, ResourceRegistry and TaskRegistry holders");
+        }
         auto ctx = std::make_shared<axiom::python::HostContext>(std::move(rt), std::move(res),
                                                                 std::move(tsk));
         return std::make_shared<axiom::python::Host>(std::move(ctx));
@@ -59,11 +63,14 @@ void bindAttach(py::module_& module) {
 PYBIND11_MODULE(axiom, module) {
     module.doc() = "Axiom Python binding";
 
+    // Initialization order is fixed: error model, value/type descriptions, action
+    // runtime, introspection, task, resource.
     axiom::python::bindError(module);
     axiom::python::bindValue(module);
     axiom::python::bindAction(module);
-    axiom::python::bindResource(module);
     axiom::python::bindIntrospection(module);
+    axiom::python::bindTaskTypes(module);
+    axiom::python::bindResource(module);
 
     bindAttach(module);
     bindHost(module);

@@ -21,7 +21,11 @@ if (BUILD_SHARED_LIBS)
 endif ()
 axiom_configure_target(axiom_test)
 target_include_directories(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src"
-                                           "${PROJECT_SOURCE_DIR}/src/action")
+                                            "${PROJECT_SOURCE_DIR}/src/action")
+# The console sink formats records with spdlog's thread identifier; the test that
+# asserts the exact output needs the same private header the sink implementation uses.
+target_include_directories(axiom_test SYSTEM
+                           PRIVATE "${CPM_PACKAGE_spdlog_SOURCE_DIR}/include")
 if (AXIOM_COVERAGE OR AXIOM_MUTATION_TESTING)
     target_link_libraries(axiom_test PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,Axiom::Axiom>")
 else ()
@@ -49,16 +53,20 @@ if (AXIOM_BUILD_PYTHON)
     target_link_libraries(axiom_python_test_host PRIVATE Axiom::Axiom pybind11::module)
     set_target_properties(axiom_python_test_host PROPERTIES
                           LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/python")
-    add_test(
-        NAME axiom.python.smoke
-        COMMAND "${CMAKE_COMMAND}" -E env "PYTHONPATH=$<TARGET_FILE_DIR:axiom_python>"
-                "AXIOM_PYTHON_TEST_HOST_DIR=$<TARGET_FILE_DIR:axiom_python_test_host>"
-                "${AXIOM_PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/python/test_smoke.py")
-    set_tests_properties(axiom.python.smoke PROPERTIES TIMEOUT 30)
-    if (AXIOM_COVERAGE)
-        set_tests_properties(axiom.python.smoke PROPERTIES
-                             ENVIRONMENT "LLVM_PROFILE_FILE=${PROJECT_BINARY_DIR}/axiom-python-%m.profraw")
-    endif ()
+    foreach (python_test IN ITEMS smoke value action introspection task resource)
+        add_test(
+            NAME axiom.python.${python_test}
+            COMMAND "${CMAKE_COMMAND}" -E env "PYTHONPATH=$<TARGET_FILE_DIR:axiom_python>"
+                    "AXIOM_PYTHON_TEST_HOST_DIR=$<TARGET_FILE_DIR:axiom_python_test_host>"
+                    "${AXIOM_PYTHON_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/python/test_${python_test}.py")
+        set_tests_properties(axiom.python.${python_test} PROPERTIES TIMEOUT 60)
+        if (AXIOM_COVERAGE)
+            set_tests_properties(axiom.python.${python_test}
+                                 PROPERTIES ENVIRONMENT
+                                            "LLVM_PROFILE_FILE=${PROJECT_BINARY_DIR}/axiom-python-%m.profraw")
+        endif ()
+    endforeach ()
 endif ()
 if (AXIOM_BUILD_INSTALL_TEST)
     if (AXIOM_COVERAGE OR AXIOM_SANITIZERS OR AXIOM_MUTATION_TESTING)
@@ -81,9 +89,15 @@ endif ()
 if (AXIOM_COVERAGE)
     find_program(AXIOM_LLVM_COV NAMES llvm-cov REQUIRED)
     mark_as_advanced(AXIOM_LLVM_COV)
+    set(axiom_verify_coverage_extra)
+    if (AXIOM_BUILD_PYTHON)
+        set(axiom_verify_coverage_extra
+            "-DAXIOM_EXTRA_OBJECTS=$<TARGET_FILE:axiom_python>|$<TARGET_FILE:axiom_python_test_host>")
+    endif ()
     add_custom_target(axiom_verify_coverage
         COMMAND "${CMAKE_COMMAND}" "-DAXIOM_LLVM_COV=${AXIOM_LLVM_COV}"
                 "-DAXIOM_TEST_BINARY=$<TARGET_FILE:axiom_test>"
+                ${axiom_verify_coverage_extra}
                 "-DAXIOM_PROFILE=${PROJECT_BINARY_DIR}/coverage.profdata"
                 "-DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/cmake/verify_coverage.cmake"

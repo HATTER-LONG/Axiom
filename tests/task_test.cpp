@@ -261,6 +261,7 @@ TEST(TaskRegistry, DynamicResultReturnsValueKindForCompletedValueTask) {
     const auto snapshot = tasks.result(submitted.value().id());
     ASSERT_TRUE(snapshot);
     const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.state, axiom::task::TaskState::Completed);
     EXPECT_EQ(snap.kind, axiom::task::TaskResultKind::Value);
     if(const auto* task_value = peekOptional(snap.value)) {
         EXPECT_TRUE(task_value->hasValue());
@@ -280,6 +281,7 @@ TEST(TaskRegistry, DynamicResultReturnsVoidKindForCompletedVoidTask) {
     const auto snapshot = tasks.result(submitted.value().id());
     ASSERT_TRUE(snapshot);
     const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.state, axiom::task::TaskState::Completed);
     EXPECT_EQ(snap.kind, axiom::task::TaskResultKind::Void);
     if(const auto* task_value = peekOptional(snap.value)) {
         EXPECT_TRUE(task_value->hasValue());
@@ -297,6 +299,7 @@ TEST(TaskRegistry, DynamicResultReturnsOpaqueKindForNonValueNonVoidTask) {
     executor.close();
     const auto snapshot = tasks.result(submitted.value().id());
     ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().state, axiom::task::TaskState::Completed);
     EXPECT_EQ(snapshot.value().kind, axiom::task::TaskResultKind::Opaque);
     EXPECT_FALSE(snapshot.value().value.has_value());
 }
@@ -323,6 +326,7 @@ TEST(TaskRegistry, DynamicResultReturnsKindWithoutValueForPendingTask) {
     running.get_future().wait();
     const auto snapshot = tasks.result(submitted.value().id());
     ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().state, axiom::task::TaskState::Running);
     EXPECT_EQ(snapshot.value().kind, axiom::task::TaskResultKind::Value);
     EXPECT_FALSE(snapshot.value().value.has_value());
     release.set_value();
@@ -343,6 +347,7 @@ TEST(TaskRegistry, DynamicResultPreservesFailureError) {
     const auto snapshot = tasks.result(submitted.value().id());
     ASSERT_TRUE(snapshot);
     const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.state, axiom::task::TaskState::Failed);
     const auto* task_value = peekOptional(snap.value);
     if(task_value == nullptr) {
         ADD_FAILURE();
@@ -357,6 +362,47 @@ TEST(TaskRegistry, DynamicResultPreservesFailureError) {
     } else {
         ADD_FAILURE();
     }
+}
+
+TEST(TaskRegistry, DynamicResultReportsCancelledTerminalState) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted = tasks.submit(executor, "cancelled", [](const TaskContext&) {
+        return Result<Value>::failure(cancelledError("stopped"));
+    });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    const auto& snap = snapshot.value();
+    EXPECT_EQ(snap.state, TaskState::Cancelled);
+    if(const auto* task_value = peekOptional(snap.value)) {
+        ASSERT_FALSE(task_value->hasValue());
+        EXPECT_EQ(task_value->error().code, ErrorCode::Cancelled);
+        EXPECT_EQ(task_value->error().message, "stopped");
+    } else {
+        ADD_FAILURE();
+    }
+}
+
+TEST(TaskRegistry, DynamicResultSnapshotRemainsValidAfterRemoval) {
+    Executor executor{1};
+    TaskRegistry tasks;
+    const auto submitted = tasks.submit(
+        executor, "removable", [](const TaskContext&) { return Result<Value>::success(Value{7}); });
+    ASSERT_TRUE(submitted);
+    executor.close();
+    const auto snapshot = tasks.result(submitted.value().id());
+    ASSERT_TRUE(snapshot);
+    ASSERT_TRUE(tasks.remove(submitted.value().id()));
+    EXPECT_EQ(snapshot.value().state, TaskState::Completed);
+    if(const auto* task_value = peekOptional(snapshot.value().value)) {
+        ASSERT_TRUE(task_value->hasValue());
+        EXPECT_EQ(task_value->value().asInteger(), 7);
+    } else {
+        ADD_FAILURE();
+    }
+    EXPECT_EQ(tasks.result(submitted.value().id()).error().code, ErrorCode::NotFound);
 }
 
 TEST(TaskRegistry, AcceptsMoveOnlyCallablesAndCopiesProgressMessages) {

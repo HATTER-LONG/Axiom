@@ -138,7 +138,7 @@ Make runtime discovery efficient and practical for large applications.
 
 ## 6. Python Binding
 
-> Status: implemented (MVP host-injected adapter)
+> Status: in progress (MVP host-injected adapter under construction)
 
 ### Goal
 

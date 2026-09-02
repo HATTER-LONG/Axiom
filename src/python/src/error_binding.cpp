@@ -14,8 +14,12 @@ namespace py = pybind11;
 namespace axiom::python {
 
 namespace {
-py::object g_axiom_error_type;
-}
+
+// The exception type is resolved through the current interpreter's module state on
+// demand, so no Python reference outlives the interpreter in C++ static storage.
+py::object axiomErrorType() { return py::module_::import("axiom").attr("AxiomError"); }
+
+} // namespace
 
 void registerErrorCode(py::module_& module) {
     py::enum_<axiom::ErrorCode>(module, "ErrorCode")
@@ -35,12 +39,28 @@ void registerAxiomError(py::module_& module) {
     auto exc_type = py::reinterpret_steal<py::object>(
         PyErr_NewException("axiom.AxiomError", PyExc_Exception, nullptr));
     module.add_object("AxiomError", exc_type);
+}
 
-    g_axiom_error_type = exc_type;
+py::dict errorToDict(const axiom::Error& error) {
+    py::dict dict;
+    dict["code"] = error.code;
+    dict["message"] = error.message;
+    if(error.path.has_value()) {
+        dict["path"] = *error.path;
+    } else {
+        dict["path"] = py::none();
+    }
+    if(error.details.has_value()) {
+        dict["details"] = fromValue(*error.details);
+    } else {
+        dict["details"] = py::none();
+    }
+    dict["has_details"] = error.details.has_value();
+    return dict;
 }
 
 void unwrapError(const axiom::Error& error) {
-    auto exc_type = g_axiom_error_type;
+    auto exc_type = axiomErrorType();
     auto py_err = exc_type(error.message);
 
     py_err.attr("code") = error.code;

@@ -5,6 +5,7 @@
 #include <axiom/resource/resource_id.hpp>
 
 #include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 
 #include <string>
 #include <string_view>
@@ -36,8 +37,41 @@ void bindResourceId(py::module_& module) {
              [](const axiom::resource::ResourceId& id) {
                  return "ResourceId('" + std::string{id.str()} + "')";
              })
-        .def("__eq__", [](const axiom::resource::ResourceId& a,
-                          const axiom::resource::ResourceId& b) { return a == b; })
+        .def("__eq__",
+             [](const axiom::resource::ResourceId& self, const py::object& other) -> py::object {
+                 if(!py::isinstance<axiom::resource::ResourceId>(other)) {
+                     return notImplemented();
+                 }
+                 return py::bool_{self == other.cast<axiom::resource::ResourceId>()};
+             })
+        .def("__lt__",
+             [](const axiom::resource::ResourceId& self, const py::object& other) -> py::object {
+                 if(!py::isinstance<axiom::resource::ResourceId>(other)) {
+                     return notImplemented();
+                 }
+                 return py::bool_{self < other.cast<axiom::resource::ResourceId>()};
+             })
+        .def("__le__",
+             [](const axiom::resource::ResourceId& self, const py::object& other) -> py::object {
+                 if(!py::isinstance<axiom::resource::ResourceId>(other)) {
+                     return notImplemented();
+                 }
+                 return py::bool_{self <= other.cast<axiom::resource::ResourceId>()};
+             })
+        .def("__gt__",
+             [](const axiom::resource::ResourceId& self, const py::object& other) -> py::object {
+                 if(!py::isinstance<axiom::resource::ResourceId>(other)) {
+                     return notImplemented();
+                 }
+                 return py::bool_{self > other.cast<axiom::resource::ResourceId>()};
+             })
+        .def("__ge__",
+             [](const axiom::resource::ResourceId& self, const py::object& other) -> py::object {
+                 if(!py::isinstance<axiom::resource::ResourceId>(other)) {
+                     return notImplemented();
+                 }
+                 return py::bool_{self >= other.cast<axiom::resource::ResourceId>()};
+             })
         .def("__hash__", [](const axiom::resource::ResourceId& id) {
             return std::hash<std::string_view>{}(id.str());
         });

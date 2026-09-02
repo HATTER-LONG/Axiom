@@ -82,12 +82,9 @@
         "src/events/", "include/axiom/events/",
         "src/async/", "include/axiom/async/",
         "apps/",
-        "tests/core_test.cpp", "tests/descriptor_test.cpp", "tests/dispatcher_test.cpp",
-        "tests/events_test.cpp", "tests/async_test.cpp", "tests/logging_test.cpp",
-        "tests/registry_test.cpp", "tests/resource_test.cpp", "tests/runtime_test.cpp",
-        "tests/value_converter_test.cpp", "tests/task_test.cpp",
-        "tests/task_concurrency_test.cpp", "tests/introspection_test.cpp"
+        "tests/"
       ],
+      "exclude": ["tests/python/"],
       "forbidden": ["pybind11/", "Python.h"]
     }
   ]

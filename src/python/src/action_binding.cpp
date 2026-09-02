@@ -140,54 +140,8 @@ void bindInvocationContext(py::module_& module) {
         .def_readwrite("metadata", &axiom::InvocationContext::metadata);
 }
 
-void bindTypeDescriptor(py::module_& module) {
-    py::class_<axiom::TypeDescriptor> type_desc(module, "TypeDescriptor");
-
-    py::enum_<axiom::TypeDescriptor::Kind>(type_desc, "Kind")
-        .value("Null", axiom::TypeDescriptor::Kind::Null)
-        .value("Boolean", axiom::TypeDescriptor::Kind::Boolean)
-        .value("Integer", axiom::TypeDescriptor::Kind::Integer)
-        .value("Number", axiom::TypeDescriptor::Kind::Number)
-        .value("String", axiom::TypeDescriptor::Kind::String)
-        .value("Array", axiom::TypeDescriptor::Kind::Array)
-        .value("Object", axiom::TypeDescriptor::Kind::Object);
-
-    type_desc.def_readonly("kind", &axiom::TypeDescriptor::kind)
-        .def_readonly("nullable", &axiom::TypeDescriptor::nullable)
-        .def_readonly("description", &axiom::TypeDescriptor::description)
-        .def_property_readonly("element_type",
-                               [](const axiom::TypeDescriptor& td) -> py::object {
-                                   if(td.element_type) {
-                                       return py::cast(*td.element_type);
-                                   }
-                                   return py::none();
-                               })
-        .def_property_readonly("fields",
-                               [](const axiom::TypeDescriptor& td) {
-                                   py::dict result;
-                                   for(const auto& [key, field] : td.fields) {
-                                       if(field) {
-                                           result[py::str{key}] = py::cast(*field);
-                                       } else {
-                                           result[py::str{key}] = py::none();
-                                       }
-                                   }
-                                   return result;
-                               })
-        .def_property_readonly("value_type", [](const axiom::TypeDescriptor& td) -> py::object {
-            if(td.value_type) {
-                return py::cast(*td.value_type);
-            }
-            return py::none();
-        });
-}
-
 void bindRuntime(py::module_& module) {
     py::class_<RuntimeWrapper, std::shared_ptr<RuntimeWrapper>>(module, "Runtime")
-        .def("introspection",
-             [](const RuntimeWrapper& self) {
-                 return std::make_shared<IntrospectionWrapper>(self.ctx);
-             })
         .def("modules",
              [](const RuntimeWrapper& self) {
                  auto refs = self.ctx->runtime->discoverModules();
@@ -255,11 +209,10 @@ void bindRuntime(py::module_& module) {
 
 void bindAction(py::module_& module) {
     bindActionId(module);
-    bindParameterDescriptor(module);
-    bindActionDescriptor(module);
-    bindModuleDescriptor(module);
     bindInvocationContext(module);
-    bindTypeDescriptor(module);
+    bindModuleDescriptor(module);
+    bindActionDescriptor(module);
+    bindParameterDescriptor(module);
     bindRuntime(module);
 }
 

@@ -1,8 +1,8 @@
 # Agent Guide
 
 Build in small, coherent, verifiable increments. Reuse existing design, keep
-interfaces small, preserve unrelated behavior, and never weaken validation to
-make a change pass.
+interfaces small, preserve unrelated behavior, and never weaken, bypass, or
+reconfigure validation merely to make a change pass.
 
 Examples clarify intent only; they are not implementation templates.
 
@@ -200,17 +200,101 @@ full       final delivery validation
 - Run `full` on the final delivery candidate.
 - Do not rerun weaker validation on unchanged code when a stronger Gate already
   covered it.
-- Diagnose and fix the cause of failures.
+- Diagnose and fix the root cause of failures.
+- Treat repository quality configuration as part of the project contract, not
+  as something that may be adjusted merely to accommodate the current change.
 
-Never make a Gate pass by:
+### Quality Gate Integrity
 
-- disabling or skipping tests;
-- adding exclusions;
-- weakening rules or thresholds;
-- suppressing valid diagnostics;
-- bypassing repository-defined checks.
+Quality Gates must not be bypassed, weakened, narrowed, or reconfigured merely
+to make an implementation pass.
+
+Unless the current task explicitly requires a quality-policy change, do not:
+
+- disable, skip, remove, or conditionally bypass tests or validation steps;
+- reduce warning levels, enabled checks, sanitizer coverage, thresholds, or
+  failure severity;
+- change `checkflow` workflows to omit failing tools or stages;
+- add or broaden excluded directories, ignored paths, file globs, header
+  filters, source filters, or generated-file classifications to hide relevant
+  project code from validation;
+- remove files from compilation databases or validation inputs to avoid
+  diagnostics;
+- alter test discovery, test selection, labels, or filters merely to exclude a
+  failing test;
+- mark failing tests as disabled, skipped, expected-failure, flaky, or
+  platform-specific without a real semantic reason;
+- introduce compiler pragmas, warning-disable flags, analyzer configuration, or
+  equivalent suppression mechanisms merely to silence valid diagnostics;
+- add blanket static-analysis suppressions such as `NOLINT`,
+  `NOLINTBEGIN`/`NOLINTEND`, `clang-tidy` exclusions, IWYU pragmas, or similar
+  annotations merely to make a Gate pass;
+- add `NOLINT` or equivalent suppressions to production code unless the
+  diagnostic is demonstrably inapplicable, the underlying issue cannot
+  reasonably be expressed without the suppression, and the suppression is
+  narrow and justified;
+- change formatting, complexity, coverage, mutation-testing, lint, or static
+  analysis thresholds to accommodate newly introduced violations;
+- weaken assertions, expected values, test coverage, or failure checks so that
+  incorrect behavior becomes accepted;
+- replace a failing validation command with a weaker command that does not
+  provide equivalent coverage.
+
+Suppressions are exceptions, not fixes.
+
+When a suppression is genuinely required:
+
+- prefer fixing the code first;
+- scope the suppression to the smallest possible statement or declaration;
+- name the specific diagnostic being suppressed;
+- document why the diagnostic is a false positive or why the construct is
+  intentionally required;
+- do not use broad wildcard suppressions when a specific suppression exists;
+- do not propagate a local exception into repository-wide configuration.
+
+Test code may use narrowly scoped suppressions when required by the testing
+framework or by intentionally unusual test constructs, but this must not be used
+to hide defects in production behavior.
+
+Changes to quality infrastructure itself — including `.clang-tidy`, compiler
+warning flags, sanitizer configuration, CheckFlow configuration, exclusion
+lists, coverage thresholds, mutation thresholds, or test discovery rules —
+must be treated as explicit task scope. Such changes require an independent
+technical justification and must not be introduced as a side effect of fixing
+an unrelated Gate failure.
 
 ### Example
+
+Prefer:
+
+```text
+clang-tidy reports an ownership/lifetime issue
+→ understand the diagnostic
+→ correct the ownership/lifetime design
+→ rerun the relevant Gate
+```
+
+Avoid:
+
+```text
+clang-tidy reports an ownership/lifetime issue
+→ add NOLINT
+→ Gate passes
+```
+
+Prefer:
+
+```text
+new source directory is reported by static analysis
+→ fix the reported issues
+```
+
+Avoid:
+
+```text
+new source directory is reported by static analysis
+→ add the directory to an exclusion list
+```
 
 Prefer:
 
@@ -269,5 +353,9 @@ A task is complete when:
 - required validation passes;
 - no known unresolved issue affecting the requested behavior remains.
 
-Never claim a test, Gate, review, or validation passed unless it actually ran
-and passed.
+A task is **not** complete if its validation only passes because relevant checks,
+files, tests, diagnostics, or thresholds were disabled, excluded, suppressed, or
+weakened.
+
+Never claim a test, Gate, review, or validation passed unless it actually ran and
+passed.

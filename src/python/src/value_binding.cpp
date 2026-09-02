@@ -1,6 +1,7 @@
 #include "axiom/python/conversion.hpp"
 #include "bindings.hpp"
 
+#include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/foundation/value.hpp>
 
 #include <pybind11/detail/common.h>
@@ -48,7 +49,9 @@ void pushChildren(py::handle object, std::vector<Visit>& stack) {
 }
 
 void checkCycle(py::handle root) {
-    std::set<py::handle> ancestors;
+    // Identity-based cycle detection; Python object addresses are stable while the
+    // conversion runs, and pointer comparison avoids rich-compare semantics.
+    std::set<const PyObject*> ancestors;
     std::vector<Visit> stack;
     stack.emplace_back(root, false);
     while(!stack.empty()) {
@@ -59,10 +62,10 @@ void checkCycle(py::handle root) {
             continue;
         }
         if(exiting) {
-            ancestors.erase(object);
+            ancestors.erase(object.ptr());
             continue;
         }
-        if(!ancestors.insert(object).second) {
+        if(!ancestors.insert(object.ptr()).second) {
             throw py::value_error("Circular reference detected in value conversion");
         }
 
@@ -190,8 +193,50 @@ axiom::Value toValue(py::handle obj) {
 
 py::object fromValue(const axiom::Value& value) { return fromValueImpl(value); }
 
-void bindValue(py::module_& /*module*/) {
-    // Value conversion is internal; no public Python API needed.
+namespace {
+void bindTypeDescriptor(py::module_& module) {
+    py::class_<axiom::TypeDescriptor> type_desc(module, "TypeDescriptor");
+
+    py::enum_<axiom::TypeDescriptor::Kind>(type_desc, "Kind")
+        .value("Null", axiom::TypeDescriptor::Kind::Null)
+        .value("Boolean", axiom::TypeDescriptor::Kind::Boolean)
+        .value("Integer", axiom::TypeDescriptor::Kind::Integer)
+        .value("Number", axiom::TypeDescriptor::Kind::Number)
+        .value("String", axiom::TypeDescriptor::Kind::String)
+        .value("Array", axiom::TypeDescriptor::Kind::Array)
+        .value("Object", axiom::TypeDescriptor::Kind::Object);
+
+    type_desc.def_readonly("kind", &axiom::TypeDescriptor::kind)
+        .def_readonly("nullable", &axiom::TypeDescriptor::nullable)
+        .def_readonly("description", &axiom::TypeDescriptor::description)
+        .def_property_readonly("element_type",
+                               [](const axiom::TypeDescriptor& td) -> py::object {
+                                   if(td.element_type) {
+                                       return py::cast(*td.element_type);
+                                   }
+                                   return py::none();
+                               })
+        .def_property_readonly("fields",
+                               [](const axiom::TypeDescriptor& td) {
+                                   py::dict result;
+                                   for(const auto& [key, field] : td.fields) {
+                                       if(field) {
+                                           result[py::str{key}] = py::cast(*field);
+                                       } else {
+                                           result[py::str{key}] = py::none();
+                                       }
+                                   }
+                                   return result;
+                               })
+        .def_property_readonly("value_type", [](const axiom::TypeDescriptor& td) -> py::object {
+            if(td.value_type) {
+                return py::cast(*td.value_type);
+            }
+            return py::none();
+        });
 }
+} // namespace
+
+void bindValue(py::module_& module) { bindTypeDescriptor(module); }
 
 } // namespace axiom::python

@@ -34,6 +34,7 @@ else:
     raise AssertionError("Runtime must be supplied by a C++ host")
 
 host = axiom_python_test_host.create_host()
-assert [item.namespace_name for item in host.runtime.modules()] == ["math"]
+namespaces = {item.namespace_name for item in host.runtime.modules()}
+assert namespaces == {"math", "mesh"}, namespaces
 assert host.runtime.invoke("math.add", {"left": 2, "right": 3}) == 5
 assert host.runtime.invoke(axiom.ActionId("math.add"), {"left": -2, "right": 3}) == 1

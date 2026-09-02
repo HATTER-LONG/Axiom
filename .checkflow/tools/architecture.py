@@ -56,12 +56,16 @@ def _violations(project_root: Path, rules: Mapping[str, Any]) -> list[dict[str, 
             raise ValueError("architecture rule must be an object")
         source_prefixes = rule.get("from")
         forbidden = rule.get("forbidden")
+        excluded_prefixes = rule.get("exclude", [])
         rule_id = rule.get("id")
-        if not isinstance(rule_id, str) or not isinstance(source_prefixes, list) or not isinstance(forbidden, list):
+        if (not isinstance(rule_id, str) or not isinstance(source_prefixes, list)
+                or not isinstance(forbidden, list) or not isinstance(excluded_prefixes, list)):
             raise ValueError("architecture rule is incomplete")
         for path in files:
             relative = path.relative_to(project_root).as_posix()
             if not any(relative.startswith(prefix) for prefix in source_prefixes):
+                continue
+            if any(relative.startswith(prefix) for prefix in excluded_prefixes):
                 continue
             for line, text in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
                 match = _INCLUDE.match(text)

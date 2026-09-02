@@ -39,6 +39,9 @@ site-packages layout).
 Installation testing is opt-in (`AXIOM_BUILD_INSTALL_TEST=ON`) and requires an
 uninstrumented build. The test installs and relocates the package, then configures,
 builds and runs a standalone consumer with the same toolchain and configuration.
+When the Python extension is enabled, the relocated package must additionally
+provide an importable `axiom` extension that passes a discovery and invocation
+smoke check.
 
 ## Use as a CMake package
 

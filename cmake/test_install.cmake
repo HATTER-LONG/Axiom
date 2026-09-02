@@ -53,3 +53,34 @@ execute_process(COMMAND "@CMAKE_COMMAND@" --build "${consumer_build}" --config
 execute_process(
     COMMAND "@CMAKE_CTEST_COMMAND@" --test-dir "${consumer_build}" -C "${AXIOM_INSTALL_CONFIG}"
             --output-on-failure --no-tests=error COMMAND_ERROR_IS_FATAL ANY)
+
+if ("@AXIOM_BUILD_PYTHON@")
+    set(axiom_python_extension_dir "${prefix}/@AXIOM_PYTHON_INSTALL_DIR@")
+    set(axiom_python_runtime_bin "${prefix}/@CMAKE_INSTALL_BINDIR@")
+    # Importing from the relocated prefix proves the extension location, ABI
+    # suffix, and runtime library dependencies for the selected interpreter.
+    execute_process(
+        COMMAND "@CMAKE_COMMAND@" -E env "PYTHONPATH=${axiom_python_extension_dir}"
+                "AXIOM_PYTHON_RUNTIME_BIN=${axiom_python_runtime_bin}"
+                "@AXIOM_PYTHON_EXECUTABLE@" -c
+                "import os, sys
+runtime_bin = os.environ.get('AXIOM_PYTHON_RUNTIME_BIN')
+if os.name == 'nt' and runtime_bin and os.path.isdir(runtime_bin):
+    os.add_dll_directory(runtime_bin)
+import axiom
+assert axiom.ActionId('math.add').module == 'math'
+assert os.path.realpath(axiom.__file__).startswith(os.path.realpath(sys.argv[1]))"
+                "${axiom_python_extension_dir}" COMMAND_ERROR_IS_FATAL ANY)
+    set(axiom_python_smoke_env
+        "AXIOM_PYTHON_EXTENSION_DIR=${axiom_python_extension_dir}"
+        "AXIOM_PYTHON_TEST_HOST_DIR=@PROJECT_BINARY_DIR@/tests/python"
+        "AXIOM_PYTHON_RUNTIME_BIN=${axiom_python_runtime_bin}")
+    if ("@BUILD_SHARED_LIBS@" AND NOT WIN32)
+        list(APPEND axiom_python_smoke_env
+             "LD_LIBRARY_PATH=${prefix}/@CMAKE_INSTALL_LIBDIR@:$ENV{LD_LIBRARY_PATH}"
+             "DYLD_LIBRARY_PATH=${prefix}/@CMAKE_INSTALL_LIBDIR@:$ENV{DYLD_LIBRARY_PATH}")
+    endif ()
+    execute_process(
+        COMMAND "@CMAKE_COMMAND@" -E env ${axiom_python_smoke_env} "@AXIOM_PYTHON_EXECUTABLE@"
+                "@PROJECT_SOURCE_DIR@/tests/python/install_smoke.py" COMMAND_ERROR_IS_FATAL ANY)
+endif ()

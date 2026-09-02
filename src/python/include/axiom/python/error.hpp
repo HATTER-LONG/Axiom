@@ -15,6 +15,9 @@ void registerAxiomError(py::module_& module);
 
 void registerErrorCode(py::module_& module);
 
+// Single Error-to-Python representation shared by exceptions and read-only views.
+py::dict errorToDict(const axiom::Error& error);
+
 void unwrapError(const axiom::Error& error);
 
 py::object unwrap(axiom::Result<axiom::Value>&& result);

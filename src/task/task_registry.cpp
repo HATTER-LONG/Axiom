@@ -190,6 +190,7 @@ snapshotFromControl(const std::shared_ptr<detail::TaskControl>& control) {
     TaskResultSnapshot snapshot;
     snapshot.kind = control->resultKind();
     const auto state = control->state();
+    snapshot.state = state;
     if(!isTerminal(state)) {
         return snapshot;
     }
