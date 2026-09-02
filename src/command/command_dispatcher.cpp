@@ -17,6 +17,7 @@
 #include <axiom/task/task_registry.hpp>
 
 #include <memory>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -136,50 +137,30 @@ public:
     }
 
 private:
-    [[nodiscard]] Result<Value> dispatchAction(const CommandMethod method,
-                                               const Value::Object& params,
-                                               const InvocationContext& context) const {
-        if(method == CommandMethod::ActionList) {
-            return listActions(params);
-        }
-        if(method == CommandMethod::ActionDescribe) {
-            return describeAction(params);
-        }
-        return invokeAction(params, context);
-    }
-
-    [[nodiscard]] Result<Value> dispatchResource(const CommandMethod method,
-                                                 const Value::Object& params) const {
-        if(method == CommandMethod::ResourceList) {
-            return listResources(params);
-        }
-        return describeResource(params);
-    }
-
-    [[nodiscard]] Result<Value> dispatchTaskOrSystem(const CommandMethod method,
-                                                     const Value::Object& params) const {
-        if(method == CommandMethod::TaskList) {
-            return listTasks(params);
-        }
-        if(method == CommandMethod::TaskDescribe) {
-            return describeTask(params);
-        }
-        if(method == CommandMethod::TaskCancel) {
-            return cancelTask(params);
-        }
-        return snapshotSystem();
-    }
-
     [[nodiscard]] Result<Value> dispatchMethod(const CommandMethod method,
                                                const Value::Object& params,
                                                const InvocationContext& context) const {
-        if(method <= CommandMethod::ActionInvoke) {
-            return dispatchAction(method, params, context);
+        switch(method) {
+        case CommandMethod::ActionList:
+            return listActions(params);
+        case CommandMethod::ActionDescribe:
+            return describeAction(params);
+        case CommandMethod::ActionInvoke:
+            return invokeAction(params, context);
+        case CommandMethod::ResourceList:
+            return listResources(params);
+        case CommandMethod::ResourceDescribe:
+            return describeResource(params);
+        case CommandMethod::TaskList:
+            return listTasks(params);
+        case CommandMethod::TaskDescribe:
+            return describeTask(params);
+        case CommandMethod::TaskCancel:
+            return cancelTask(params);
+        case CommandMethod::SystemSnapshot:
+            return snapshotSystem();
         }
-        if(method <= CommandMethod::ResourceDescribe) {
-            return dispatchResource(method, params);
-        }
-        return dispatchTaskOrSystem(method, params);
+        throw std::logic_error{"Unknown CommandMethod enumerator"};
     }
 
     [[nodiscard]] Result<Value> listActions(const Value::Object& params) const {

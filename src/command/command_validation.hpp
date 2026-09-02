@@ -32,7 +32,7 @@ struct CommandField {
 };
 
 [[nodiscard]] Result<CommandMethod> parseCommandMethod(std::string_view method);
-[[nodiscard]] std::span<const CommandField> commandFields(CommandMethod method) noexcept;
+[[nodiscard]] std::span<const CommandField> commandFields(CommandMethod method);
 [[nodiscard]] Result<void> validateCommandParams(const Value::Object& params,
                                                  std::span<const CommandField> fields);
 [[nodiscard]] Error withDefaultPath(Error error, std::string path);

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -143,17 +144,28 @@ Result<CommandMethod> parseCommandMethod(const std::string_view method) {
     return Result<CommandMethod>::failure(unknownCommandError(method));
 }
 
-std::span<const CommandField> commandFields(const CommandMethod method) noexcept {
-    constexpr std::array<std::span<const CommandField>, 9> fields{
-        action_list_fields,   action_describe_fields,   action_invoke_fields,
-        resource_list_fields, resource_describe_fields, task_list_fields,
-        task_describe_fields, task_cancel_fields,       std::span<const CommandField>{},
-    };
-    const auto index = static_cast<std::size_t>(method);
-    if(index >= fields.size()) {
+std::span<const CommandField> commandFields(const CommandMethod method) {
+    switch(method) {
+    case CommandMethod::ActionList:
+        return action_list_fields;
+    case CommandMethod::ActionDescribe:
+        return action_describe_fields;
+    case CommandMethod::ActionInvoke:
+        return action_invoke_fields;
+    case CommandMethod::ResourceList:
+        return resource_list_fields;
+    case CommandMethod::ResourceDescribe:
+        return resource_describe_fields;
+    case CommandMethod::TaskList:
+        return task_list_fields;
+    case CommandMethod::TaskDescribe:
+        return task_describe_fields;
+    case CommandMethod::TaskCancel:
+        return task_cancel_fields;
+    case CommandMethod::SystemSnapshot:
         return {};
     }
-    return fields[index];
+    throw std::logic_error{"Unknown CommandMethod enumerator"};
 }
 
 Result<void> validateCommandParams(const Value::Object& params,

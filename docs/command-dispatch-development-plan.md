@@ -160,7 +160,11 @@ public:
 ### 4.2 method 常量
 
 在 `command_methods.hpp` 中以 `inline constexpr std::string_view` 集中定义九个稳定方法名，供
-C++ Adapter 和测试复用。Dispatcher 内部把字符串解析到私有枚举后使用 `switch` 路由。
+C++ Adapter 和测试复用。Dispatcher 内部把字符串解析到私有枚举后使用穷尽 `switch` 路由：每个
+已知 method 都有独立 `case`，直接进入对应处理函数。路由和 schema 查找都按 method 显式对应，
+不得依赖枚举数值顺序，也不得把未匹配值默认落到某个现有命令。非法私有枚举是实现缺陷，schema
+查找和路由都抛出 `std::logic_error`，不伪装成合法 Command，也不与 `system.snapshot` 的合法空
+schema 混用。公开未知 method 字符串仍返回 `UnknownCommand`。
 
 首版不引入动态 handler 注册、字符串到 `std::function` 的可变 map、Command 基类或插件式
 路由。命令集合是受版本控制的外部契约，显式解析更易审计，也不会把用户回调生命周期带入
@@ -530,20 +534,24 @@ MVP 不预先增加未被消费者使用的版本协商框架。
 
 ### 10.4 Task
 
-- 五种状态字符串和完整 progress；
-- origin 缺失、空字段、完整 metadata；
-- error 缺失和含 path/details 的完整错误；
-- state/origin_action/origin_request 单项与组合过滤；
-- cancel 已知 active、重复取消、终态、未知、非法 ID；
-- cancel 成功值严格为 null；
-- 不暴露类型化 result，不隐式 remove Task。
+Command 层证明 wire 字段映射和 Dispatcher 转发；TaskRegistry / Introspection 已覆盖的业务
+语义不再在 Command 测试中整表复制。
+
+- 五种状态字符串被 Command 接受；progress、origin、error 的 Value 编码覆盖缺失、空字段、
+  完整 metadata 以及含 path/details 的失败；
+- `state` / `origin_action` / `origin_request` 作为 Command 字段的单项与组合过滤，用于证明
+  字段名映射到 `TaskQuery`，合法无匹配返回空数组；
+- cancel：非法 ID 为 `InvalidArgument`；规范但未知 ID 保留来源 `NotFound`；至少一次经
+  Dispatcher 取消仍为 active 的 Task，成功值严格为 null；
+- 重复取消、终态取消和不隐式 `remove` 由 Task 测试覆盖；
+- 不暴露类型化 result。
 
 ### 10.5 Snapshot、并发与生命周期
 
 - 空和混合 Snapshot 的四个固定键；
 - 转换结果在后续来源变化后保持独立；
 - 明确验证 Snapshot 非全局原子但每个 Descriptor 有效；
-- 多线程并发 list/describe/invoke/cancel，不使用 sleep 控制交错；
+- 多线程并发 `list` / `describe` / `invoke` / `cancel`，不使用 sleep 控制交错；
 - Dispatcher 析构不影响任何来源；
 - 来源析构前置条件写入 Doxygen，不编造运行时检测。
 
@@ -605,6 +613,7 @@ Adapter 尚未提供”。
 | catch-all 掩盖内存失败 | `std::bad_alloc` 保持抛出；正常验证不用异常控制流 |
 | Adapter 绕过统一入口 | 架构文档和 Adapter 集成测试要求只依赖 Command |
 | method 动态注册造成安全/生命周期复杂度 | MVP 使用封闭、显式、集中维护的 method 集合 |
+| 按枚举序 fallthrough 把新命令误路由到 invoke/snapshot | 穷尽 `switch`；schema 同样按 method 显式对应 |
 | 计划过度拆分 | 先用少量内聚文件，达到真实复杂度阈值再按 domain 拆分 |
 
 ## 14. 验收标准

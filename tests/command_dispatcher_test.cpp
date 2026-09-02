@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <future>
 #include <initializer_list>
@@ -170,6 +171,14 @@ struct CommandFixture {
         registerNested(runtime);
     }
 };
+
+[[nodiscard]] axiom::task::TaskOrigin testOrigin(std::string request, std::string action) {
+    return {.request_id = std::move(request),
+            .trace_id = "trace",
+            .caller = "suite",
+            .action_id = std::move(action),
+            .metadata = {}};
+}
 
 [[nodiscard]] std::vector<std::string> stringIds(const Value& list, const char* key) {
     std::vector<std::string> ids;
@@ -544,14 +553,26 @@ TEST(CommandDispatcher, DestructorDoesNotAffectSources) {
 }
 
 TEST(CommandDispatcher, SupportsConcurrentDispatchWithoutSleep) {
-    const CommandFixture fixture;
+    CommandFixture fixture;
     constexpr int workers = 4;
+    axiom::async::Executor executor{1};
+    std::vector<std::string> task_ids;
+    task_ids.reserve(workers);
+    for(int index = 0; index < workers; ++index) {
+        auto submitted =
+            fixture.tasks.submit(executor, "concurrent", [](axiom::task::TaskContext&) {
+                return axiom::Result<void>::success();
+            });
+        ASSERT_TRUE(submitted);
+        task_ids.emplace_back(submitted.value().id().str());
+    }
+    executor.close();
     std::latch start{workers};
     std::atomic<int> successes{0};
     std::vector<std::thread> threads;
     threads.reserve(workers);
     for(int index = 0; index < workers; ++index) {
-        threads.emplace_back([&fixture, &start, &successes] {
+        threads.emplace_back([&fixture, &start, &successes, &task_ids, index] {
             start.arrive_and_wait();
             const auto listed = fixture.dispatcher.dispatch(action_list, {}, {});
             const auto described = fixture.dispatcher.dispatch(
@@ -560,7 +581,11 @@ TEST(CommandDispatcher, SupportsConcurrentDispatchWithoutSleep) {
                 action_invoke,
                 object({{"action", Value{"math.ping"}}, {"arguments", Value{object({})}}}), {});
             const auto snapshot = fixture.dispatcher.dispatch(system_snapshot, {}, {});
-            if(listed && described && invoked && snapshot) {
+            const auto cancelled = fixture.dispatcher.dispatch(
+                task_cancel, object({{"task", Value{task_ids[static_cast<std::size_t>(index)]}}}),
+                {});
+            if(listed && described && invoked && snapshot && cancelled &&
+               cancelled.value().isNull()) {
                 ++successes;
             }
         });
@@ -653,6 +678,76 @@ TEST(CommandDispatcher, AcceptsEveryCanonicalTaskStateFilter) {
     }
 }
 
+TEST(CommandDispatcher, FiltersTasksByOriginRequestAndCombinations) {
+    CommandFixture fixture;
+    axiom::async::Executor executor{1};
+    auto ping_a = fixture.tasks.submit(
+        executor,
+        axiom::task::TaskSubmission{.name = "ping-a", .origin = testOrigin("req-a", "math.ping")},
+        [](axiom::task::TaskContext&) { return axiom::Result<void>::success(); });
+    auto ping_b = fixture.tasks.submit(
+        executor,
+        axiom::task::TaskSubmission{.name = "ping-b", .origin = testOrigin("req-b", "math.ping")},
+        [](axiom::task::TaskContext&) { return axiom::Result<void>::success(); });
+    auto fail_a = fixture.tasks.submit(
+        executor,
+        axiom::task::TaskSubmission{.name = "fail-a", .origin = testOrigin("req-a", "math.fail")},
+        [](axiom::task::TaskContext&) { return axiom::Result<void>::success(); });
+    ASSERT_TRUE(ping_a);
+    ASSERT_TRUE(ping_b);
+    ASSERT_TRUE(fail_a);
+    executor.close();
+    const auto by_request =
+        fixture.dispatcher.dispatch(task_list, object({{"origin_request", Value{"req-a"}}}), {});
+    ASSERT_TRUE(by_request);
+    EXPECT_EQ(stringIds(by_request.value(), "id"),
+              (std::vector<std::string>{std::string{ping_a.value().id().str()},
+                                        std::string{fail_a.value().id().str()}}));
+    const auto by_action =
+        fixture.dispatcher.dispatch(task_list, object({{"origin_action", Value{"math.ping"}}}), {});
+    ASSERT_TRUE(by_action);
+    EXPECT_EQ(stringIds(by_action.value(), "id"),
+              (std::vector<std::string>{std::string{ping_a.value().id().str()},
+                                        std::string{ping_b.value().id().str()}}));
+    const auto combined = fixture.dispatcher.dispatch(
+        task_list,
+        object({{"origin_action", Value{"math.ping"}}, {"origin_request", Value{"req-a"}}}), {});
+    ASSERT_TRUE(combined);
+    EXPECT_EQ(stringIds(combined.value(), "id"),
+              std::vector<std::string>{std::string{ping_a.value().id().str()}});
+    const auto none =
+        fixture.dispatcher.dispatch(task_list, object({{"origin_request", Value{"missing"}}}), {});
+    ASSERT_TRUE(none);
+    EXPECT_TRUE(none.value().asArray().empty());
+}
+
+TEST(CommandDispatcher, CancelsActiveTaskAndPreservesUnknownNotFound) {
+    CommandFixture fixture;
+    axiom::async::Executor executor{1};
+    std::promise<void> release;
+    auto blocker = executor.submit([wait = release.get_future()] { wait.wait(); });
+    auto pending = fixture.tasks.submit(
+        executor,
+        axiom::task::TaskSubmission{.name = "pending", .origin = testOrigin("req", "math.ping")},
+        [](axiom::task::TaskContext&) { return axiom::Result<int>::success(1); });
+    ASSERT_TRUE(pending);
+    EXPECT_EQ(pending.value().state(), axiom::task::TaskState::Pending);
+    const auto cancelled = fixture.dispatcher.dispatch(
+        task_cancel, object({{"task", Value{std::string{pending.value().id().str()}}}}), {});
+    ASSERT_TRUE(cancelled);
+    EXPECT_TRUE(cancelled.value().isNull());
+    EXPECT_EQ(pending.value().state(), axiom::task::TaskState::Cancelled);
+    expectError(
+        fixture.dispatcher.dispatch(task_cancel, object({{"task", Value{"task:999999"}}}), {}),
+        ErrorCode::NotFound, std::nullopt);
+    expectError(
+        fixture.dispatcher.dispatch(task_describe, object({{"task", Value{"task:999999"}}}), {}),
+        ErrorCode::NotFound, std::nullopt);
+    release.set_value();
+    executor.close();
+    blocker.get();
+}
+
 TEST(CommandDispatcher, OmitsUnknownTaskOrigin) {
     CommandFixture fixture;
     axiom::async::Executor executor{1};
@@ -737,7 +832,9 @@ TEST(CommandValidation, CoversHelperEdgePaths) {
     using axiom::command::detail::CommandMethod;
     using axiom::command::detail::readRequiredString;
     using axiom::command::detail::withDefaultPath;
-    EXPECT_TRUE(commandFields(static_cast<CommandMethod>(99)).empty());
+    EXPECT_TRUE(commandFields(CommandMethod::SystemSnapshot).empty());
+    EXPECT_THROW(static_cast<void>(commandFields(static_cast<CommandMethod>(99))),
+                 std::logic_error);
     const auto missing = readRequiredString({}, "action");
     ASSERT_FALSE(missing);
     EXPECT_EQ(missing.error().code, ErrorCode::TypeMismatch);

@@ -25,7 +25,9 @@ namespace axiom::command {
  * converts public descriptors into owned Values. Runtime, IntrospectionService,
  * ResourceRegistry, and TaskRegistry remain the authorities for business
  * semantics. This type does not own those sources, hold a Command-layer lock
- * around user Actions, or promise a globally atomic snapshot.
+ * around user Actions, or promise a globally atomic snapshot. Routing is
+ * exhaustive over the closed method set; unknown methods are rejected rather
+ * than mapped onto another command.
  *
  * @pre The Runtime, ResourceRegistry, and TaskRegistry passed to the constructor
  *      remain alive until this dispatcher is destroyed. Source destruction must

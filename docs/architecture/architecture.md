@@ -39,9 +39,13 @@ sources. It does not own Runtime, ResourceRegistry, or TaskRegistry; those objec
 outlive the dispatcher, and their destruction must not overlap `dispatch()`. The
 dispatcher constructs an internal IntrospectionService over the same three sources,
 validates Command structure, routes a closed method set, and converts public descriptors
-into owned Values. Business semantics stay in Runtime, Introspection, Resource, and Task.
-`system.snapshot` remains a sequential observation, not a globally atomic snapshot.
-Lower layers must not include `axiom/command/`.
+into owned Values. Internal routing is an exhaustive switch over the private method
+enumeration; schema lookup is keyed the same way. Neither path uses enumerator order or
+falls through to another command. An illegal private enumerator is a programming defect
+and throws `std::logic_error`; that is distinct from `system.snapshot`'s valid empty
+schema and from `UnknownCommand` for an unknown public method name. Business semantics
+stay in Runtime, Introspection, Resource, and Task. `system.snapshot` remains a sequential
+observation, not a globally atomic snapshot. Lower layers must not include `axiom/command/`.
 
 `logging` is structured and independent from Action except that `Runtime` may
 emit diagnostic records. `resource` owns typed host registrations and does not
