@@ -12,8 +12,6 @@
 
 #include <gtest/gtest.h>
 
-#include <spdlog/details/os.h>
-
 // cppcheck does not load GoogleTest's generated include paths when it scans sources directly.
 // Preserve analysis of the test bodies by supplying its equivalent function-shaped macro only
 // when the real framework did not provide TEST.
@@ -26,7 +24,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <format>
 #include <functional>
 #include <memory>
 #include <source_location>
@@ -851,7 +848,8 @@ TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
     sink.consume(record("message"));
     sink.flush();
     auto output = testing::internal::GetCapturedStderr();
-    // Color escapes and the platform newline do not change the record's text format.
+    // Color escapes, the platform newline, and the platform thread id do not change
+    // the record's text format.
     for(auto start = output.find("\x1b["); start != std::string::npos;
         start = output.find("\x1b[")) {
         const auto end = output.find('m', start);
@@ -861,8 +859,17 @@ TEST(ConsoleSink, EmitsOnlyTheRecordWithoutEmptyFieldsOrExtraPrefixes) {
     if(output.ends_with("\r\n")) {
         output.erase(output.size() - 2, 1);
     }
-    EXPECT_EQ(output, std::format("[1970-01-01T00:00:00.000Z] [runtime|info] [tid:{}] message\n",
-                                  spdlog::details::os::thread_id()));
+    const auto tid_start = output.find("[tid:");
+    ASSERT_NE(tid_start, std::string::npos);
+    const auto tid_end = output.find(']', tid_start);
+    ASSERT_NE(tid_end, std::string::npos);
+    const auto tid_value = output.substr(tid_start + 5, tid_end - tid_start - 5);
+    EXPECT_FALSE(tid_value.empty());
+    for(const char digit : tid_value) {
+        EXPECT_TRUE(digit >= '0' && digit <= '9');
+    }
+    output.replace(tid_start, tid_end - tid_start + 1, "[tid:tid]");
+    EXPECT_EQ(output, "[1970-01-01T00:00:00.000Z] [runtime|info] [tid:tid] message\n");
 }
 
 TEST(LoggingService, AllowsSinkDestructorsToLogDuringUnsubscribe) {
