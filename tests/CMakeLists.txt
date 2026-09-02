@@ -10,14 +10,17 @@ if (AXIOM_SANITIZERS)
     endforeach ()
 endif ()
 
-add_executable(axiom_test core_test.cpp descriptor_test.cpp dispatcher_test.cpp events_test.cpp
+add_executable(axiom_test core_test.cpp descriptor_test.cpp action_invoker_test.cpp events_test.cpp
                async_test.cpp logging_test.cpp registry_test.cpp resource_test.cpp runtime_test.cpp
-               value_converter_test.cpp task_test.cpp task_concurrency_test.cpp introspection_test.cpp)
+               value_converter_test.cpp task_test.cpp task_concurrency_test.cpp introspection_test.cpp
+               command_dispatcher_test.cpp)
 # Internal unit tests compile their private implementation locally. Public Runtime
 # and installed-consumer tests still exercise the shared library boundary.
 if (BUILD_SHARED_LIBS)
-    target_sources(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src/action/dispatcher.cpp"
-                                      "${PROJECT_SOURCE_DIR}/src/action/registry.cpp")
+    target_sources(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src/action/action_invoker.cpp"
+                                      "${PROJECT_SOURCE_DIR}/src/action/registry.cpp"
+                                      "${PROJECT_SOURCE_DIR}/src/command/command_validation.cpp"
+                                      "${PROJECT_SOURCE_DIR}/src/command/descriptor_conversion.cpp")
 endif ()
 axiom_configure_target(axiom_test)
 target_include_directories(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src"

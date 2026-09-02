@@ -12,6 +12,6 @@ if (symbols MATCHES "spdlog|[0-9]fmt")
     message(FATAL_ERROR "Axiom exports private spdlog/fmt implementation symbols")
 endif ()
 
-if (symbols MATCHES "N[K]?5axiom6detail(8Registry|10Dispatcher)")
-    message(FATAL_ERROR "Axiom exports private Registry/Dispatcher implementation symbols")
+if (symbols MATCHES "N[K]?5axiom6detail(8Registry|13ActionInvoker)")
+    message(FATAL_ERROR "Axiom exports private Registry/ActionInvoker implementation symbols")
 endif ()

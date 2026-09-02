@@ -174,6 +174,7 @@ TEST(Error, AppendsCancellationWithoutRenumberingExistingCodes) {
     EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InvocationFailed), 7);
     EXPECT_EQ(static_cast<int>(axiom::ErrorCode::InternalError), 8);
     EXPECT_EQ(static_cast<int>(axiom::ErrorCode::Cancelled), 9);
+    EXPECT_EQ(static_cast<int>(axiom::ErrorCode::UnknownCommand), 10);
 }
 
 TEST(Error, RetainsCodeMessagePathAndStructuredDetails) {

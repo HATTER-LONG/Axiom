@@ -11,19 +11,19 @@ namespace axiom::detail {
 /**
  * @brief Resolves and synchronously invokes registered Actions.
  *
- * Dispatcher is the sole exception-normalization boundary for dynamic Action
+ * ActionInvoker is the sole exception-normalization boundary for dynamic Action
  * calls. It validates argument names and required arguments before delegating
  * to an IAction; Value conversion remains the responsibility of a later
- * callable adapter rather than Registry or Dispatcher.
+ * callable adapter rather than Registry or ActionInvoker.
  */
-class Dispatcher {
+class ActionInvoker {
 public:
     /**
-     * @brief Binds a Dispatcher to a Registry whose lifetime must outlive it.
+     * @brief Binds an ActionInvoker to a Registry whose lifetime must outlive it.
      *
      * @param registry Registered Action source to resolve during invocation.
      */
-    explicit Dispatcher(Registry& registry) noexcept : registry_(registry) {}
+    explicit ActionInvoker(Registry& registry) noexcept : registry_(registry) {}
 
     /**
      * @brief Looks up, validates, and invokes an Action.

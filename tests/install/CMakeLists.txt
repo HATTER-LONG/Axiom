@@ -9,7 +9,11 @@ find_package(Axiom CONFIG REQUIRED)
 add_executable(axiom_install_consumer main.cpp)
 target_link_libraries(axiom_install_consumer PRIVATE Axiom::Axiom)
 
+add_executable(axiom_install_command command_only.cpp)
+target_link_libraries(axiom_install_command PRIVATE Axiom::Axiom)
+
 add_test(NAME axiom.install.consumer COMMAND axiom_install_consumer)
+add_test(NAME axiom.install.command COMMAND axiom_install_command)
 
 get_target_property(axiom_library_type Axiom::Axiom TYPE)
 if (AXIOM_EXPECT_SHARED AND NOT axiom_library_type STREQUAL "SHARED_LIBRARY")
@@ -19,7 +23,7 @@ elseif (NOT AXIOM_EXPECT_SHARED AND NOT axiom_library_type STREQUAL "STATIC_LIBR
 endif ()
 if (WIN32 AND AXIOM_EXPECT_SHARED)
     set_tests_properties(
-        axiom.install.consumer
+        axiom.install.consumer axiom.install.command
         PROPERTIES ENVIRONMENT_MODIFICATION
                    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Axiom::Axiom>")
 endif ()

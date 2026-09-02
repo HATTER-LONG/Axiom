@@ -78,8 +78,9 @@ the same Action may overlap and share the single stored callable instance, so th
 callable and any mutable state it captures must provide their own synchronization.
 Runtime destruction still requires caller synchronization with concurrent access.
 
-Axiom library does not provide protocol adapters, JSON serialization, networking, plugins,
-or authorization. Independent `async::Executor` and `async::Scheduler` services
+Axiom library provides a protocol-independent Command boundary through
+`command::CommandDispatcher`. JSON, Python, MCP, HTTP, and other protocol adapters are
+not provided yet. Independent `async::Executor` and `async::Scheduler` services
 provide asynchronous work; Action invocation itself remains synchronous.
 
 ## Runtime discovery and introspection
@@ -100,6 +101,27 @@ The service is uncached and does not own registry state. Its three sources must
 outlive it, and source destruction must not overlap a query. A combined snapshot
 samples Actions, Resources and Tasks in a fixed sequence and is therefore not a
 globally atomic snapshot across all sources.
+
+## Command dispatch
+
+`axiom::command::CommandDispatcher` is the closed, protocol-independent dynamic
+boundary for external callers. It is constructed from an existing `Runtime`,
+`resource::ResourceRegistry`, and `task::TaskRegistry`, and it creates an internal
+`IntrospectionService` over those same sources. The dispatcher does not own them;
+they must outlive it, and their destruction must not overlap `dispatch()`.
+
+```cpp
+axiom::command::CommandDispatcher dispatcher{runtime, resources, tasks};
+auto listed = dispatcher.dispatch(axiom::command::action_list, {}, {});
+```
+
+The nine MVP methods are `action.list`, `action.describe`, `action.invoke`,
+`resource.list`, `resource.describe`, `task.list`, `task.describe`, `task.cancel`,
+and `system.snapshot`. Command structure is validated strictly before any source
+call. Unknown methods return `ErrorCode::UnknownCommand`. Successful `*.list` and
+`*.describe` results are owned Values; `action.invoke` returns the Runtime Value
+unchanged; `task.cancel` returns null. `system.snapshot` is still a sequential
+observation, not a globally atomic snapshot.
 
 ## Tracked asynchronous tasks
 
@@ -204,7 +226,7 @@ Mutation testing must reach **70%** and its report must include implementation m
 under this repository’s `src/`, not only instantiated headers or dependency files. Coverage and Mull intentionally
 require static Axiom library. The independent `quality-shared` preset validates the DLL boundary
 using the existing tests; it uses Ninja Multi-Config and Release to exercise configuration
-selection during installation. Internal Registry/Dispatcher tests compile their private
+selection during installation. Internal Registry/ActionInvoker tests compile their private
 implementations locally in shared builds; public Runtime tests still execute the DLL.
 
 UBSan is configured to stop the process on a finding. Sanitizer availability and the

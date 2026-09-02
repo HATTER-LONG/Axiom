@@ -17,7 +17,7 @@ Application / Python / Agent / Remote Client
         Adapters and Integrations
                   |
                   v
-          Introspection + Runtime
+          Introspection + Command + Runtime
           /        |        \
       Action    Resource    Task
           \        |        /
@@ -486,21 +486,22 @@ Remote invocation and local Resource semantics are both mature.
 1. Invocation Context / Execution Correlation
 2. Canonical Introspection Schema
 3. Introspection Query Improvements
-4. Python Binding
-5. Generic Agent Tool Adapter
-6. Agent-Oriented Discovery Views
-7. CLI Adapter
-8. MCP Adapter
-9. RPC / Remote Adapter
-10. Authorization / Capability Policy
-11. Runtime Trace and Diagnostics
-12. Plugin / Extension Model
-13. Persistent Metadata
-14. Task Recovery
-15. Workflow Composition
-16. Automation / Scheduling
-17. Remote Execution
-18. Distributed Resources
+4. Command Dispatch
+5. Python Binding
+6. Generic Agent Tool Adapter
+7. Agent-Oriented Discovery Views
+8. CLI Adapter
+9. MCP Adapter
+10. RPC / Remote Adapter
+11. Authorization / Capability Policy
+12. Runtime Trace and Diagnostics
+13. Plugin / Extension Model
+14. Persistent Metadata
+15. Task Recovery
+16. Workflow Composition
+17. Automation / Scheduling
+18. Remote Execution
+19. Distributed Resources
 ```
 
 The ordering is intentional: first make local application capabilities describable, correlated and language-accessible; then add AI and protocol adapters; only after those contracts stabilize should Axiom take on security, plugins, persistence, workflows and distributed execution.
@@ -511,11 +512,9 @@ The ordering is intentional: first make local application capabilities describab
 
 The immediate development backlog should remain limited to:
 
-1. Invocation Context and execution correlation.
-2. Canonical machine-readable descriptors.
-3. Introspection improvements needed by external consumers.
-4. Python binding.
-5. Generic agent tool adapter.
+1. Command dispatch over existing Runtime, Introspection, Resource, and Task sources.
+2. Python binding through the Command boundary.
+3. Generic agent tool adapter.
 
 Avoid starting plugin loading, distributed execution, persistence or workflow engines before these foundations have been exercised by real applications.
 

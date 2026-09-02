@@ -1,4 +1,4 @@
-#include "../src/action/detail/dispatcher.hpp"
+#include "../src/action/detail/action_invoker.hpp"
 #include "../src/action/detail/registry.hpp"
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
@@ -31,7 +31,7 @@ using axiom::ParameterDescriptor;
 using axiom::Result;
 using axiom::TypeDescriptor;
 using axiom::Value;
-using axiom::detail::Dispatcher;
+using axiom::detail::ActionInvoker;
 using axiom::detail::IAction;
 using axiom::detail::Registry;
 
@@ -142,7 +142,7 @@ void expectEncodedArgumentPath(const Result<Value>& result, const std::string& e
 
 } // namespace
 
-TEST(Dispatcher, InvokesRegisteredActionAndForwardsDiagnosticContext) {
+TEST(ActionInvoker, InvokesRegisteredActionAndForwardsDiagnosticContext) {
     Registry registry;
     registerMath(registry);
     auto implementation = std::make_unique<RecordingAction>();
@@ -152,7 +152,7 @@ TEST(Dispatcher, InvokesRegisteredActionAndForwardsDiagnosticContext) {
                {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
                 {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
         std::move(implementation)));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
     const Arguments arguments{{"left", Value{std::int64_t{2}}}, {"right", Value{std::int64_t{3}}}};
     const InvocationContext context{.request_id = "request-7",
                                     .trace_id = "trace-8",
@@ -167,9 +167,9 @@ TEST(Dispatcher, InvokesRegisteredActionAndForwardsDiagnosticContext) {
     EXPECT_EQ(implementation_view->received_context, &context);
 }
 
-TEST(Dispatcher, ReturnsNotFoundBeforeArgumentValidationForUnknownAction) {
+TEST(ActionInvoker, ReturnsNotFoundBeforeArgumentValidationForUnknownAction) {
     Registry registry;
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {{"unexpected", Value{1}}}, {});
 
@@ -177,7 +177,7 @@ TEST(Dispatcher, ReturnsNotFoundBeforeArgumentValidationForUnknownAction) {
     EXPECT_EQ(result.error().code, ErrorCode::NotFound);
 }
 
-TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
+TEST(ActionInvoker, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(registry.registerAction(
@@ -185,7 +185,7 @@ TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
                {{.name = "second", .description = {}, .type = integerType(), .default_value = {}},
                 {.name = "first", .description = {}, .type = integerType(), .default_value = {}}}),
         std::make_unique<BusinessFailureAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
 
@@ -199,7 +199,7 @@ TEST(Dispatcher, ReportsFirstMissingRequiredArgumentInDescriptorOrder) {
     EXPECT_EQ(path.value(), "second");
 }
 
-TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
+TEST(ActionInvoker, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(registry.registerAction(
@@ -207,7 +207,7 @@ TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
                {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
                 {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
         std::make_unique<BusinessFailureAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(
         actionId("math.add"), {{"left", Value{1}}, {"right", Value{2}}, {"extra", Value{3}}}, {});
@@ -222,7 +222,7 @@ TEST(Dispatcher, RejectsUnknownArgumentAfterRequiredArgumentsArePresent) {
     EXPECT_EQ(path.value(), "extra");
 }
 
-TEST(Dispatcher, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
+TEST(ActionInvoker, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(registry.registerAction(
@@ -230,7 +230,7 @@ TEST(Dispatcher, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
                {{.name = "left", .description = {}, .type = integerType(), .default_value = {}},
                 {.name = "right", .description = {}, .type = integerType(), .default_value = {}}}),
         std::make_unique<BusinessFailureAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
     const Arguments base{{"left", Value{1}}, {"right", Value{2}}};
 
     auto dotted = base;
@@ -252,12 +252,12 @@ TEST(Dispatcher, EncodesSpecialUnknownArgumentKeysWithTheObjectPathGrammar) {
     expectEncodedArgumentPath(empty_result, "[\"\"]");
 }
 
-TEST(Dispatcher, PreservesBusinessErrorCodeAndPath) {
+TEST(ActionInvoker, PreservesBusinessErrorCodeAndPath) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(
         registry.registerAction(action("math.add"), std::make_unique<BusinessFailureAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
 
@@ -271,12 +271,12 @@ TEST(Dispatcher, PreservesBusinessErrorCodeAndPath) {
     EXPECT_EQ(path.value(), "shape.size");
 }
 
-TEST(Dispatcher, NormalizesStandardExceptionsAtTheInvocationBoundary) {
+TEST(ActionInvoker, NormalizesStandardExceptionsAtTheInvocationBoundary) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(
         registry.registerAction(action("math.add"), std::make_unique<StandardExceptionAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
 
@@ -284,12 +284,12 @@ TEST(Dispatcher, NormalizesStandardExceptionsAtTheInvocationBoundary) {
     EXPECT_EQ(result.error().code, ErrorCode::InvocationFailed);
 }
 
-TEST(Dispatcher, NormalizesValueAccessExceptionsAtTheInvocationBoundary) {
+TEST(ActionInvoker, NormalizesValueAccessExceptionsAtTheInvocationBoundary) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(registry.registerAction(action("math.add"),
                                         std::make_unique<ValueAccessExceptionAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
 
@@ -297,12 +297,12 @@ TEST(Dispatcher, NormalizesValueAccessExceptionsAtTheInvocationBoundary) {
     EXPECT_EQ(result.error().code, ErrorCode::InvocationFailed);
 }
 
-TEST(Dispatcher, NormalizesUnknownExceptionsAtTheInvocationBoundary) {
+TEST(ActionInvoker, NormalizesUnknownExceptionsAtTheInvocationBoundary) {
     Registry registry;
     registerMath(registry);
     ASSERT_TRUE(
         registry.registerAction(action("math.add"), std::make_unique<UnknownExceptionAction>()));
-    Dispatcher dispatcher{registry};
+    ActionInvoker dispatcher{registry};
 
     const auto result = dispatcher.invoke(actionId("math.add"), {}, {});
 

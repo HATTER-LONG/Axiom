@@ -1,4 +1,4 @@
-#include "detail/dispatcher.hpp"
+#include "detail/action_invoker.hpp"
 
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
@@ -71,9 +71,9 @@ namespace {
 
 } // namespace
 
-Result<Value> Dispatcher::invoke(const ActionId& id,
-                                 const Arguments& arguments,
-                                 const InvocationContext& context) const {
+Result<Value> ActionInvoker::invoke(const ActionId& id,
+                                    const Arguments& arguments,
+                                    const InvocationContext& context) const {
     try {
         const auto descriptor = registry_.findAction(id);
         if(!descriptor) {

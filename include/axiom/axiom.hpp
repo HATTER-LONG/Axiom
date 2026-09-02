@@ -17,6 +17,8 @@
 #include <axiom/action/runtime.hpp>
 #include <axiom/async/executor.hpp>
 #include <axiom/async/scheduler.hpp>
+#include <axiom/command/command_dispatcher.hpp>
+#include <axiom/command/command_methods.hpp>
 #include <axiom/events/signal.hpp>
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>

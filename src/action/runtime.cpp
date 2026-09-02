@@ -1,6 +1,6 @@
 #include <axiom/action/runtime.hpp>
 
-#include "detail/dispatcher.hpp"
+#include "detail/action_invoker.hpp"
 #include "detail/module_builder_state.hpp"
 #include "detail/registry.hpp"
 #include <axiom/action/action_id.hpp>
@@ -37,8 +37,8 @@ namespace {
     constexpr std::array names{"invalid_argument",   "missing_argument",  "unknown_argument",
                                "type_mismatch",      "not_found",         "already_exists",
                                "invalid_descriptor", "invocation_failed", "internal_error",
-                               "cancelled"};
-    static_assert(names.size() == static_cast<std::size_t>(ErrorCode::Cancelled) + 1);
+                               "cancelled",          "unknown_command"};
+    static_assert(names.size() == static_cast<std::size_t>(ErrorCode::UnknownCommand) + 1);
     const auto index = static_cast<std::size_t>(code);
     return index < names.size() ? names[index] : "internal_error";
 }
@@ -99,7 +99,7 @@ namespace {
 class RuntimeState {
 public:
     explicit RuntimeState(logging::Logger logger)
-        : dispatcher{registry}, root_logger{std::move(logger)},
+        : action_invoker{registry}, root_logger{std::move(logger)},
           module_logger{root_logger.child("module")}, action_logger{root_logger.child("action")} {}
 
     void logRegistration(const Result<void>& result, const std::string_view module) const noexcept {
@@ -159,7 +159,7 @@ private:
 
 public:
     Registry registry;
-    Dispatcher dispatcher{registry};
+    ActionInvoker action_invoker{registry};
     logging::Logger root_logger;
     logging::Logger module_logger;
     logging::Logger action_logger;
@@ -221,7 +221,7 @@ Result<Value> Runtime::invoke(const ActionId& id,
 
     detail::RuntimeState::logActionStart(invocation_logger);
     const auto started = std::chrono::steady_clock::now();
-    auto result = state_->dispatcher.invoke(id, arguments, context);
+    auto result = state_->action_invoker.invoke(id, arguments, context);
     const auto elapsed = std::chrono::steady_clock::now() - started;
     const auto duration_ms = std::max<std::int64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 0);

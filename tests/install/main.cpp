@@ -217,6 +217,26 @@ supportsInstalledIntrospectionQueries(const axiom::introspection::IntrospectionS
     }
     return supportsInstalledIntrospectionQueries(service, snapshot, resource.value().id());
 }
+
+[[nodiscard]] bool useInstalledCommandDispatcher() {
+    axiom::Runtime runtime;
+    axiom::ModuleBuilder builder{{.namespace_name = "command",
+                                  .description = {},
+                                  .version = {},
+                                  .tags = {},
+                                  .metadata = {}}};
+    if(!builder.add("ping", "Ping", [] { return 1; }) ||
+       !runtime.registerModule(std::move(builder))) {
+        return false;
+    }
+    axiom::resource::ResourceRegistry resources;
+    axiom::task::TaskRegistry tasks;
+    const axiom::command::CommandDispatcher dispatcher{runtime, resources, tasks};
+    const auto listed = dispatcher.dispatch(axiom::command::action_list, {}, {});
+    const auto snapshot = dispatcher.dispatch(axiom::command::system_snapshot, {}, {});
+    return listed && listed.value().isArray() && listed.value().asArray().size() == 1U &&
+           snapshot && snapshot.value().isObject() && snapshot.value().asObject().size() == 4U;
+}
 } // namespace
 
 int main() {
@@ -227,6 +247,7 @@ int main() {
                    checkInstalledContract(useInstalledVoidTask(), "void task notifications") &&
                    checkInstalledContract(useInstalledResourceTask(), "resource task lifetime") &&
                    checkInstalledContract(useInstalledIntrospection(), "introspection") &&
+                   checkInstalledContract(useInstalledCommandDispatcher(), "command") &&
                    checkInstalledContract(useInstalledPendingCancellation(), "pending cancellation")
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
