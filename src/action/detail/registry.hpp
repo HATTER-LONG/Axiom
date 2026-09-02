@@ -18,7 +18,7 @@
 
 namespace axiom::detail {
 
-class Dispatcher;
+class ActionInvoker;
 
 /** @brief Staged Action ownership used to preserve all-or-nothing Module registration. */
 struct PendingAction {
@@ -141,14 +141,14 @@ public:
     discoverActions() const;
 
 private:
-    friend class Dispatcher;
+    friend class ActionInvoker;
 
     /**
      * @brief Finds the internal implementation for an already parsed Action ID.
      *
      * @param id Parsed Action identifier to find.
      * @return The owned implementation, or NotFound when the Action is absent.
-     * @note This is reserved for Dispatcher so Registry never invokes Actions.
+     * @note This is reserved for ActionInvoker so Registry never invokes Actions.
      */
     [[nodiscard]] Result<std::reference_wrapper<IAction>> findImplementation(const ActionId& id);
 

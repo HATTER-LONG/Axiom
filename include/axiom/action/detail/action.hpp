@@ -30,7 +30,7 @@ public:
      * @param context Diagnostic context preserved without Axiom policy decisions.
      * @return A dynamic result or an expected business Error.
      * @throws std::exception Implementations may signal unexpected failures; the
-     *         Dispatcher converts them at the invocation boundary.
+     *         ActionInvoker converts them at the invocation boundary.
      */
     [[nodiscard]] virtual Result<Value> invoke(const Arguments& arguments,
                                                const InvocationContext& context) = 0;

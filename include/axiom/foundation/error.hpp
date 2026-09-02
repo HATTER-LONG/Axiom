@@ -27,6 +27,7 @@ enum class ErrorCode : std::uint8_t {
     InvocationFailed,  ///< The action ran but reported a typed failure (e.g. std::exception).
     InternalError,     ///< An unexpected or non-std throwable escaped the boundary.
     Cancelled,         ///< The requested operation was cooperatively cancelled.
+    UnknownCommand,    ///< The requested Command method is not part of the current contract.
 };
 
 /**

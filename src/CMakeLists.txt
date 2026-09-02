@@ -2,12 +2,15 @@ set(axiom_sources
     axiom.cpp
     foundation/type_descriptor.cpp
     action/descriptor.cpp
-    action/dispatcher.cpp
+    action/action_invoker.cpp
     action/module_builder.cpp
     action/registry.cpp
     action/runtime.cpp
     introspection/introspection_service.cpp
     introspection/detail/type_descriptor_copy.cpp
+    command/command_dispatcher.cpp
+    command/command_validation.cpp
+    command/descriptor_conversion.cpp
     logging/logging_service.cpp
     logging/console_sink.cpp
     logging/log_collector.cpp
