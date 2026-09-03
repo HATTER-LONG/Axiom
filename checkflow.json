@@ -72,6 +72,42 @@
           "preset": "quality-fast",
           "options": ["--target", "axiom_verify_coverage"]
         }
+      },
+      {
+        "id": "python_env",
+        "command": "uv sync --project python --python 3.12 --frozen",
+        "depends_on": ["coverage_integrity"],
+        "timeout": 300
+      },
+      {
+        "id": "python_configure",
+        "tool": "cmake",
+        "depends_on": ["python_env"],
+        "timeout": 300,
+        "args": {
+          "action": "configure",
+          "preset": "quality-python"
+        }
+      },
+      {
+        "id": "python_build",
+        "tool": "cmake",
+        "depends_on": ["python_configure"],
+        "timeout": 600,
+        "args": {
+          "action": "build",
+          "preset": "quality-python"
+        }
+      },
+      {
+        "id": "python_tests",
+        "tool": "ctest",
+        "depends_on": ["python_build"],
+        "timeout": 900,
+        "args": {
+          "preset": "quality-python",
+          "options": ["-R", "^axiom\\.python_"]
+        }
       }
     ],
     "full": [
@@ -122,7 +158,12 @@
         "args": {
           "compilation_database": "build-quality/full",
           "include": ["include/**", "src/**", "apps/**", "tests/**"],
-          "exclude": ["build/**"],
+          "exclude": [
+            "build/**",
+            "src/python/**",
+            "include/axiom/python/**",
+            "tests/python_embedding/**"
+          ],
           "options": [
             "--enable=warning,style,performance,portability",
             "--library=googletest"
@@ -137,6 +178,12 @@
         "args": {
           "compilation_database": "build-quality/full",
           "include": ["include/**", "src/**", "apps/**", "tests/**"],
+          "exclude": [
+            "build/**",
+            "src/python/**",
+            "include/axiom/python/**",
+            "tests/python_embedding/**"
+          ],
           "warnings_as_errors": "*",
           "headers": true
         }
@@ -247,6 +294,77 @@
         "timeout": 900,
         "args": {
           "preset": "quality-shared"
+        }
+      },
+      {
+        "id": "python_env",
+        "command": "uv sync --project python --python 3.12 --frozen",
+        "depends_on": ["shared_tests"],
+        "timeout": 300
+      },
+      {
+        "id": "python_wheel_configure",
+        "tool": "cmake",
+        "depends_on": ["python_env"],
+        "timeout": 300,
+        "args": {
+          "action": "configure",
+          "preset": "quality-wheel"
+        }
+      },
+      {
+        "id": "python_wheel_build",
+        "tool": "cmake",
+        "depends_on": ["python_wheel_configure"],
+        "timeout": 900,
+        "args": {
+          "action": "build",
+          "preset": "quality-wheel"
+        }
+      },
+      {
+        "id": "python_wheel_tests",
+        "tool": "ctest",
+        "depends_on": ["python_wheel_build"],
+        "timeout": 2400,
+        "args": {
+          "preset": "quality-wheel",
+          "options": ["-R", "^axiom\\.python_"]
+        }
+      },
+      {
+        "id": "python_cppcheck",
+        "tool": "cppcheck",
+        "depends_on": ["python_wheel_build"],
+        "timeout": 600,
+        "args": {
+          "compilation_database": "build-quality/wheel",
+          "include": [
+            "src/python/**",
+            "include/axiom/python/**",
+            "tests/python_embedding/**"
+          ],
+          "exclude": ["build/**"],
+          "options": [
+            "--enable=warning,style,performance,portability",
+            "--library=googletest"
+          ]
+        }
+      },
+      {
+        "id": "python_clang_tidy",
+        "tool": "clang_tidy",
+        "depends_on": ["python_wheel_build"],
+        "timeout": 900,
+        "args": {
+          "compilation_database": "build-quality/wheel",
+          "include": [
+            "src/python/**",
+            "include/axiom/python/**",
+            "tests/python_embedding/**"
+          ],
+          "warnings_as_errors": "*",
+          "headers": true
         }
       }
     ],

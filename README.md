@@ -79,9 +79,10 @@ callable and any mutable state it captures must provide their own synchronizatio
 Runtime destruction still requires caller synchronization with concurrent access.
 
 Axiom library provides a protocol-independent Command boundary through
-`command::CommandDispatcher`. JSON, Python, MCP, HTTP, and other protocol adapters are
-not provided yet. Independent `async::Executor` and `async::Scheduler` services
-provide asynchronous work; Action invocation itself remains synchronous.
+`command::CommandDispatcher`. A CPython adapter exposes the same nine methods;
+other protocol adapters (MCP, HTTP, and so on) are not provided yet. Independent
+`async::Executor` and `async::Scheduler` services provide asynchronous work;
+Action invocation itself remains synchronous.
 
 ## Runtime discovery and introspection
 
@@ -122,6 +123,28 @@ call. Unknown methods return `ErrorCode::UnknownCommand`. Successful `*.list` an
 `*.describe` results are owned Values; `action.invoke` returns the Runtime Value
 unchanged; `task.cancel` returns null. `system.snapshot` is still a sequential
 observation, not a globally atomic snapshot.
+
+## Python binding
+
+The `axiom` Python package exposes the same nine Command methods through a typed
+facade over the compiled `axiom._axiom` extension. Python never owns the Core:
+a C++ embedding application creates its `Runtime`, `ResourceRegistry` and
+`TaskRegistry`, wraps the combination in a revocable
+`axiom::python::HostBridge`, and attaches one `HostHandle`:
+
+```cpp
+axiom::python::HostBridge bridge{runtime, resources, tasks};
+// pass bridge.attach() to Python once; Host._attach(handle) wraps it
+```
+
+`Host.dispatch(method, params, context)` is the single stable entry; `Host.actions`,
+`Host.resources`, `Host.tasks` and `Host.snapshot()` merely assemble Commands.
+Host closed or expired sessions fail with `AxiomHostClosedError`; Core `Result`
+failures map to `AxiomError` with stable lowercase `code`, `message`, `path` and
+`details`; Python/Value conversion failures raise `AxiomConversionError(ValueError)`.
+Support matrix, host lifetime contract, build, wheel and relocation verification
+are documented in `docs/python-binding-usage.md` and
+`docs/python-binding-support-matrix.md`.
 
 ## Tracked asynchronous tasks
 
@@ -189,8 +212,10 @@ tasks by ID. It requires neither polling nor timing-dependent sleeps.
 | Path | Purpose |
 | ---- | ------- |
 | `include/axiom`, `src` | Public headers and implementations of `Axiom::Axiom`; events are header-only. |
+| `include/axiom/python`, `src/python` | CPython adapter contract (`HostBridge`), `_axiom` extension, conversion and error translation. |
+| `python` | Pure-Python facade package, typing information, wheel project and facade tests. |
 | `apps/demo` | Application consuming the same Axiom library target as other clients. |
-| `tests` | GoogleTest suites and installed-package consumer. |
+| `tests` | GoogleTest suites, installed-package consumer and embedded-interpreter suites. |
 | `docs/architecture` | Architecture, dependency and lifetime contracts. |
 | `cmake` | Target policy, runtime deployment and build verification. |
 | `checkflow.json` | Quality flow ordering and thresholds (the single policy source). |
@@ -211,9 +236,16 @@ checkflow full
 
 | Flow | Checks |
 | ---- | ------ |
-| `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity. |
-| `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, plus uninstrumented static/shared tests and installed consumers. |
-| `hardening` | Static ASan/UBSan tests, then a separate static Mull build and report-integrity check. |
+| `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity, then `uv sync` and the shared Python adapter build with embedding/pytest/mypy/ruff only. |
+| `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, uninstrumented static/shared tests and installed consumers, then the `quality-wheel` Python build (cppcheck/clang-tidy over the adapter, wheel build/install/relocation/import verification). |
+| `hardening` | Static ASan/UBSan tests (including HostBridge lifecycle and concurrency), then a separate static Mull build and report-integrity check. |
+
+The Python gates use the uv-managed interpreter at `python/.venv` (`uv sync
+--project python --python 3.12 --frozen`). It must provide `pytest`,
+`pytest-cov`, `ruff`, `mypy`, and `pybind11`; the wheel flow additionally uses
+`scikit-build-core`. `checkflow fast` runs only `axiom.python_*` after Core
+GoogleTest has already passed. Python facade coverage must reach **90%**
+statements and branches through `axiom.python_facade`.
 
 Coverage must reach **90% for each of lines, regions and branches**. The test executable
 links the entire static Axiom library archive so unreferenced translation units cannot disappear
