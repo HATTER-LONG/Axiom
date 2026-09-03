@@ -1,3 +1,11 @@
+# Python adapter builds validate embedding, facade lint, and wheel consumers.
+# Core GoogleTest already ran in quality-fast/full/hardening; do not rebuild it
+# here (or silently pick up a Store interpreter's embedding prefix).
+if (AXIOM_BUILD_PYTHON)
+    add_subdirectory(python_embedding)
+    return()
+endif ()
+
 set(axiom_gtest_options "INSTALL_GTEST OFF" "BUILD_GMOCK OFF" "BUILD_SHARED_LIBS OFF")
 if (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     list(APPEND axiom_gtest_options "gtest_force_shared_crt ON")
@@ -13,7 +21,7 @@ endif ()
 add_executable(axiom_test core_test.cpp descriptor_test.cpp action_invoker_test.cpp events_test.cpp
                async_test.cpp logging_test.cpp registry_test.cpp resource_test.cpp runtime_test.cpp
                value_converter_test.cpp task_test.cpp task_concurrency_test.cpp introspection_test.cpp
-               command_dispatcher_test.cpp)
+               command_dispatcher_test.cpp command_schema_contract_test.cpp host_bridge_test.cpp)
 # Internal unit tests compile their private implementation locally. Public Runtime
 # and installed-consumer tests still exercise the shared library boundary.
 if (BUILD_SHARED_LIBS)
@@ -25,11 +33,15 @@ endif ()
 axiom_configure_target(axiom_test)
 target_include_directories(axiom_test PRIVATE "${PROJECT_SOURCE_DIR}/src"
                                            "${PROJECT_SOURCE_DIR}/src/action")
+if (AXIOM_ENABLE_TEST_SEAMS)
+    target_compile_definitions(axiom_test PRIVATE AXIOM_ENABLE_TEST_SEAMS)
+endif ()
 if (AXIOM_COVERAGE OR AXIOM_MUTATION_TESTING)
     target_link_libraries(axiom_test PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,Axiom::Axiom>")
 else ()
     target_link_libraries(axiom_test PRIVATE Axiom::Axiom)
 endif ()
+target_link_libraries(axiom_test PRIVATE Axiom::PythonHost)
 target_link_libraries(axiom_test PRIVATE GTest::gtest_main)
 axiom_deploy_runtime(axiom_test)
 include(GoogleTest)
@@ -66,11 +78,22 @@ endif ()
 if (AXIOM_COVERAGE)
     find_program(AXIOM_LLVM_COV NAMES llvm-cov REQUIRED)
     mark_as_advanced(AXIOM_LLVM_COV)
+    # pybind11-bound adapter sources only compile in AXIOM_BUILD_PYTHON builds;
+    # static coverage builds compile every other source and must not silently
+    # hide genuine gaps.
+    set(axiom_coverage_excluded)
+    if (NOT AXIOM_BUILD_PYTHON)
+        foreach (axiom_python_source IN ITEMS module value_conversion error_translation)
+            list(APPEND axiom_coverage_excluded
+                 "${PROJECT_SOURCE_DIR}/src/python/${axiom_python_source}.cpp")
+        endforeach ()
+    endif ()
     add_custom_target(axiom_verify_coverage
         COMMAND "${CMAKE_COMMAND}" "-DAXIOM_LLVM_COV=${AXIOM_LLVM_COV}"
                 "-DAXIOM_TEST_BINARY=$<TARGET_FILE:axiom_test>"
                 "-DAXIOM_PROFILE=${PROJECT_BINARY_DIR}/coverage.profdata"
-                "-DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "-DAXIOM_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DAXIOM_COVERAGE_EXCLUDED_SOURCES=${axiom_coverage_excluded}" -P
                 "${PROJECT_SOURCE_DIR}/cmake/verify_coverage.cmake"
         DEPENDS axiom_test VERBATIM)
 endif ()

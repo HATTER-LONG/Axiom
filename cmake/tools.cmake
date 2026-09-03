@@ -82,7 +82,9 @@ function (axiom_configure_target target_name)
                                   CXX_EXTENSIONS OFF)
     if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL
                                                  "MSVC")
-        target_compile_options(${target_name} PRIVATE /W4 /permissive-)
+        # /utf-8 keeps source and execution code pages consistent; C4275 is the
+        # accepted pattern for a DLL-exported exception type deriving std::logic_error.
+        target_compile_options(${target_name} PRIVATE /W4 /permissive- /utf-8 /wd4275)
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -pedantic-errors)
     endif ()
