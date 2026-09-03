@@ -154,6 +154,7 @@ struct Probe {
 #ifdef _MSC_VER
     char* buffer = nullptr;
     std::size_t size = 0;
+    // NOLINTNEXTLINE(misc-include-cleaner): CRT _dupenv_s is provided by the MSVC stdlib.
     if(_dupenv_s(&buffer, &size, "AXIOM_PY_COVERAGE") != 0 || buffer == nullptr) {
         return false;
     }
@@ -224,6 +225,7 @@ struct EmbeddingPaths {
 // embedding does not treat the host directory as PYTHONHOME when python3XX.dll
 // is resolved from PATH. Venv site-packages are added via PYTHONPATH.
 void configureInterpreterHome(PyConfig& config) {
+    // NOLINTBEGIN(readability-use-concise-preprocessor-directives)
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -233,6 +235,7 @@ void configureInterpreterHome(PyConfig& config) {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+    // NOLINTEND(readability-use-concise-preprocessor-directives)
     if(python_executable == nullptr || python_executable[0] == '\0') {
         return;
     }

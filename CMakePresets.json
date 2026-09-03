@@ -42,6 +42,18 @@
       }
     },
     {
+      "name": "dev-py",
+      "displayName": "Developer build with Python bindings",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-py",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_SHARED_LIBS": "ON",
+        "AXIOM_BUILD_PYTHON": "ON",
+        "AXIOM_ENABLE_TEST_SEAMS": "OFF"
+      }
+    },
+    {
       "name": "debug",
       "displayName": "Debug build",
       "inherits": "base",
@@ -144,6 +156,10 @@
       "configurePreset": "dev"
     },
     {
+      "name": "dev-py",
+      "configurePreset": "dev-py"
+    },
+    {
       "name": "debug",
       "configurePreset": "debug"
     },
@@ -185,6 +201,16 @@
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "dev-py",
+      "configurePreset": "dev-py",
       "output": {
         "outputOnFailure": true
       },
@@ -310,6 +336,20 @@
         {
           "type": "build",
           "name": "debug"
+        }
+      ]
+    },
+    {
+      "name": "dev-py",
+      "displayName": "Configure and build developer configuration with Python bindings",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-py"
+        },
+        {
+          "type": "build",
+          "name": "dev-py"
         }
       ]
     }

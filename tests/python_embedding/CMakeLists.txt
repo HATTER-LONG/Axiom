@@ -74,18 +74,31 @@ unset(_axiom_python_env)
 unset(_axiom_python_env_mod)
 
 if (AXIOM_BUILD_WHEEL_VERIFY)
-    add_test(
-        NAME axiom.python_wheel
-        COMMAND "${Python_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/verify_python_wheel.py"
-                --consumer "${CMAKE_CURRENT_SOURCE_DIR}/wheel_consumer"
-                --source "${PROJECT_SOURCE_DIR}"
-                --build-tree "${PROJECT_BINARY_DIR}"
-                --compiler "${CMAKE_CXX_COMPILER}"
-                --dispatch "${CMAKE_CURRENT_SOURCE_DIR}/test_command_dispatch.py"
-                --closed "${CMAKE_CURRENT_SOURCE_DIR}/test_host_closed.py"
-                --facade "${PROJECT_SOURCE_DIR}/python/tests/test_facade.py"
-                --package "${PROJECT_SOURCE_DIR}/python")
-    set_tests_properties(axiom.python_wheel PROPERTIES TIMEOUT 2400 LABELS python
-                                                ENVIRONMENT
-                                                "AXIOM_PYTHON_EXECUTABLE=${Python_EXECUTABLE}")
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c "import pip"
+        RESULT_VARIABLE _axiom_pip_result
+        OUTPUT_QUIET
+        ERROR_QUIET)
+    if (_axiom_pip_result EQUAL 0)
+        add_test(
+            NAME axiom.python_wheel
+            COMMAND "${Python_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/verify_python_wheel.py"
+                    --consumer "${CMAKE_CURRENT_SOURCE_DIR}/wheel_consumer"
+                    --source "${PROJECT_SOURCE_DIR}"
+                    --build-tree "${PROJECT_BINARY_DIR}"
+                    --compiler "${CMAKE_CXX_COMPILER}"
+                    --dispatch "${CMAKE_CURRENT_SOURCE_DIR}/test_command_dispatch.py"
+                    --closed "${CMAKE_CURRENT_SOURCE_DIR}/test_host_closed.py"
+                    --facade "${PROJECT_SOURCE_DIR}/python/tests/test_facade.py"
+                    --package "${PROJECT_SOURCE_DIR}/python")
+        set_tests_properties(axiom.python_wheel PROPERTIES TIMEOUT 2400 LABELS python
+                                                    ENVIRONMENT
+                                                    "AXIOM_PYTHON_EXECUTABLE=${Python_EXECUTABLE}")
+    else ()
+        message(
+            STATUS
+                "Skipping axiom.python_wheel: ${Python_EXECUTABLE} has no pip "
+                "(uv virtual environments omit pip unless seeded)")
+    endif ()
+    unset(_axiom_pip_result)
 endif ()

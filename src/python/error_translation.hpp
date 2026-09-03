@@ -10,6 +10,7 @@
 #include "value_conversion.hpp"
 
 #include <pybind11/pybind11.h> // IWYU pragma: keep
+#include <pybind11/pytypes.h>
 
 #include <string_view>
 

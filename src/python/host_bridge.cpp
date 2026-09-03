@@ -46,7 +46,7 @@ namespace {
 
 using axiom::command::CommandDispatcher;
 
-thread_local const HostState* activeDispatchState = nullptr;
+thread_local const HostState* active_dispatch_state = nullptr;
 
 #ifdef AXIOM_ENABLE_TEST_SEAMS
 std::atomic<int>& dispatchFaultDepth() noexcept {
@@ -98,7 +98,7 @@ public:
     }
 
     bool close() noexcept {
-        if(activeDispatchState == this) {
+        if(active_dispatch_state == this) {
             return false;
         }
         try {
@@ -121,8 +121,8 @@ private:
     class DispatchLease final {
     public:
         DispatchLease(HostState& state, CommandDispatcher& dispatcher) noexcept
-            : state_(&state), dispatcher_(&dispatcher), previous_(activeDispatchState) {
-            activeDispatchState = &state;
+            : state_(&state), dispatcher_(&dispatcher), previous_(active_dispatch_state) {
+            active_dispatch_state = &state;
         }
 
         DispatchLease(DispatchLease&& other) noexcept
@@ -142,7 +142,7 @@ private:
             if(state_->active_ == 0U) {
                 state_->drained_.notify_all();
             }
-            activeDispatchState = previous_;
+            active_dispatch_state = previous_;
         }
 
         [[nodiscard]] CommandDispatcher& dispatcher() const noexcept { return *dispatcher_; }

@@ -16,6 +16,12 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
+Python bindings use a separate shared-library tree:
+
+```sh
+cmake --workflow dev-py
+```
+
 The demo prints the framework name, completes an answer task and cancels a
 long operation at a deterministic batch boundary. `debug` uses an unoptimized build. Both
 presets build tests; run them with `ctest --preset dev` or `ctest --preset debug`.
@@ -237,7 +243,7 @@ checkflow full
 | Flow | Checks |
 | ---- | ------ |
 | `fast` | Architecture, incremental static build, GoogleTest, LLVM coverage and mapping integrity, then `uv sync` and the shared Python adapter build with embedding/pytest/mypy/ruff only. |
-| `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, uninstrumented static/shared tests and installed consumers, then the `quality-wheel` Python build (cppcheck/clang-tidy over the adapter, wheel build/install/relocation/import verification). |
+| `full` | Clean static coverage build, architecture, formatting, complexity, cppcheck, clang-tidy, uninstrumented static/shared tests and installed consumers, then the `quality-wheel` Python build (cppcheck/clang-tidy over the adapter, embedding/ruff/mypy tests, and wheel verification when the interpreter provides `pip`). |
 | `hardening` | Static ASan/UBSan tests (including HostBridge lifecycle and concurrency), then a separate static Mull build and report-integrity check. |
 
 The Python gates use the uv-managed interpreter at `python/.venv` (`uv sync

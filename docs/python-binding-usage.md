@@ -113,6 +113,9 @@ cmake --build --preset quality-python
 ctest --preset quality-python --output-on-failure
 ```
 
+本地开发可使用 `cmake --workflow dev-py`（`build-py/`，共享库 + Python
+adapter，不编译 test seams）。
+
 - preset 不硬编码编译器：**Linux** 使用默认 CMake 编译器（GNU driver 的
   Clang 或 GCC）；**Windows** 在 MSVC Developer Prompt 或 clang-cl 环境中
   配置（必要时显式 `-DCMAKE_CXX_COMPILER=clang-cl`），保证 MSVC ABI 与
@@ -148,6 +151,8 @@ python -m pip install <wheelhouse>/axiom-*.whl
   Windows 下 CPython 3.8+ 的模块导入 DLL 搜索保证不会加载系统中另一版本
   Core。
 - `quality-wheel` 的 `axiom.python_wheel` 测试（`tools/verify_python_wheel.py`）
+  需要所选解释器能 `import pip`。uv 创建的 `python/.venv` 默认不带 pip，
+  此时 CMake 会跳过该测试，其余 `axiom.python_*` 仍会运行。有 pip 时
   执行隔离式验证，全部写入随测试销毁的临时目录：
   - 在临时 wheelhouse 构建 wheel（临时 scikit-build 目录，不写
     `python/dist-wheel`），并检查制品：扩展、带 SOVERSION 的共享
