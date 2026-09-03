@@ -141,8 +141,8 @@ TEST(HostBridge, CloseIsIdempotentAndRejectsNewDispatch) {
     BridgeFixture fixture;
     HostBridge bridge{fixture.runtime, fixture.resources, fixture.tasks};
     const HostHandle handle = bridge.attach();
-    bridge.close();
-    bridge.close();
+    EXPECT_TRUE(bridge.close());
+    EXPECT_TRUE(bridge.close());
     EXPECT_TRUE(bridge.closed());
     EXPECT_TRUE(handle.closed());
     expectHostClosed(bridge.dispatch(action_list, {}, {}), "Host session is closed");
@@ -187,6 +187,29 @@ TEST(HostBridge, CloseWaitsForInFlightDispatchWithoutTouchingSources) {
         expectHostClosed(handle.dispatch(action_list, {}, {}), "Host session is closed");
     }
     EXPECT_TRUE(fixture.runtime.invoke(axiom::ActionId::parse("math.ping").value(), {}, {}));
+}
+
+TEST(HostBridge, ReentrantCloseIsRejectedInsteadOfDeadlocking) {
+    BridgeFixture fixture;
+    HostBridge* current_bridge = nullptr;
+    ModuleBuilder reentrant{{.namespace_name = "reentrant",
+                             .description = "Reentrant",
+                             .version = {},
+                             .tags = {},
+                             .metadata = {}}};
+    ASSERT_TRUE(reentrant.add("close", "Attempts to close its active bridge",
+                              [&current_bridge] { return current_bridge->close(); }));
+    ASSERT_TRUE(fixture.runtime.registerModule(std::move(reentrant)));
+    HostBridge bridge{fixture.runtime, fixture.resources, fixture.tasks};
+    current_bridge = &bridge;
+
+    const auto result = bridge.dispatch(
+        axiom::command::action_invoke,
+        object({{"action", Value{"reentrant.close"}}, {"arguments", Value{object({})}}}), {});
+    ASSERT_TRUE(result);
+    EXPECT_FALSE(result.value().asBoolean());
+    EXPECT_FALSE(bridge.closed());
+    EXPECT_TRUE(bridge.close());
 }
 
 TEST(HostBridge, CoreNormalizedActionFailureStillAllowsClose) {

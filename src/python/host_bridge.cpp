@@ -46,6 +46,8 @@ namespace {
 
 using axiom::command::CommandDispatcher;
 
+thread_local const HostState* activeDispatchState = nullptr;
+
 #ifdef AXIOM_ENABLE_TEST_SEAMS
 std::atomic<int>& dispatchFaultDepth() noexcept {
     static std::atomic<int> depth{0};
@@ -68,7 +70,7 @@ public:
               task::TaskRegistry& tasks)
         : dispatcher_(std::make_unique<CommandDispatcher>(runtime, resources, tasks)) {}
 
-    ~HostState() noexcept { close(); }
+    ~HostState() noexcept { static_cast<void>(close()); }
 
     HostState(const HostState&) = delete;
     HostState& operator=(const HostState&) = delete;
@@ -95,15 +97,20 @@ public:
         return closed_ || !dispatcher_;
     }
 
-    void close() noexcept {
+    bool close() noexcept {
+        if(activeDispatchState == this) {
+            return false;
+        }
         try {
             std::unique_lock lock(mutex_);
             closed_ = true;
             drained_.wait(lock, [this] { return active_ == 0U; });
             dispatcher_.reset();
+            return true;
         }
         // NOLINTNEXTLINE(bugprone-empty-catch): teardown must never propagate.
         catch(...) {
+            return false;
         }
     }
 
@@ -114,10 +121,13 @@ private:
     class DispatchLease final {
     public:
         DispatchLease(HostState& state, CommandDispatcher& dispatcher) noexcept
-            : state_(&state), dispatcher_(&dispatcher) {}
+            : state_(&state), dispatcher_(&dispatcher), previous_(activeDispatchState) {
+            activeDispatchState = &state;
+        }
 
         DispatchLease(DispatchLease&& other) noexcept
-            : state_(std::exchange(other.state_, nullptr)), dispatcher_(other.dispatcher_) {}
+            : state_(std::exchange(other.state_, nullptr)), dispatcher_(other.dispatcher_),
+              previous_(other.previous_) {}
 
         DispatchLease(const DispatchLease&) = delete;
         DispatchLease& operator=(const DispatchLease&) = delete;
@@ -132,6 +142,7 @@ private:
             if(state_->active_ == 0U) {
                 state_->drained_.notify_all();
             }
+            activeDispatchState = previous_;
         }
 
         [[nodiscard]] CommandDispatcher& dispatcher() const noexcept { return *dispatcher_; }
@@ -139,6 +150,7 @@ private:
     private:
         HostState* state_;
         CommandDispatcher* dispatcher_;
+        const HostState* previous_;
     };
 
     // Grants a lease unless the session is closed or already torn down. The
@@ -167,7 +179,7 @@ HostBridge::HostBridge(const Runtime& runtime,
 
 HostBridge::~HostBridge() noexcept {
     if(state_) {
-        state_->close();
+        static_cast<void>(state_->close());
     }
 }
 
@@ -176,17 +188,18 @@ HostBridge::HostBridge(HostBridge&&) noexcept = default;
 HostBridge& HostBridge::operator=(HostBridge&& other) noexcept {
     if(this != &other) {
         if(state_) {
-            state_->close();
+            static_cast<void>(state_->close());
         }
         state_ = std::move(other.state_);
     }
     return *this;
 }
 
-void HostBridge::close() noexcept {
+bool HostBridge::close() noexcept {
     if(state_) {
-        state_->close();
+        return state_->close();
     }
+    return true;
 }
 
 bool HostBridge::closed() const noexcept { return !state_ || state_->closed(); }

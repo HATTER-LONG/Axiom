@@ -194,5 +194,25 @@ def test_params_and_context_shapes_are_enforced():
     with pytest.raises(TypeError):
         host.dispatch("system.snapshot", [])
     with pytest.raises(TypeError):
+        host.dispatch(b"system.snapshot", {})
+    with pytest.raises(TypeError):
         dispatch("system.snapshot", {}, context=[("request_id", "x")])
     assert dispatch("system.snapshot", {}, context=None).keys() >= {"actions", "modules"}
+
+
+def test_container_and_string_subclasses_are_rejected():
+    class StringSubclass(str):
+        pass
+
+    class DictSubclass(dict):
+        pass
+
+    class ListSubclass(list):
+        pass
+
+    with pytest.raises(AxiomConversionError):
+        invoke("embed.label", {"text": StringSubclass("value")})
+    with pytest.raises(AxiomConversionError):
+        invoke("embed.echonested", {"values": ListSubclass([[1]])})
+    with pytest.raises(TypeError):
+        host.dispatch("system.snapshot", DictSubclass())

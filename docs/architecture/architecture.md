@@ -156,7 +156,8 @@ combination, owns a revocable control block with a lease counter, and exposes
 only its own `HostHandle` type; the public header contains no CPython or
 pybind11 types. Dispatch acquires a short lease; `close()` is idempotent,
 blocks new leases, joins in-flight dispatches, and then destroys the internal
-`CommandDispatcher`. Handles share the control block without owning sources, so
+`CommandDispatcher`. A same-dispatch Action receives `false` from `close()`
+instead of waiting for its own lease. Handles share the control block without owning sources, so
 Python objects can outlive the bridge and fail deterministically with
 `ErrorCode::HostClosed`. The application must still guarantee bridge/`handle`
 teardown before source destruction; this non-owning order obligation is not
@@ -166,9 +167,10 @@ detectable inside the bridge.
 conversion (no implicit `__int__`/`__float__`/`str(key)`), four-field
 `AxiomError` mapping with `axiom::command::errorCodeName()` as the sole
 lowercase-code authority, `AxiomHostClosedError` and `AxiomConversionError`
-subclasses, and the GIL contract: conversion and exception creation hold the
-GIL; only the Core dispatch runs with it released, after all Python data has
-been converted to owned C++ values. The pure-Python `axiom` facade only
+subclasses, and the GIL contract: conversion, Host state coordination,
+dispatch, and exception creation hold the GIL. The adapter does not currently
+release the GIL because CommandDispatcher has no Action-only execution
+boundary. The pure-Python `axiom` facade only
 assembles method/params/context; it never duplicates validation, descriptor,
 or Error semantics. Architecture policy forbids Core from including
 `axiom/python/` and forbids the adapter from including module detail headers.

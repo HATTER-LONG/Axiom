@@ -30,10 +30,12 @@ task::TaskRegistry tasks;
 - **Python 只拿到私有 `_HostHandle`**：它共享 bridge 的 control block，但不
   拥有 Core 来源，也访问不到 Runtime、Registry、IntrospectionService 或
   Dispatcher 地址。
-- **close 幂等**：关闭后新 dispatch 稳定抛 `AxiomHostClosedError`；
-  已在进行的 dispatch 先执行完，随后内部 CommandDispatcher 销毁，之后
-  不再接触来源。每次 dispatch 持有内部 RAII lease：无论正常返回还是异常
-  退出，lease 都归还活动计数，因此 close 永远不会因异常路径卡死。
+- **close 幂等**：正常调用返回 `true`，关闭后新 dispatch 稳定抛
+  `AxiomHostClosedError`；已在进行的 dispatch 先执行完，随后内部
+  CommandDispatcher 销毁，之后不再接触来源。如果 Action 在同一 bridge 的
+  dispatch 内调用 `close()`，它返回 `false` 而不等待自身 lease；调用方必须在
+  dispatch 返回后再关闭。每次 dispatch 持有内部 RAII lease：无论正常返回还是
+  异常退出，lease 都归还活动计数。
 - **生命周期义务**：来源必须活到 `close()`（或 bridge 析构）完成，且来源
   析构不与任何 dispatch 并发。handle 可以在 bridge 关闭后继续存在，但只能
   稳定返回 `AxiomHostClosedError`，不再接触来源；这是非拥有式 Core API 的
@@ -62,12 +64,12 @@ host.snapshot()
 
 约束：
 
-- `method` 必须是 `str`，`params` 必须是贴切 `dict`；缺省不提供 params 的
+- `method` 必须是实际 `str`，`params` 必须是实际 `dict`；缺省不提供 params 的
   隐式构造。
 - `context` 只接受 `request_id`、`trace_id`、`caller`、`metadata`
   （`dict[str, str]`）；未知字段、错误类型、非字符串 metadata 键值在进入
   Core 之前以 `AxiomConversionError` 拒绝并给出 `context.*` path。
-- Python `None/bool/int/float/str/list/dict[str, ...]` 一一映射七种 `Value`；
+- Python 精确的 `None/bool/int/float/str/list/dict[str, ...]` 一一映射七种 `Value`；
   `bool` 先于 `int` 判断；`int` 必须落入 `int64_t`；dict key 必须是真实
   `str`；不接受 tuple/set/bytes/Decimal/path-like/自定义 mapping 与隐式
   `__int__`/`__float__`；嵌套失败携带 Core 一致的 path 语法；自引用容器由
@@ -165,9 +167,9 @@ python -m pip install <wheelhouse>/axiom-*.whl
 
 ## 5. 异常与 GIL
 
-- 转换、异常创建与 Host state 操作持有 GIL；只有 Core Action 执行阶段在
-  HostBridge 契约允许时释放 GIL。释放前全部 Python 数据已转换为拥有型
-  C++ 值，重获 GIL 后才构造 Python 结果。
+- 转换、异常创建、Host state 操作与当前的 Command dispatch 均持有 GIL。
+  `CommandDispatcher` 尚未公开只执行 Action 的边界，因此 adapter 不会在
+  schema 校验或 Host lease 期间释放 GIL。
 - `std::bad_alloc` 映射 `MemoryError`；绑定参数错误映射 TypeError/ValueError
   （`AxiomConversionError` 是 `ValueError` 子类）；其他标准或未知 C++ 异常在
   模块顶层截获为不泄露实现细节的 `RuntimeError`。

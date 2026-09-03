@@ -17,10 +17,6 @@
 namespace axiom::python {
 namespace {
 
-pybind11::object axiom_error_type;
-pybind11::object host_closed_error_type;
-pybind11::object conversion_error_type;
-
 void applyErrorAttributes(const pybind11::object& instance, const Error& error) {
     instance.attr("code") = pybind11::str(std::string{command::errorCodeName(error.code)});
     instance.attr("message") = pybind11::str(error.message);
@@ -48,40 +44,42 @@ void applyErrorAttributes(const pybind11::object& instance, const Error& error) 
 
 // NOLINTBEGIN(misc-include-cleaner): pybind11 and CPython headers are SYSTEM
 // includes, so include-cleaner cannot map their symbol providers.
-void initializeErrors(pybind11::module_& module) {
-    axiom_error_type = pybind11::reinterpret_steal<pybind11::object>(
+ErrorTypes initializeErrors(pybind11::module_& module) {
+    auto axiom_error_type = pybind11::reinterpret_steal<pybind11::object>(
         PyErr_NewException("_axiom.AxiomError", PyExc_Exception, nullptr));
-    host_closed_error_type = pybind11::reinterpret_steal<pybind11::object>(
+    auto host_closed_error_type = pybind11::reinterpret_steal<pybind11::object>(
         PyErr_NewException("_axiom.AxiomHostClosedError", axiom_error_type.ptr(), nullptr));
-    conversion_error_type = pybind11::reinterpret_steal<pybind11::object>(
+    auto conversion_error_type = pybind11::reinterpret_steal<pybind11::object>(
         PyErr_NewException("_axiom.AxiomConversionError", PyExc_ValueError, nullptr));
-    module.add_object("AxiomError", axiom_error_type);
-    module.add_object("AxiomHostClosedError", host_closed_error_type);
-    module.add_object("AxiomConversionError", conversion_error_type);
+    module.add_object("AxiomError", axiom_error_type.release());
+    module.add_object("AxiomHostClosedError", host_closed_error_type.release());
+    module.add_object("AxiomConversionError", conversion_error_type.release());
+    return {.axiom = module.attr("AxiomError"),
+            .host_closed = module.attr("AxiomHostClosedError"),
+            .conversion = module.attr("AxiomConversionError")};
 }
 // NOLINTEND(misc-include-cleaner)
 
-void raiseAxiomError(const Error& error) {
-    const pybind11::object instance = axiom_error_type(pybind11::str(error.message));
+void raiseAxiomError(const ErrorTypes& types, const Error& error) {
+    const pybind11::object instance = types.axiom(pybind11::str(error.message));
     applyErrorAttributes(instance, error);
-    setAndRaise(axiom_error_type, instance);
+    setAndRaise(types.axiom, instance);
 }
 
-void raiseHostClosed(const std::string_view message) {
+void raiseHostClosed(const ErrorTypes& types, const std::string_view message) {
     const Error closed{.code = ErrorCode::HostClosed,
                        .message = std::string{message},
                        .path = std::nullopt,
                        .details = std::nullopt};
-    const pybind11::object instance = host_closed_error_type(pybind11::str(closed.message));
+    const pybind11::object instance = types.host_closed(pybind11::str(closed.message));
     applyErrorAttributes(instance, closed);
-    setAndRaise(host_closed_error_type, instance);
+    setAndRaise(types.host_closed, instance);
 }
 
-void raiseConversionError(const ConversionError& error) {
-    const pybind11::object instance =
-        conversion_error_type(pybind11::str(std::string{error.what()}));
+void raiseConversionError(const ErrorTypes& types, const ConversionError& error) {
+    const pybind11::object instance = types.conversion(pybind11::str(std::string{error.what()}));
     instance.attr("path") = pybind11::str(error.path());
-    setAndRaise(conversion_error_type, instance);
+    setAndRaise(types.conversion, instance);
 }
 
 // NOLINTBEGIN(misc-include-cleaner): pybind11 and CPython headers are SYSTEM

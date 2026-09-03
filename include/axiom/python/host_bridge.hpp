@@ -82,9 +82,22 @@ public:
     /**
      * @brief Revokes the session and blocks until in-flight dispatches finish.
      *
-     * Idempotent; never throws; the sources are not accessed after returning.
+     *
+     * Idempotent and never throws. Returns `false` when called by an Action
+     * currently
+     * dispatched through this same bridge: waiting for that Action's
+     * own lease would
+     * deadlock, so the bridge remains open and the caller must
+     * close it after dispatch
+     * returns. A `true` result guarantees the sources
+     * are not accessed after returning.
+ *
+
+     * * @return `true` if the session is closed or was already closed; `false`
+     *         for a
+     * same-dispatch reentrant close request.
      */
-    void close() noexcept;
+    bool close() noexcept;
 
     /**
      * @brief Reports whether the session is closed or was never attached.

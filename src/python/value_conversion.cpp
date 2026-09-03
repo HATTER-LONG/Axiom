@@ -74,7 +74,7 @@ convertList(const pybind11::handle& object, const std::string_view path, const s
     const auto dictionary = pybind11::reinterpret_borrow<pybind11::dict>(object);
     Value::Object values;
     for(const auto [key, member] : dictionary) {
-        if(!pybind11::isinstance<pybind11::str>(key)) {
+        if(!PyUnicode_CheckExact(key.ptr())) {
             fail("Object keys must be real strings", path);
         }
         const auto name = pybind11::cast<std::string>(key);
@@ -89,22 +89,22 @@ convert(const pybind11::handle& object, const std::string_view path, const std::
     if(object.is_none()) {
         return Value{nullptr};
     }
-    if(pybind11::isinstance<pybind11::bool_>(object)) {
+    if(PyBool_Check(object.ptr())) {
         return Value{pybind11::cast<bool>(object)};
     }
-    if(pybind11::isinstance<pybind11::int_>(object)) {
+    if(PyLong_CheckExact(object.ptr())) {
         return convertInteger(object, path);
     }
-    if(pybind11::isinstance<pybind11::float_>(object)) {
+    if(PyFloat_CheckExact(object.ptr())) {
         return Value{pybind11::cast<double>(object)};
     }
-    if(pybind11::isinstance<pybind11::str>(object)) {
+    if(PyUnicode_CheckExact(object.ptr())) {
         return Value{pybind11::cast<std::string>(object)};
     }
-    if(pybind11::isinstance<pybind11::list>(object)) {
+    if(PyList_CheckExact(object.ptr())) {
         return convertList(object, path, depth);
     }
-    if(pybind11::isinstance<pybind11::dict>(object)) {
+    if(PyDict_CheckExact(object.ptr())) {
         return convertDictionary(object, path, depth);
     }
     fail("Unsupported Python type: " +
