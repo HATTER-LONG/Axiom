@@ -1,7 +1,8 @@
 include_guard(GLOBAL)
 
 # Runtime deployment is private to executables. The generated script handles an empty DLL list and
-# avoids copy -t, which is unavailable in CMake 3.25.
+# avoids copy -t, which is unavailable in CMake 3.25. python3XX.dll is left on PATH: copying it
+# next to a host exe makes CPython treat that directory as prefix and miss the real stdlib.
 function (axiom_deploy_runtime target_name)
     if (NOT WIN32)
         return()
@@ -37,11 +38,22 @@ function (axiom_deploy_runtime target_name)
         GENERATE
         OUTPUT "${script}"
         CONTENT
-            "set(runtime_files \"${runtime_files}\")\nlist(REMOVE_ITEM runtime_files \"\")\nforeach(runtime IN LISTS runtime_files)\n  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_if_different \"\${runtime}\" \"$<TARGET_FILE_DIR:${target_name}>\" COMMAND_ERROR_IS_FATAL ANY)\nendforeach()\n"
+            "set(runtime_files \"${runtime_files}\")\nlist(REMOVE_ITEM runtime_files \"\")\nlist(FILTER runtime_files EXCLUDE REGEX \"[Pp]ython[0-9]*\\\\.dll$\")\nforeach(runtime IN LISTS runtime_files)\n  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_if_different \"\${runtime}\" \"$<TARGET_FILE_DIR:${target_name}>\" COMMAND_ERROR_IS_FATAL ANY)\nendforeach()\n"
     )
     add_custom_command(
         TARGET ${target_name}
         POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -P "${script}"
+        VERBATIM)
+    set(remove_python_dlls "${CMAKE_CURRENT_BINARY_DIR}/${target_name}-remove-python-dlls-$<CONFIG>.cmake")
+    file(
+        GENERATE
+        OUTPUT "${remove_python_dlls}"
+        CONTENT
+            "file(GLOB _stale \"$<TARGET_FILE_DIR:${target_name}>/python*.dll\")\nif (_stale)\n  file(REMOVE \${_stale})\nendif ()\n")
+    add_custom_command(
+        TARGET ${target_name}
+        POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -P "${remove_python_dlls}"
         VERBATIM)
 endfunction ()

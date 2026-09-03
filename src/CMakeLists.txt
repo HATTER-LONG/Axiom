@@ -11,6 +11,7 @@ set(axiom_sources
     command/command_dispatcher.cpp
     command/command_validation.cpp
     command/descriptor_conversion.cpp
+    command/error_code_name.cpp
     logging/logging_service.cpp
     logging/console_sink.cpp
     logging/log_collector.cpp
@@ -53,3 +54,5 @@ set_target_properties(
 if (BUILD_SHARED_LIBS)
     target_compile_definitions(axiom PRIVATE AXIOM_BUILD_SHARED INTERFACE AXIOM_USE_SHARED)
 endif ()
+
+add_subdirectory(python)

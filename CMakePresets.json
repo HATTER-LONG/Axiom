@@ -27,6 +27,7 @@
         "AXIOM_BUILD_INSTALL_TEST": "OFF",
         "AXIOM_COVERAGE": "OFF",
         "AXIOM_MUTATION_TESTING": "OFF",
+        "AXIOM_ENABLE_TEST_SEAMS": "OFF",
         "AXIOM_SANITIZERS": ""
       }
     },
@@ -36,7 +37,20 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
+      }
+    },
+    {
+      "name": "dev-py",
+      "displayName": "Developer build with Python bindings",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-py",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_SHARED_LIBS": "ON",
+        "AXIOM_BUILD_PYTHON": "ON",
+        "AXIOM_ENABLE_TEST_SEAMS": "OFF"
       }
     },
     {
@@ -45,7 +59,8 @@
       "inherits": "base",
       "binaryDir": "${sourceDir}/build-debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
       }
     },
     {
@@ -54,7 +69,8 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/fast",
       "cacheVariables": {
-        "AXIOM_COVERAGE": "ON"
+        "AXIOM_COVERAGE": "ON",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
       }
     },
     {
@@ -63,7 +79,8 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/full",
       "cacheVariables": {
-        "AXIOM_COVERAGE": "ON"
+        "AXIOM_COVERAGE": "ON",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
       }
     },
     {
@@ -72,7 +89,8 @@
       "inherits": "quality-base",
       "binaryDir": "${sourceDir}/build-quality/hardening",
       "cacheVariables": {
-        "AXIOM_SANITIZERS": "Address;Undefined"
+        "AXIOM_SANITIZERS": "Address;Undefined",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
       }
     },
     {
@@ -83,7 +101,31 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "AXIOM_BUILD_DEMO": "OFF",
-        "AXIOM_MUTATION_TESTING": "ON"
+        "AXIOM_MUTATION_TESTING": "ON",
+        "AXIOM_ENABLE_TEST_SEAMS": "ON"
+      }
+    },
+    {
+      "name": "quality-python",
+      "displayName": "Shared Python adapter validation",
+      "inherits": "quality-base",
+      "binaryDir": "${sourceDir}/build-quality/python",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": null,
+        "BUILD_SHARED_LIBS": "ON",
+        "AXIOM_BUILD_PYTHON": "ON",
+        "AXIOM_BUILD_INSTALL_TEST": "OFF",
+        "AXIOM_BUILD_DEMO": "OFF"
+      }
+    },
+    {
+      "name": "quality-wheel",
+      "displayName": "Python wheel build and installation validation",
+      "inherits": "quality-python",
+      "binaryDir": "${sourceDir}/build-quality/wheel",
+      "cacheVariables": {
+        "AXIOM_BUILD_WHEEL_VERIFY": "ON"
       }
     },
     {
@@ -114,6 +156,10 @@
       "configurePreset": "dev"
     },
     {
+      "name": "dev-py",
+      "configurePreset": "dev-py"
+    },
+    {
       "name": "debug",
       "configurePreset": "debug"
     },
@@ -134,6 +180,14 @@
       "configurePreset": "quality-mutation"
     },
     {
+      "name": "quality-python",
+      "configurePreset": "quality-python"
+    },
+    {
+      "name": "quality-wheel",
+      "configurePreset": "quality-wheel"
+    },
+    {
       "name": "quality-static",
       "configurePreset": "quality-static"
     },
@@ -147,6 +201,16 @@
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "dev-py",
+      "configurePreset": "dev-py",
       "output": {
         "outputOnFailure": true
       },
@@ -205,6 +269,26 @@
       }
     },
     {
+      "name": "quality-python",
+      "configurePreset": "quality-python",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "quality-wheel",
+      "configurePreset": "quality-wheel",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
       "name": "quality-static",
       "configurePreset": "quality-static",
       "output": {
@@ -252,6 +336,20 @@
         {
           "type": "build",
           "name": "debug"
+        }
+      ]
+    },
+    {
+      "name": "dev-py",
+      "displayName": "Configure and build developer configuration with Python bindings",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dev-py"
+        },
+        {
+          "type": "build",
+          "name": "dev-py"
         }
       ]
     }

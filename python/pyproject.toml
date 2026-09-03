@@ -1,0 +1,53 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13,<3"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "axiom"
+version = "0.1.0"
+description = "Axiom application framework Python binding"
+requires-python = ">=3.12,<3.14"
+
+[dependency-groups]
+dev = [
+    "pybind11==2.13.6",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.5",
+    "mypy==2.3.1",
+    "scikit-build-core==1.0.3",
+    "ninja==1.13.2",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"
+cmake.source-dir = ".."
+cmake.args = [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=ON",
+    "-DAXIOM_BUILD_PYTHON=ON",
+    "-DBUILD_TESTING=OFF",
+    "-DAXIOM_BUILD_DEMO=OFF",
+    "-DAXIOM_WARNINGS_AS_ERRORS=OFF",
+]
+wheel.packages = ["src/axiom"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/axiom"]

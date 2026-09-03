@@ -3,7 +3,14 @@
 /build-quality/
 /cmake-build-*/
 /.cache/
+/python/build/
+/python/dist-wheel/
 compile_commands.json
 __pycache__
+.pytest_cache
+.mypy_cache
 .ruff_cache
 .venv/
+/.venv-python/
+/python/.venv/
+__cmake_*

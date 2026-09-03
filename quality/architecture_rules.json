@@ -77,6 +77,40 @@
       "id": "async-must-not-depend-on-services",
       "from": ["src/async/", "include/axiom/async/"],
       "forbidden": ["axiom/action/", "axiom/logging/", "axiom/resource/", "axiom/events/", "axiom/task/"]
+    },
+    {
+      "id": "command-must-not-depend-on-action-detail",
+      "from": ["src/command/", "include/axiom/command/"],
+      "forbidden": ["axiom/action/detail/"]
+    },
+    {
+      "id": "core-must-not-depend-on-python",
+      "from": [
+        "src/foundation/",
+        "include/axiom/foundation/",
+        "src/action/",
+        "include/axiom/action/",
+        "src/resource/",
+        "include/axiom/resource/",
+        "src/task/",
+        "include/axiom/task/",
+        "src/async/",
+        "include/axiom/async/",
+        "src/events/",
+        "include/axiom/events/",
+        "src/logging/",
+        "include/axiom/logging/",
+        "src/introspection/",
+        "include/axiom/introspection/",
+        "src/command/",
+        "include/axiom/command/"
+      ],
+      "forbidden": ["axiom/python/"]
+    },
+    {
+      "id": "python-adapter-must-not-depend-on-module-detail",
+      "from": ["src/python/", "include/axiom/python/"],
+      "forbidden": ["axiom/action/detail/", "axiom/task/detail/"]
     }
   ]
 }

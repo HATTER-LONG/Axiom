@@ -171,6 +171,16 @@ Python facade ----------------------> _axiom
 验收：Windows Release 的 `DLL + PYD + embedding consumer` 跑通；Linux 对应 job 同步建立，
 不能只在本机静态测试中模拟。
 
+补充（收口阶段落实）：
+
+- **平台化 preset**：`quality-python`/`quality-wheel` 不得硬编码任何编译器；
+  由当前平台工具链决定（Linux 默认 GNU driver，Windows 由 MSVC/clang-cl
+  开发环境提供），避免 clang-cl 在 Linux 上连编译器探测都无法通过。
+- **解释器版本选择**：CMake 在 `AXIOM_BUILD_PYTHON=ON` 时强制支持矩阵
+  （Linux 3.12；Windows 3.12/3.13；其他平台配置报错），默认使用
+  `uv sync --project python --python 3.12` 建立的固定 `python/.venv`，可用
+  `Python_EXECUTABLE` 覆盖；工具版本锁定在 `python/uv.lock`。
+
 ### Phase 1：清理 Command 私有依赖并冻结 schema
 
 目标：先让 Adapter 所依赖的动态协议成为稳定事实。
@@ -203,7 +213,10 @@ Python facade ----------------------> _axiom
 测试：空/错误 handle、错误 Python 类型、重复 attach、重复 close、closed state、并发
 dispatch/close、多 Host、Python GC、bridge 先关闭、来源按合法顺序销毁。
 
-验收：所有非法状态在 attach 或调用入口变成确定异常；ASan/UBSan 下无 use-after-free。
+验收：所有非法状态在 attach 或调用入口变成确定异常；ASan/UBSan 下无 use-after-free；
+**异常路径同样释放 lease**——dispatch 内部使用 RAII `DispatchLease`，Action 抛出
+`std::bad_alloc` 或任何异常后，另一线程的 `close()` 必须在确定的同步超时内完成，
+不允许任何依赖 sleep 的时序验证。
 
 ### Phase 3：实现动态值转换
 
@@ -300,6 +313,14 @@ _Host.dispatch(method: str, params: dict[str, object], context: dict[str, object
 验收：`python -c "import axiom"`、embedding consumer 和 facade integration tests 均只依赖已安装
 wheel；Windows 与 Linux 分别验证。
 
+补充（收口阶段落实）：
+
+- **临时 wheel consumer**：验证只写临时目录与临时 venv，不向执行 CTest 的
+  解释器、全局环境或 `python/dist-wheel` 安装；构建中的 CMake wheel build
+  tree 在 import 前被移出原位；消费者现场编译，源码头文件可用，但链接与
+  运行时库必须解析到 venv site-packages 中 wheel 安装的
+  `Axiom`/`PythonHost` 共享库（Linux 以 `ldd` 断言）。
+
 ### Phase 8：质量门与文档收口
 
 目标：Python Adapter 成为正式工程组成，而不是例外。
@@ -318,6 +339,20 @@ wheel；Windows 与 Linux 分别验证。
 
 验收：`checkflow fast`、`checkflow hardening`、`checkflow full` 实际运行并通过；不得通过降低现有
 90% coverage、70% mutation 阈值或新增宽泛排除来达成。
+
+补充（收口阶段落实）：
+
+- **目标专用编译数据库**：`full` 的普通 clang-tidy/cppcheck 只检查
+  `quality-full` 实际编译的目标（不含 `src/python/**`、
+  `include/axiom/python/**`、`tests/python_embedding/**`）；绑定源码的
+  clang-tidy/cppcheck 在 `quality-wheel` 成功构建后，用该构建的
+  `compile_commands.json` 执行，保证 pybind11 include 路径真实存在，
+  不再出现 “pybind11/pybind11.h file not found” 之类的伪缺失。
+- **Python 测试与 Core 门禁拆分**：`quality-python`/`quality-wheel` 只构建
+  Adapter 与 embedding consumer，不下载 googletest、不编译 `axiom_test`。
+  `checkflow fast` 在 Core 覆盖率之后执行 `uv sync --project python --frozen`，
+  再用 `ctest -R '^axiom\\.python_'` 跑 embedding/ruff/mypy/facade；HostBridge
+  的 C++ 生命周期测试留在 `quality-fast`/`hardening`/`full`。
 
 ## 6. 测试矩阵
 

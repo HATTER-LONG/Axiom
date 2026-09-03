@@ -14,7 +14,6 @@
 
 namespace axiom::command::detail {
 
-[[nodiscard]] std::string_view errorCodeName(ErrorCode code);
 [[nodiscard]] std::string_view taskStateName(task::TaskState state);
 [[nodiscard]] Value encodeError(const Error& error);
 [[nodiscard]] Value encodeTypeDescriptor(const TypeDescriptor& type);

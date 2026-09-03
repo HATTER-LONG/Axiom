@@ -17,7 +17,6 @@
 #include <axiom/task/task_registry.hpp>
 
 #include <memory>
-#include <stdexcept>
 #include <string_view>
 #include <utility>
 
