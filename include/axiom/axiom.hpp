@@ -19,6 +19,7 @@
 #include <axiom/async/scheduler.hpp>
 #include <axiom/command/command_dispatcher.hpp>
 #include <axiom/command/command_methods.hpp>
+#include <axiom/command/error_code_name.hpp>
 #include <axiom/events/signal.hpp>
 #include <axiom/export.hpp>
 #include <axiom/foundation/error.hpp>

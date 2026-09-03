@@ -2,6 +2,7 @@
 
 #include <axiom/action/descriptor.hpp>
 #include <axiom/action/module.hpp>
+#include <axiom/command/error_code_name.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
 #include <axiom/foundation/value.hpp>
@@ -10,8 +11,6 @@
 #include <axiom/task/task_types.hpp>
 
 #include <algorithm>
-#include <array>
-#include <cstddef>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -23,13 +22,6 @@
 
 namespace axiom::command::detail {
 namespace {
-
-constexpr std::array error_code_names{
-    "invalid_argument", "missing_argument", "unknown_argument",   "type_mismatch",
-    "not_found",        "already_exists",   "invalid_descriptor", "invocation_failed",
-    "internal_error",   "cancelled",        "unknown_command",
-};
-static_assert(error_code_names.size() == static_cast<std::size_t>(ErrorCode::UnknownCommand) + 1);
 
 [[nodiscard]] std::string_view typeKindName(const TypeDescriptor::Kind kind) {
     switch(kind) {
@@ -129,14 +121,6 @@ template <typename Item, typename Encoder>
 }
 
 } // namespace
-
-std::string_view errorCodeName(const ErrorCode code) {
-    const auto index = static_cast<std::size_t>(code);
-    if(index >= error_code_names.size()) {
-        throw std::logic_error{"Unknown ErrorCode enumerator"};
-    }
-    return error_code_names[index];
-}
 
 std::string_view taskStateName(const task::TaskState state) {
     switch(state) {

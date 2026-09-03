@@ -1,5 +1,6 @@
 #include <axiom/action/detail/value_converter.hpp>
 #include <axiom/action/module_builder.hpp>
+#include <axiom/foundation/detail/value_path.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/value.hpp>
 

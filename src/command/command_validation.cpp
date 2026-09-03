@@ -1,7 +1,7 @@
 #include "command_validation.hpp"
 
-#include <axiom/action/detail/value_converter.hpp>
 #include <axiom/command/command_methods.hpp>
+#include <axiom/foundation/detail/value_path.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>
@@ -23,7 +23,7 @@ namespace {
 
 using axiom::detail::appendArrayPath;
 using axiom::detail::appendObjectPath;
-using axiom::detail::value_converter_detail::typeMismatch;
+using axiom::detail::typeMismatch;
 
 struct MethodEntry {
     std::string_view name{}; // NOLINT(readability-redundant-member-init)

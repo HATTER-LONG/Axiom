@@ -2,8 +2,8 @@
 
 #include <axiom/action/action_id.hpp>
 #include <axiom/action/descriptor.hpp>
-#include <axiom/action/detail/value_converter.hpp>
 #include <axiom/action/invocation_context.hpp>
+#include <axiom/foundation/detail/value_path.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/value.hpp>

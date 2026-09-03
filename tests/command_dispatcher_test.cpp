@@ -9,6 +9,7 @@
 #include <axiom/async/executor.hpp>
 #include <axiom/command/command_dispatcher.hpp>
 #include <axiom/command/command_methods.hpp>
+#include <axiom/command/error_code_name.hpp>
 #include <axiom/foundation/error.hpp>
 #include <axiom/foundation/result.hpp>
 #include <axiom/foundation/type_descriptor.hpp>
@@ -597,7 +598,7 @@ TEST(CommandDispatcher, SupportsConcurrentDispatchWithoutSleep) {
 }
 
 TEST(CommandConversion, EncodesEveryErrorCodeName) {
-    using axiom::command::detail::errorCodeName;
+    using axiom::command::errorCodeName;
     EXPECT_EQ(errorCodeName(ErrorCode::InvalidArgument), "invalid_argument");
     EXPECT_EQ(errorCodeName(ErrorCode::MissingArgument), "missing_argument");
     EXPECT_EQ(errorCodeName(ErrorCode::UnknownArgument), "unknown_argument");
@@ -612,9 +613,8 @@ TEST(CommandConversion, EncodesEveryErrorCodeName) {
 }
 
 TEST(CommandConversion, RejectsUnknownEnumerators) {
-    EXPECT_THROW(
-        static_cast<void>(axiom::command::detail::errorCodeName(static_cast<ErrorCode>(255))),
-        std::logic_error);
+    EXPECT_THROW(static_cast<void>(axiom::command::errorCodeName(static_cast<ErrorCode>(255))),
+                 std::logic_error);
     EXPECT_THROW(static_cast<void>(axiom::command::detail::taskStateName(
                      static_cast<axiom::task::TaskState>(255))),
                  std::logic_error);
